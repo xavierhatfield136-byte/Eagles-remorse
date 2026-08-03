@@ -134,6 +134,59 @@ class CampaignMapClarityMilestoneOneTest {
                 "clicking the control halo away from the glyph must be a free-space click");
     }
 
+    @Test
+    void campaignMapSidebarCopyStaysShortAndPlayerFacing() {
+        GameContext ctx = initializedCampaignContext();
+
+        CampaignMapPresentationModel.SidebarContent nav = CampaignMapPresentationModel.sidebar(ctx);
+        assertTrue(nav.primaryLines().size() <= 4);
+        assertTrue(nav.secondaryLines().size() <= 5);
+
+        ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.FLEET;
+        CampaignMapPresentationModel.SidebarContent fleet = CampaignMapPresentationModel.sidebar(ctx);
+        assertTrue(fleet.primaryLines().size() <= 4);
+        assertTrue(fleet.secondaryLines().size() <= 4);
+
+        ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.RESOURCES;
+        CampaignMapPresentationModel.SidebarContent resources = CampaignMapPresentationModel.sidebar(ctx);
+        assertEquals(UiState.CampaignCommandTab.NAV, resources.tab());
+        assertTrue(resources.primaryLines().size() <= 4);
+        assertTrue(resources.secondaryLines().size() <= 5);
+
+        String combined = String.join("\n", nav.primaryLines()) + "\n"
+                + String.join("\n", nav.secondaryLines()) + "\n"
+                + String.join("\n", CampaignSystem.campaignActionPreviewLines(ctx));
+        assertFalse(combined.contains("Primary Objective:"));
+        assertFalse(combined.contains("Secondary Objective:"));
+        assertFalse(combined.contains("Failure Risk:"));
+        assertFalse(combined.contains("Region Operation Brief:"));
+        assertFalse(combined.contains("Sensor Net:"));
+    }
+
+    @Test
+    void overworldSidebarHoverShowsFullDetailsBehindSimplifiedCopy() {
+        GameContext ctx = initializedCampaignContext();
+        ctx.ui.mapOpen = true;
+        ctx.state = GameState.MAP;
+        ctx.campaign.strategicOvermapMode = true;
+        CampaignSystem.CampaignLocation site = CampaignSystem.mainCampaignLocations(ctx).get(0);
+        ctx.campaign.selectedGalaxyLocationId = site.id;
+
+        Rectangle panel = Renderer.getStrategicMapSidebarRect(1280, 720, true);
+        Renderer.HoverTooltip tooltip = Renderer.hoverTooltipAt(
+                ctx,
+                1280,
+                720,
+                panel.x + panel.width / 2,
+                panel.y + 96);
+
+        assertNotNull(tooltip);
+        assertTrue(tooltip.title.contains("Details"));
+        assertTrue(tooltip.body.contains("Facility:"));
+        assertTrue(tooltip.body.contains("Defense:"));
+        assertFalse(tooltip.body.contains("..."));
+    }
+
     private static GameContext initializedCampaignContext() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         ctx.campaignUnlockProfile = null;

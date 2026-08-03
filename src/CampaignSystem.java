@@ -6310,9 +6310,10 @@ public final class CampaignSystem extends CampaignSystemModels {
             }
         }
 
-        if (tab == UiState.CampaignCommandTab.FLEET || tab == UiState.CampaignCommandTab.RESOURCES) {
+        if (tab == UiState.CampaignCommandTab.FLEET || tab == UiState.CampaignCommandTab.NAV
+                || tab == UiState.CampaignCommandTab.RESOURCES) {
             out.add(action("ALLY_GREEN",
-                    (tab == UiState.CampaignCommandTab.RESOURCES) ? "CALL TRADERS" : "GREEN SUPPORT",
+                    "GREEN SUPPORT",
                     "Spend Green Reputation for supplies, intel, and relay support.",
                     "Request Green-channel support using accumulated favor.",
                     CampaignActionCategory.SUPPORT,
@@ -6325,7 +6326,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                     "",
                     actionCtx -> requestCampaignAllySupport(actionCtx, false)));
             out.add(action("ALLY_YELLOW",
-                    (tab == UiState.CampaignCommandTab.FLEET) ? "FORCE YELLOW ROUTES" : "FORCED TRADE CHANNEL",
+                    "YELLOW ROUTES",
                     "Spend Yellow leverage to force fuel, salvage, and traffic support.",
                     "Coerce Yellow-channel traffic using accumulated leverage.",
                     CampaignActionCategory.SUPPORT,
@@ -6611,86 +6612,59 @@ public final class CampaignSystem extends CampaignSystemModels {
     public static List<String> campaignActionPreviewLines(GameContext ctx) {
         ensureStrategicOvermapReady(ctx);
         CampaignAction primary = campaignPrimaryAction(ctx);
-        if (primary == null) return List.of("ACTION PREVIEW  |  No active command.");
+        if (primary == null) return List.of("Action: None");
         ArrayList<String> out = new ArrayList<>();
-        out.add("ACTION PREVIEW  |  " + primary.label);
-        if (!primary.shortDescription.isBlank()) out.add(primary.shortDescription);
+        out.add("Action: " + primary.label);
         if (!primary.enabled && !primary.disabledReason.isBlank()) {
-            out.add("Disabled: " + primary.disabledReason);
-        } else if (!primary.tooltip.isBlank()) {
-            out.add(primary.tooltip);
+            out.add("Blocked: " + primary.disabledReason);
+            return out;
         }
+        String effect = campaignActionSimpleEffect(primary);
+        if (!effect.isBlank()) out.add(effect);
         CampaignLocation selected = selectedCampaignLocation(ctx);
-        if (primary.category == CampaignActionCategory.NAVIGATION && selected != null) {
-            for (String line : compactRouteAssessmentLines(ctx)) out.add(line);
-            List<String> authority = campaignStrategicAuthorityLines(ctx);
-            if (!authority.isEmpty()) out.add(authority.get(0));
-            if (authority.size() > 1) out.add(authority.get(1));
+        if (primary.category == CampaignActionCategory.NAVIGATION) {
+            if (selected != null) out.add("Destination: " + selected.name);
+            String route = routeCostForecastLine(ctx);
+            if (!route.isBlank()) out.add(compactCampaignPreviewLine(route));
         } else if (primary.category == CampaignActionCategory.SERVICES && selected != null) {
-            out.add("Location: " + selected.name);
-            out.add(hubServiceActionDetail(ctx, selected, hubServiceFromActionId(primary.id)));
+            out.add("At: " + selected.name);
         } else if (primary.category == CampaignActionCategory.STRIKES) {
-            List<String> strike = campaignStrikeConsequenceLines(ctx);
-            if (!strike.isEmpty()) out.add(strike.get(0));
-            if (strike.size() > 1) out.add(strike.get(1));
             if (hasSelectedCampaignContactTarget(ctx)) {
                 out.add("Target: " + selectedCampaignContactLabel(ctx));
-                if (!selectedCampaignContactIntelLabel(ctx).isBlank()) {
-                    out.add("Intel Quality: " + selectedCampaignContactIntelLabel(ctx));
-                }
             }
             StrikePreflight preflight = buildStrikePreflight(ctx, primary.id);
-            out.add("Preflight: " + (preflight.valid ? "READY" : ("BLOCKED  |  " + preflight.reason.toUpperCase(Locale.US))));
-            if ("ATOMIC_STRIKE".equalsIgnoreCase(primary.id)) {
-                out.add("Cost: 1 atomic charge  |  Exposure spike severe");
-            }
+            out.add(preflight.valid ? "Ready" : "Blocked: " + preflight.reason);
         } else if (primary.category == CampaignActionCategory.SENSORS) {
-            out.add("Sensor Net: Sweep for broad picture, Focused Track for strike-quality locks, Traffic Audit for lanes and hubs.");
-            out.add("Extensions: Deploy Relay for persistent coverage, Scout Surge for short burst classification.");
-            out.add("Intel: " + campaignIntelReadout(ctx) + "  |  Exposure " + campaignExposureReadout(ctx));
-            if ("SENSOR_SWEEP".equals(primary.id) || "SIGNAL_SWEEP".equals(primary.id)
-                    || "RECON_SWEEP".equals(primary.id)) {
-                out.addAll(campaignSensorSweepPreviewLines(ctx));
-            }
-            CampaignState st = state(ctx);
-            if (st != null) out.add("Relay Nodes: " + st.sensorRelayNodes.size());
-            if (hasSelectedCampaignContactTarget(ctx)) {
-                out.add("Selected Contact: " + selectedCampaignContactLabel(ctx));
-                out.add("Lock Quality: " + selectedCampaignContactIntelLabel(ctx));
-            }
-        } else if (primary.category == CampaignActionCategory.SITE_RESOLUTION && selected != null) {
-            out.add("Site: " + selected.name);
-            out.add("Plan Detail: " + selectedSiteResolutionModeDetail(ctx));
+            out.add("Intel: " + campaignIntelReadout(ctx));
         } else if (primary.category == CampaignActionCategory.POSTURE) {
-            out.add("Current Fleet Order: " + campaignFleetPostureReadout(ctx));
-            out.add("Effect: " + primary.shortDescription);
-            String postureId = primary.id.startsWith("POSTURE_")
-                    ? primary.id.substring("POSTURE_".length()) : "";
-            out.addAll(campaignFleetPostureForecastLines(ctx, postureId));
-            PersistentFleetEntry focused = campaignFleetFocusEntry(ctx);
-            if (focused != null) {
-                out.add("Focused Hull: " + displayPersistentFleetEntryName(focused));
-                out.add("Commitment: " + fleetCommitmentLabel(resolveFleetCommitment(focused.tacticalCommitmentId)));
-            }
+            out.add("Order: " + campaignFleetPostureReadout(ctx));
         } else if (primary.category == CampaignActionCategory.SUPPORT) {
             CampaignState st = state(ctx);
-            if (st != null) {
-                out.add("Green Reputation: " + st.greenContractFavor + "  |  Yellow Reputation: " + st.yellowLiberationFavor);
-            }
-        }
-        CampaignState st = state(ctx);
-        if (st != null) {
-            if (st.lastTheaterOperationBrief != null && !st.lastTheaterOperationBrief.isBlank()) {
-                out.add("Region Operation Brief: " + st.lastTheaterOperationBrief);
-            }
-            if (st.lastTheaterOperationDebrief != null && !st.lastTheaterOperationDebrief.isBlank()) {
-                out.add("Region Operation Debrief: " + st.lastTheaterOperationDebrief);
-            }
-            if (st.lastTransitEncounterDebrief != null && !st.lastTransitEncounterDebrief.isBlank()) {
-                out.add("Transit Debrief: " + st.lastTransitEncounterDebrief);
-            }
+            if (st != null) out.add("Favor: Green " + st.greenContractFavor + " | Yellow " + st.yellowLiberationFavor);
         }
         return out;
+    }
+
+    private static String campaignActionSimpleEffect(CampaignAction action) {
+        if (action == null) return "";
+        String id = action.id == null ? "" : action.id.toUpperCase(Locale.US);
+        if (id.contains("PLOT_COURSE") || id.contains("ENGAGE_COURSE")) return "Set destination.";
+        if (id.contains("ENTER") || id.contains("ENGAGE") || id.contains("TAKE_COMMAND")) return "Start encounter.";
+        if (id.contains("AUTO_RESOLVE")) return "Resolve off-screen.";
+        if (id.contains("REPAIR")) return "Repair ships.";
+        if (id.contains("TRADE")) return "Trade or resupply.";
+        if (id.contains("TORPEDO") || id.contains("STRIKE")) return "Attack from range.";
+        if (id.contains("SENSOR") || id.contains("SWEEP") || id.contains("RECON")) return "Improve intel.";
+        if (id.contains("POSTURE")) return "Change fleet order.";
+        if (id.contains("SUPPORT") || id.contains("ESCORT")) return "Call support.";
+        return compactCampaignPreviewLine(action.shortDescription.isBlank() ? action.tooltip : action.shortDescription);
+    }
+
+    private static String compactCampaignPreviewLine(String line) {
+        if (line == null) return "";
+        String clean = line.trim().replace("  |  ", " | ");
+        if (clean.length() <= 86) return clean;
+        return clean.substring(0, 83).trim() + "...";
     }
 
     private static HubService hubServiceFromActionId(String actionId) {
@@ -6727,6 +6701,9 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (ctx == null || st == null || !st.enabled || ctx.ui == null) return List.of();
         ArrayList<CampaignAction> out = new ArrayList<>();
         UiState.TacticalMapTab tab = ctx.ui.tacticalMapTab;
+        if (tab == UiState.TacticalMapTab.RESOURCES) {
+            tab = UiState.TacticalMapTab.MISSION;
+        }
         boolean exposeStandaloneStrikeActions = tab == UiState.TacticalMapTab.STRIKES
                 && tacticalStrikeTabExposesActions(ctx);
         if (tab == UiState.TacticalMapTab.STRIKES && !exposeStandaloneStrikeActions) {
@@ -20120,7 +20097,9 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (ctx.player != null) {
             FlagshipOperationsSystem.syncFromShip(st.flagshipOperations, ctx.player);
             FlagshipOperationsSystem.update(st.flagshipOperations, Math.max(0.0, dt));
-            FlagshipOperationsSystem.applyToShip(st.flagshipOperations, ctx.player);
+            boolean preserveManualPower = ctx.command != null
+                    && (ctx.command.playerPowerManualOverride || !ctx.command.engineeringAutomation);
+            FlagshipOperationsSystem.applyToShip(st.flagshipOperations, ctx.player, preserveManualPower);
         }
         tickBattleStrikeCooldowns(st, dt);
         if (!isCommandLayerMode(ctx)) {
@@ -23033,10 +23012,51 @@ public final class CampaignSystem extends CampaignSystemModels {
             if (selected != null) return selected;
             return ctx.player;
         }
+        CampaignState st = state(ctx);
+        if (ctx.config != null && ctx.config.mode == GameMode.TUTORIAL
+                && st != null && st.commandSchoolTraining) {
+            Ship docked = EconomySystem.getDockedFriendlyBase(ctx);
+            if (docked != null) return docked;
+        }
         if (isCampaignActive(ctx)) {
             return ctx.player;
         }
         return EconomySystem.getDockedFriendlyBase(ctx);
+    }
+
+    public static int baseUpgradeCreditCost(GameContext ctx, Ship ship, int which, int nextLv) {
+        if (nextLv <= 0) return Integer.MAX_VALUE;
+        int standard = switch (which) {
+            case 1 -> 150 + 200 * nextLv;
+            case 2 -> 170 + 210 * nextLv;
+            case 3 -> 210 + 250 * nextLv;
+            case 4 -> 140 + 170 * nextLv;
+            case 5 -> 380 + 420 * nextLv;
+            default -> Integer.MAX_VALUE;
+        };
+        if (!isCommandSchoolUpgradePricing(ctx, ship)) return standard;
+        return Math.min(standard, 90 + 35 * nextLv);
+    }
+
+    public static int baseUpgradeOreCost(GameContext ctx, Ship ship, int which, int nextLv) {
+        if (nextLv <= 0) return Integer.MAX_VALUE;
+        int standard = switch (which) {
+            case 1 -> 40 + 70 * nextLv;
+            case 2 -> 50 + 80 * nextLv;
+            case 3 -> 60 + 90 * nextLv;
+            case 4 -> 40 + 110 * nextLv;
+            case 5 -> 100 + 170 * nextLv;
+            default -> Integer.MAX_VALUE;
+        };
+        if (!isCommandSchoolUpgradePricing(ctx, ship)) return standard;
+        return Math.min(standard, 20 + 10 * nextLv);
+    }
+
+    private static boolean isCommandSchoolUpgradePricing(GameContext ctx, Ship ship) {
+        if (ctx == null || ctx.config == null || ctx.config.mode != GameMode.TUTORIAL) return false;
+        CampaignState st = state(ctx);
+        if (st != null && st.enabled && !st.commandSchoolTraining) return false;
+        return ship == null || ship.role == ShipRole.BASE || ship.role == ShipRole.MOTHERSHIP;
     }
 
     public static Ship fleetSelectedShip(GameContext ctx) {
@@ -34412,6 +34432,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         }
         populateAmbientEncounterLandmarks(ctx, st, location);
         FogOfWarSystem.update(ctx);
+        UISystem.focusTacticalMapOnCurrentMission(ctx);
         if (ctx.ui != null) {
             ctx.ui.mapOpen = false;
         }
@@ -34963,14 +34984,23 @@ public final class CampaignSystem extends CampaignSystemModels {
 
     private static void positionPlayerForAmbientEncounter(GameContext ctx, CampaignState st, CampaignLocation location) {
         if (ctx == null || st == null || ctx.player == null) return;
-        int ambientSubzone = missionSubzoneIndex(Math.max(0, missionSubzoneColumns() / 2), Math.max(0, missionSubzoneRows() / 2));
-        double centerX = missionSubzoneCenterX(ctx, st.sector, ambientSubzone);
-        double centerY = missionSubzoneCenterY(ctx, st.sector, ambientSubzone);
+        MissionLayout layout = missionLayout(ctx);
+        boolean compactWorld = st.commandSchoolTraining
+                || ctx.WORLD_W < layout.zoneWidth - 1.0
+                || ctx.WORLD_H < layout.zoneHeight - 1.0;
+        int ambientSubzone = compactWorld
+                ? missionSubzoneForPoint(ctx, st.sector, ctx.WORLD_W * 0.5, ctx.WORLD_H * 0.5)
+                : missionSubzoneIndex(Math.max(0, missionSubzoneColumns() / 2), Math.max(0, missionSubzoneRows() / 2));
+        if (ambientSubzone < 0) ambientSubzone = missionSubzoneIndex(0, 0);
+        double centerX = compactWorld ? ctx.WORLD_W * 0.5 : missionSubzoneCenterX(ctx, st.sector, ambientSubzone);
+        double centerY = compactWorld ? ctx.WORLD_H * 0.5 : missionSubzoneCenterY(ctx, st.sector, ambientSubzone);
         st.galaxyAmbientPocketCenterX = centerX;
         st.galaxyAmbientPocketCenterY = centerY;
-        double radiusCap = Math.min(AMBIENT_SITE_POCKET_RADIUS,
+        double radiusCap = compactWorld
+                ? Math.min(AMBIENT_SITE_POCKET_RADIUS, Math.min(ctx.WORLD_W, ctx.WORLD_H) * 0.46)
+                : Math.min(AMBIENT_SITE_POCKET_RADIUS,
                 Math.min(AMBIENT_SITE_POCKET_WIDTH * 0.5, AMBIENT_SITE_POCKET_HEIGHT * 0.5));
-        st.galaxyAmbientPocketRadius = Math.max(1200.0, radiusCap);
+        st.galaxyAmbientPocketRadius = Math.max(compactWorld ? 650.0 : 1200.0, radiusCap);
         TacticalApproachDirection arrivalDirection = ambientEncounterArrivalDirection(st, location);
         TacticalApproachDirection objectiveDirection = ambientEncounterObjectiveDirection(location, arrivalDirection);
         boolean greenStationSite = location != null
@@ -34980,8 +35010,9 @@ public final class CampaignSystem extends CampaignSystemModels {
                 ? ambientApproachPoint(ctx, st, objectiveDirection, 0.40)
                 : ambientApproachPoint(ctx, st, arrivalDirection, 0.72);
         setLoadedMissionSubzone(ctx, ambientSubzone);
-        ctx.player.x = arrival[0];
-        ctx.player.y = arrival[1];
+        double margin = Math.max(120.0, MISSION_SUBZONE_CLAMP_MARGIN);
+        ctx.player.x = GameMath.clamp(arrival[0], margin, Math.max(margin, ctx.WORLD_W - margin));
+        ctx.player.y = GameMath.clamp(arrival[1], margin, Math.max(margin, ctx.WORLD_H - margin));
         double faceX = greenStationSite ? ambientApproachPoint(ctx, st, objectiveDirection, 0.46)[0] : centerX;
         double faceY = greenStationSite ? ambientApproachPoint(ctx, st, objectiveDirection, 0.46)[1] : centerY;
         ctx.player.angle = pointAngleToward(ctx.player.x, ctx.player.y, faceX, faceY);

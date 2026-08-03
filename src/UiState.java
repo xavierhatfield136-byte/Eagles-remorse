@@ -258,7 +258,7 @@ public final class UiState {
     public TacticalMapTab tacticalMapTab = TacticalMapTab.MISSION;
     public boolean campaignWarMapSimplified = false;
 
-    public GameContext.HudDetail hudDetail = GameContext.HudDetail.COMPACT;
+    public GameContext.HudDetail hudDetail = GameContext.HudDetail.FULL;
     public boolean tacticalViewEnabled = false;
     public GameContext.XrayFilterMode xrayFilterMode = GameContext.XrayFilterMode.ALL;
     public ShipRoomLayout.RoomId xrayFocusedRoom = null;

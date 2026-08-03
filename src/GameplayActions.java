@@ -178,13 +178,8 @@ public final class GameplayActions {
 
     public static void cycleHudDetail(GameContext ctx) {
         if (ctx == null) return;
-        GameContext.HudDetail current = (ctx.ui.hudDetail == null) ? GameContext.HudDetail.COMPACT : ctx.ui.hudDetail;
-        ctx.ui.hudDetail = switch (current) {
-            case FULL -> GameContext.HudDetail.COMPACT;
-            case COMPACT -> GameContext.HudDetail.MINIMAL;
-            case MINIMAL -> GameContext.HudDetail.FULL;
-        };
-        EventSystem.showBanner(ctx, "HUD: " + ctx.ui.hudDetail.name(), 0.8);
+        ctx.ui.hudDetail = GameContext.HudDetail.FULL;
+        EventSystem.showBanner(ctx, "HUD: FULL VISIBILITY", 0.8);
     }
 
     public static void toggleTacticalView(GameContext ctx) {
@@ -252,6 +247,7 @@ public final class GameplayActions {
         if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.ORDER_ISSUANCE)) return;
         Ship.PowerPreset preset = ctx.player.cyclePowerPreset();
         ctx.command.engineeringAutomation = false;
+        ctx.command.playerPowerManualOverride = true;
         EventSystem.showBanner(ctx, "POWER: " + preset.name(), 0.8);
     }
 

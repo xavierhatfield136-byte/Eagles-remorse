@@ -24,6 +24,23 @@ class HotkeyRegistryTest {
     }
 
     @Test
+    void hudDetailActionPinsFullVisibilityInsteadOfCycling() {
+        GameContext ctx = new GameContext(null);
+        ctx.ui.hudDetail = GameContext.HudDetail.MINIMAL;
+
+        GameplayActions.cycleHudDetail(ctx);
+        assertEquals(GameContext.HudDetail.FULL, ctx.ui.hudDetail);
+
+        GameplayActions.cycleHudDetail(ctx);
+        assertEquals(GameContext.HudDetail.FULL, ctx.ui.hudDetail);
+
+        String help = HotkeyRegistry.renderedHelpText(false, GameContext.HudDetail.MINIMAL).toLowerCase(java.util.Locale.US);
+        assertTrue(!help.contains("compact"));
+        assertTrue(!help.contains("minimal"));
+        assertTrue(!help.contains("cycle detail"));
+    }
+
+    @Test
     void registeredUnqualifiedHotkeysHaveNoDuplicatesWithinScope() {
         assertEquals(java.util.List.of(), HotkeyRegistry.duplicateUnqualifiedBindings());
     }

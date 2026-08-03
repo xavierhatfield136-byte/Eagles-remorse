@@ -916,6 +916,7 @@ public final class UISystem {
         ctx.player.setCustomPowerBusAllocation(p[0], p[1], p[2], p[3], p[4], p[5]);
         // Manual engineering input immediately overrides automation.
         ctx.command.engineeringAutomation = false;
+        ctx.command.playerPowerManualOverride = true;
     }
 
     public static void applyPowerPreset(GameContext ctx, Ship.PowerPreset preset) {
@@ -923,6 +924,7 @@ public final class UISystem {
         if (preset == null) preset = Ship.PowerPreset.BALANCED;
         ctx.player.setPowerPreset(preset);
         ctx.command.engineeringAutomation = false;
+        ctx.command.playerPowerManualOverride = true;
     }
 
     public static void toggleOverloadMode(GameContext ctx) {
@@ -1065,7 +1067,10 @@ public final class UISystem {
             case CAPTAIN -> ctx.command.captainAutomation = enabled;
             case HELM -> ctx.command.helmAutomation = enabled;
             case TACTICAL -> ctx.command.tacticalAutomation = enabled;
-            case ENGINEERING -> ctx.command.engineeringAutomation = enabled;
+            case ENGINEERING -> {
+                ctx.command.engineeringAutomation = enabled;
+                ctx.command.playerPowerManualOverride = !enabled;
+            }
             case SCIENCE -> ctx.command.scienceAutomation = enabled;
         }
     }
@@ -1515,6 +1520,10 @@ public final class UISystem {
                 addPing(ctx, worldX, worldY, 2.2);
                 EventSystem.showBanner(ctx, "PING MARKED", 1.0);
             }
+            return;
+        }
+        if (!CampaignSystem.isStrategicGalaxyMapMode(ctx)
+                && TutorialSystem.handleStrategicMapClick(ctx, worldX, worldY, SwingUtilities.isRightMouseButton(e))) {
             return;
         }
         boolean strikeTargetingMode = false;
@@ -2074,7 +2083,7 @@ public final class UISystem {
         return Double.isFinite(playerY) ? playerY : (ctx == null ? 0.0 : ctx.WORLD_H * 0.5);
     }
 
-    private static boolean focusTacticalMapOnCurrentMission(GameContext ctx) {
+    public static boolean focusTacticalMapOnCurrentMission(GameContext ctx) {
         if (ctx == null || ctx.ui == null || !CampaignSystem.usesMissionSubzones(ctx)) {
             return false;
         }
@@ -2645,22 +2654,9 @@ public final class UISystem {
         }
 
         int nextLv = current + 1;
-        int cCost = switch (which) {
-            case 1 -> 150 + 200 * nextLv;
-            case 2 -> 170 + 210 * nextLv;
-            case 3 -> 210 + 250 * nextLv;
-            case 4 -> 140 + 170 * nextLv;
-            case 5 -> 380 + 420 * nextLv;
-            default -> 0;
-        };
-        int oCost = switch (which) {
-            case 1 -> 40 + 70 * nextLv;
-            case 2 -> 50 + 80 * nextLv;
-            case 3 -> 60 + 90 * nextLv;
-            case 4 -> 40 + 110 * nextLv;
-            case 5 -> 100 + 170 * nextLv;
-            default -> 0;
-        };
+        int cCost = CampaignSystem.baseUpgradeCreditCost(ctx, base, which, nextLv);
+        int oCost = CampaignSystem.baseUpgradeOreCost(ctx, base, which, nextLv);
+        if (cCost == Integer.MAX_VALUE || oCost == Integer.MAX_VALUE) return;
 
         int oreAvailable = CampaignSystem.isCampaignActive(ctx)
                 ? CampaignSystem.currentCampaignOre(ctx)
@@ -2802,6 +2798,7 @@ public final class UISystem {
         if (ctx == null || mode == null) return;
         ctx.command.engineeringMode = mode;
         ctx.command.engineeringAutomation = true;
+        ctx.command.playerPowerManualOverride = false;
     }
 
     public static void applyCaptainPreset(GameContext ctx, int index) {
@@ -2891,6 +2888,7 @@ public final class UISystem {
         ctx.command.helmAutomation = true;
         ctx.command.tacticalAutomation = true;
         ctx.command.engineeringAutomation = true;
+        ctx.command.playerPowerManualOverride = false;
         ctx.command.scienceAutomation = true;
     }
 

@@ -256,7 +256,7 @@ public final class HotkeyRegistry {
             case "cycleLeft" -> "Cycle the locked target backward.";
             case "cycleRight" -> "Cycle the locked target forward.";
             case "toggleMap", "toggleMapUp" -> "Open, close, or toggle the map according to the active input mode.";
-            case "cycleHudDetail" -> "Cycle full, compact, and minimal HUD detail.";
+            case "cycleHudDetail" -> "Keep the HUD in full visibility mode.";
             case "toggleTacticalView" -> "Switch tactical camera presentation.";
             case "cycleXrayFilter" -> "Cycle x-ray room inspection filters.";
             case "clearXrayFocus" -> "Clear the focused x-ray room.";
@@ -319,20 +319,13 @@ public final class HotkeyRegistry {
     }
 
     public static List<String> hudHelpRows(boolean carrier, GameContext.HudDetail detail) {
-        GameContext.HudDetail mode = (detail == null) ? GameContext.HudDetail.FULL : detail;
         List<String> rows = new ArrayList<>();
-        if (mode == GameContext.HudDetail.MINIMAL) {
-            rows.add("HELP surface stores combat, navigation, and overlay hotkeys so the live HUD can stay focused.");
-            rows.add("META: " + label("escape") + " pause/resume");
-            return rows;
-        }
 
         rows.add("COMBAT: " + label("primaryDown") + "/LMB fire all | "
                 + label("secondaryDown") + " missile focus | RMB comms | "
                 + label("lockUnderMouse") + "/MMB lock | " + label("toggleTacticalView") + " FPS view");
         rows.add("NAV: " + movementLabel() + " move | arrows pan | " + label("toggleShop") + " fleet management | "
-                + label("toggleBaseMenu") + " command upgrades | " + label("toggleMap") + " map | "
-                + label("cycleHudDetail") + " HUD");
+                + label("toggleBaseMenu") + " command upgrades | " + label("toggleMap") + " map");
         rows.add("SYSTEMS: " + label("togglePowerManagement") + " power | " + label("toggleBaseMenu") + " base | "
                 + label("pingAtCursor") + " ping | " + label("setWaypoint") + " waypoint");
         rows.add("COMMS: " + label("cycleCommIntent") + " cycle intent | " + label("hailContact") + " hail target");

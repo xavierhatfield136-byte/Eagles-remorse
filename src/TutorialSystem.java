@@ -5,6 +5,7 @@ import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.GradientPaint;
 import java.awt.Graphics2D;
+import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.util.ArrayList;
@@ -516,17 +517,19 @@ public final class TutorialSystem {
         TutorialState st = state(ctx);
         if (st == null || g2 == null || ctx == null) return;
 
-        java.awt.Rectangle r = Renderer.getStrategicMapRect(viewW, viewH);
-        int pad = 18;
-        java.awt.Rectangle m = new java.awt.Rectangle(r.x + pad, r.y + 44, r.width - pad * 2, r.height - 60);
+        java.awt.Rectangle m = Renderer.getStrategicMapInnerRect(
+                viewW, viewH, CampaignSystem.isStrategicGalaxyMapMode(ctx));
         Marker active = activeMarker(ctx, st);
         Graphics2D gx = (Graphics2D) g2.create();
         gx.setFont(new Font("Consolas", Font.BOLD, 11));
+        gx.setClip(m.x, m.y, m.width, m.height);
 
         for (Marker marker : markers(ctx, st)) {
             if (marker == null) continue;
-            int px = m.x + (int) Math.round((marker.x / Math.max(1.0, ctx.WORLD_W)) * m.width);
-            int py = m.y + (int) Math.round((marker.y / Math.max(1.0, ctx.WORLD_H)) * m.height);
+            Point point = strategicMapPointForWorld(ctx, marker.x, marker.y, m);
+            if (point == null) continue;
+            int px = point.x;
+            int py = point.y;
             boolean isActive = active != null && active.label.equals(marker.label);
             int rr = isActive ? 10 : 7;
 
@@ -539,6 +542,48 @@ public final class TutorialSystem {
             gx.drawString(marker.label, px + rr + 6, py - 4);
         }
         gx.dispose();
+    }
+
+    static Point strategicMapPointForWorld(GameContext ctx, double worldX, double worldY, Rectangle mapRect) {
+        if (ctx == null || mapRect == null || mapRect.width <= 0 || mapRect.height <= 0) return null;
+        double worldMinX = UISystem.strategicMapWorldMinX(ctx);
+        double worldMinY = UISystem.strategicMapWorldMinY(ctx);
+        double visibleWorldW = UISystem.strategicMapViewWidth(ctx);
+        double visibleWorldH = UISystem.strategicMapViewHeight(ctx);
+        double nx = (worldX - worldMinX) / Math.max(1.0, visibleWorldW);
+        double ny = (worldY - worldMinY) / Math.max(1.0, visibleWorldH);
+        if (nx < 0.0 || nx > 1.0 || ny < 0.0 || ny > 1.0) return null;
+        return new Point(
+                mapRect.x + (int) Math.round(nx * mapRect.width),
+                mapRect.y + (int) Math.round(ny * mapRect.height));
+    }
+
+    public static boolean handleStrategicMapClick(GameContext ctx, double worldX, double worldY, boolean rightMouse) {
+        TutorialState st = state(ctx);
+        if (ctx == null || st == null || CampaignSystem.isStrategicOvermapMode(ctx)) return false;
+        Marker active = activeMarker(ctx, st);
+        if (active == null) return false;
+
+        double pickRadius = Math.max(95.0, Math.min(150.0, active.radius + 28.0));
+        if (!nearPoint(worldX, worldY, active.x, active.y, pickRadius)) {
+            if (CampaignSystem.usesMissionSubzones(ctx)) {
+                EventSystem.showBanner(ctx, "CLICK THE " + active.label + " MARKER", 1.0);
+                return true;
+            }
+            return false;
+        }
+
+        if (rightMouse) {
+            UISystem.addPing(ctx, active.x, active.y, 2.2);
+            EventSystem.showBanner(ctx, active.label + " PING", 1.0);
+            return true;
+        }
+
+        ctx.ui.waypointX = GameMath.clamp(active.x, 0.0, ctx.WORLD_W);
+        ctx.ui.waypointY = GameMath.clamp(active.y, 0.0, ctx.WORLD_H);
+        UISystem.addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
+        EventSystem.showBanner(ctx, "COURSE SET: " + active.label, 1.0);
+        return true;
     }
 
     private static void refreshPersistentProgress(GameContext ctx, TutorialState st) {
@@ -554,7 +599,7 @@ public final class TutorialSystem {
                     || CampaignSystem.COMMAND_SCHOOL_TRADE_HUB_ID.equals(campaign.dockedGalaxyLocationId);
             st.selectedTrainingContact |= CampaignSystem.selectedCampaignContactHostile(ctx)
                     && CampaignSystem.selectedCampaignContactLabel(ctx).toUpperCase(java.util.Locale.US).contains("DRONE");
-            st.trackedTrainingContact |= "TRACK_TARGET".equals(campaign.commandSchoolLastActionId);
+            st.trackedTrainingContact |= isTrainingReconAction(campaign.commandSchoolLastActionId);
             st.reachedResourceSite |= CampaignSystem.COMMAND_SCHOOL_RESOURCE_SITE_ID.equals(campaign.currentGalaxyLocationId)
                     || CampaignSystem.COMMAND_SCHOOL_RESOURCE_SITE_ID.equals(campaign.dockedGalaxyLocationId);
             st.reviewedStationServices |= CampaignSystem.COMMAND_SCHOOL_TRADE_HUB_ID.equals(campaign.selectedGalaxyLocationId)
@@ -607,6 +652,14 @@ public final class TutorialSystem {
         }
     }
 
+    private static boolean isTrainingReconAction(String actionId) {
+        if (actionId == null || actionId.isBlank()) return false;
+        return switch (actionId.trim().toUpperCase(java.util.Locale.US)) {
+            case "TRACK_TARGET", "SIGNAL_SWEEP", "FOCUSED_TRACK", "TRAFFIC_AUDIT" -> true;
+            default -> false;
+        };
+    }
+
     private static void handleLessonSideEffects(GameContext ctx, TutorialState st) {
         LessonId lesson = currentLesson(st);
         if (lesson == LessonId.OVERWORLD_MAP_READING) {
@@ -621,6 +674,7 @@ public final class TutorialSystem {
             }
         } else if (lesson == LessonId.SCAN_AND_INTEL) {
             ensureCommandSchoolOverworld(ctx);
+            if (ctx.ui != null) ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.NAV;
             if (!CampaignSystem.hasSelectedCampaignContactTarget(ctx)) {
                 selectTrainingContact(ctx);
             }
@@ -733,6 +787,7 @@ public final class TutorialSystem {
             }
             case SCAN_AND_INTEL -> {
                 ensureCommandSchoolOverworld(ctx);
+                if (ctx.ui != null) ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.NAV;
                 selectTrainingContact(ctx);
                 if (announce) EventSystem.showBanner(ctx, "OVERWORLD SCHOOL 4: SCAN + INTEL", 2.4);
             }
@@ -842,7 +897,7 @@ public final class TutorialSystem {
             case RESOURCE_SITE ->
                     "Visit a resource site and note the difference: ore fields are local opportunities, not major station backdrops.";
             case STATION_SERVICES ->
-                    "Use a safe station to review trade, fuel, contracts, and shipyard/service options without spending a real campaign save.";
+                    "Use a safe station to review trade, contracts, refit, and shipyard/service options without spending a real campaign save.";
             case FLEET_ORGANIZATION ->
                     "Review the persistent fleet roster and change one tactical commitment so you know what deploys into a mission.";
             case OVERWORLD_TO_MISSION ->
@@ -898,7 +953,7 @@ public final class TutorialSystem {
                         st.selectedTrainingContact));
                 items.add(new ChecklistItem(
                         "[Track] Track the hostile contact.",
-                        "Use Track Contact to refresh the ping and improve your mental picture before committing.",
+                        "Use Track Contact, Signal Sweep, Focused Track, or Traffic Audit to refresh the hostile picture before committing.",
                         st.trackedTrainingContact));
             }
             case RESOURCE_SITE -> {
@@ -910,7 +965,7 @@ public final class TutorialSystem {
             case STATION_SERVICES -> {
                 items.add(new ChecklistItem(
                         "[Services] Review Broker Practice Hub.",
-                        "Return/select the hub and open or review trade, fuel, contracts, or shipyard services.",
+                        "Return/select the hub and open or review trade, contracts, refit, or shipyard services.",
                         st.reviewedStationServices));
             }
             case FLEET_ORGANIZATION -> {
@@ -1109,7 +1164,9 @@ public final class TutorialSystem {
 
         double baseX = GameMath.clamp(ctx.WORLD_W * 0.15, 220.0, ctx.WORLD_W - 260.0);
         double baseY = GameMath.clamp(ctx.WORLD_H * 0.58, 220.0, ctx.WORLD_H - 220.0);
-        double playerX = GameMath.clamp(baseX + 180.0, 90.0, ctx.WORLD_W - 90.0);
+        double stationVisualClearance = RoleStats.get(ShipRole.BASE).radius
+                * ShipHullSilhouette.skinRenderScale() + 260.0;
+        double playerX = GameMath.clamp(baseX + stationVisualClearance, 90.0, ctx.WORLD_W - 90.0);
         double playerY = baseY;
 
         st.alphaX = GameMath.clamp(ctx.WORLD_W * 0.28, 260.0, ctx.WORLD_W - 260.0);
@@ -1127,7 +1184,7 @@ public final class TutorialSystem {
         ctx.teamBases.put(st.playerFaction, homeBase);
         BaseUpgrades tutorialUpgrades = new BaseUpgrades();
         tutorialUpgrades.hullLv = 1;
-        tutorialUpgrades.shieldLv = 1;
+        tutorialUpgrades.shieldLv = 0;
         tutorialUpgrades.turretLv = 1;
         tutorialUpgrades.miningLv = 1;
         tutorialUpgrades.hangarLv = 2;
@@ -1160,6 +1217,12 @@ public final class TutorialSystem {
             DoctrineRegistry.applyToShip(ctx.player);
             DoctrineRegistry.applyToShip(target);
         } catch (Throwable ignored) {}
+        homeBase.shieldActive = false;
+        homeBase.shieldMax = 0.0;
+        homeBase.shield = 0.0;
+        homeBase.shieldRegen = 0.0;
+        homeBase.repairRange = 0.0;
+        homeBase.resetShieldState();
 
         st.startingOreTotal = combinedOreTotal(ctx, st.homeBaseId);
         st.startingPlayerCargo = (ctx.player == null) ? 0 : ctx.player.cargo;
@@ -1182,7 +1245,9 @@ public final class TutorialSystem {
             ctx.campaign.galaxyEncounterActive = true;
             ctx.campaign.galaxyAmbientEncounterActive = true;
             ctx.campaign.activeGalaxyEncounterLocationId = CampaignSystem.COMMAND_SCHOOL_RED_SITE_ID;
+            CampaignSystem.syncLoadedMissionSubzoneFromPlayer(ctx);
         }
+        UISystem.focusTacticalMapOnCurrentMission(ctx);
         FogOfWarSystem.reset(ctx);
     }
 
@@ -1249,8 +1314,6 @@ public final class TutorialSystem {
     private static List<Marker> markers(GameContext ctx, TutorialState st) {
         ArrayList<Marker> out = new ArrayList<>();
         if (ctx != null && CampaignSystem.isStrategicOvermapMode(ctx)) return out;
-        Ship base = shipById(ctx, st.homeBaseId);
-        if (base != null) out.add(new Marker("HOME BASE", base.x, base.y, 120.0));
         out.add(new Marker("NAV ALPHA", st.alphaX, st.alphaY, POINT_REACHED_RADIUS));
         out.add(new Marker("NAV BETA", st.betaX, st.betaY, POINT_REACHED_RADIUS));
         out.add(new Marker("WEAPONS RANGE", st.weaponsX, st.weaponsY, WEAPON_RANGE_RADIUS));

@@ -21,6 +21,7 @@ public final class CommandState {
     public boolean helmAutomation = false;
     public boolean tacticalAutomation = false;
     public boolean engineeringAutomation = false;
+    public boolean playerPowerManualOverride = false;
     public boolean scienceAutomation = true;
     public double helmDesiredRange = 480.0;
     public boolean miningAuto = false;

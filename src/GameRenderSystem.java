@@ -253,12 +253,11 @@ public final class GameRenderSystem {
             objectiveTitle = LastStandSystem.hudTitle(ctx);
             objectiveDetail = LastStandSystem.hudDetail(ctx);
         }
-        String stationStatus = "STATIONS "
-                + "C:" + (ctx.command.captainAutomation ? "AI" : "MAN") + "  "
-                + "H:" + (ctx.command.helmAutomation ? "AI" : "MAN") + "  "
-                + "T:" + (ctx.command.tacticalAutomation ? "AI" : "MAN") + "  "
-                + "E:" + (ctx.command.engineeringAutomation ? "AI" : "MAN") + "  "
-                + "S:" + (ctx.command.scienceAutomation ? "AI" : "MAN");
+        String stationStatus = "Crew: Captain " + automationLabel(ctx.command.captainAutomation)
+                + " | Helm " + automationLabel(ctx.command.helmAutomation)
+                + " | Tactical " + automationLabel(ctx.command.tacticalAutomation)
+                + " | Engineering " + automationLabel(ctx.command.engineeringAutomation)
+                + " | Science " + automationLabel(ctx.command.scienceAutomation);
         String overlayStatus = activeOverlayLabel(ctx);
         String contextHint = buildContextHint(ctx, docked);
         GameContext.HudDetail effectiveHudDetail = effectiveHudDetailForRenderPressure(ctx, ctx.ui.hudDetail);
@@ -331,7 +330,7 @@ public final class GameRenderSystem {
             if (base != null) {
                 BaseUpgrades up = ctx.baseUpgrades.computeIfAbsent(base, k -> new BaseUpgrades());
                 int baseOre = CampaignSystem.isCampaignActive(ctx) ? CampaignSystem.currentCampaignOre(ctx) : base.oreStockpile;
-                Renderer.drawBaseUpgradeOverlay(g2, base, base.name, ctx.credits, baseOre,
+                Renderer.drawBaseUpgradeOverlay(g2, ctx, base, base.name, ctx.credits, baseOre,
                         up.hullLv, up.shieldLv, up.turretLv, up.miningLv, up.hangarLv,
                         maxHangarTier, CampaignSystem.isFleetHubSession(ctx));
             }
@@ -480,40 +479,24 @@ if (DevTools.isDebugOverlay()) {
     }
 
     private static GameContext.HudDetail effectiveHudDetailForRenderPressure(GameContext ctx, GameContext.HudDetail requested) {
-        GameContext.HudDetail detail = requested == null ? GameContext.HudDetail.COMPACT : requested;
-        if (ctx == null || ctx.ui == null) return detail;
-        if (ctx.ui.shopOpen || ctx.ui.baseMenuOpen || ctx.ui.mapOpen
-                || ctx.ui.powerManagementOpen || ctx.ui.crewStationsOpen || ctx.ui.flightDeckOpen) {
-            return detail;
-        }
-        int ships = ctx.ships == null ? 0 : ctx.ships.size();
-        int projectiles = ctx.projectiles == null ? 0 : ctx.projectiles.size();
-        if (CampaignSystem.isCampaignActive(ctx) && !CampaignSystem.isStrategicOvermapMode(ctx)) {
-            if (ships >= 260 || projectiles >= 520 || (ships >= 96 && projectiles >= 220)) {
-                return detail == GameContext.HudDetail.MINIMAL ? GameContext.HudDetail.COMPACT : detail;
-            }
-            return detail;
-        }
-        if (ships >= 260 || projectiles >= 520 || (ships >= 96 && projectiles >= 220)) {
-            return GameContext.HudDetail.MINIMAL;
-        }
-        if ((ships >= 180 || projectiles >= 360) && detail == GameContext.HudDetail.FULL) {
-            return GameContext.HudDetail.COMPACT;
-        }
-        return detail;
+        return GameContext.HudDetail.FULL;
     }
 
     private static String activeOverlayLabel(GameContext ctx) {
         if (ctx == null) return "";
         boolean fleetHub = CampaignSystem.isFleetHubSession(ctx);
-        if (ctx.ui.shopOpen) return fleetHub ? "OVERLAY: FLEET HANGAR" : "OVERLAY: SHOP/LOADOUT";
-        if (ctx.ui.baseMenuOpen) return fleetHub ? "OVERLAY: FLEET UPGRADE CONSOLE" : "OVERLAY: BASE UPGRADES";
-        if (ctx.ui.powerManagementOpen) return "OVERLAY: POWER MANAGEMENT";
-        if (ctx.ui.crewStationsOpen) return "OVERLAY: CREW STATIONS";
-        if (ctx.ui.flightDeckOpen) return "OVERLAY: FLIGHT DECK";
-        if (ctx.ui.mapOpen) return "OVERLAY: STRATEGIC MAP";
-        if (ctx.state == GameState.PAUSED) return "OVERLAY: PAUSED";
+        if (ctx.ui.shopOpen) return fleetHub ? "Fleet Hangar" : "Shop / Loadout";
+        if (ctx.ui.baseMenuOpen) return fleetHub ? "Fleet Upgrades" : "Base Upgrades";
+        if (ctx.ui.powerManagementOpen) return "Power Management";
+        if (ctx.ui.crewStationsOpen) return "Crew Stations";
+        if (ctx.ui.flightDeckOpen) return "Flight Deck";
+        if (ctx.ui.mapOpen) return "Strategic Map";
+        if (ctx.state == GameState.PAUSED) return "Paused";
         return "";
+    }
+
+    private static String automationLabel(boolean automated) {
+        return automated ? "AI" : "Manual";
     }
 
     private static String buildContextHint(GameContext ctx, Ship dockedBase) {
@@ -583,7 +566,7 @@ if (DevTools.isDebugOverlay()) {
                 return "Carrier wing idle: press / to set 5 squad pairs, C to launch a 2-ship squad, V to set wing behavior.";
             }
         }
-        return "Use N to cycle HUD detail (FULL/COMPACT/MINIMAL). Press J to toggle Tactical FPS View.";
+        return "";
     }
 
     private static void drawTacticalStatusOverlay(GameContext ctx, Graphics2D g2, int viewportW, int viewportH,
@@ -612,18 +595,18 @@ if (DevTools.isDebugOverlay()) {
             int textY = y + 46;
             String hull = (ctx.player == null)
                     ? "Hull: N/A"
-                    : "Hull: " + Math.max(0, (int) Math.ceil(ctx.player.hp)) + "/" + Math.max(0, (int) Math.ceil(ctx.player.hpMax));
+                    : "Hull: " + statusPercent(ctx.player.hp, ctx.player.hpMax);
             double shieldMax = (ctx.player == null) ? 0.0 : ctx.player.effectiveShieldCapacityMax();
             String shield = (ctx.player == null)
-                    ? "Shield: N/A"
-                    : "Shield: " + Math.max(0, (int) Math.ceil(ctx.player.shield)) + "/" + Math.max(0, (int) Math.ceil(shieldMax));
+                    ? "Shields: N/A"
+                    : "Shields: " + statusPercent(ctx.player.shield, shieldMax);
             hud.drawString(hull, x + 14, textY);
             hud.drawString(shield, x + 14, textY + lineH);
             hud.drawString("Visible ships: " + ctx.perf.drawnShips + "    Zoom: " + String.format(java.util.Locale.US, "%.2fx", zoom),
                     x + 14, textY + lineH * 2);
-            hud.drawString("Projectiles, fog, salvage, and markers hidden for FPS.", x + 14, textY + lineH * 3);
+            hud.drawString("Effects limited for smoother tactical view.", x + 14, textY + lineH * 3);
 
-            String footer = (stationStatus != null && !stationStatus.isBlank()) ? stationStatus : overlayStatus;
+            String footer = (overlayStatus != null && !overlayStatus.isBlank()) ? overlayStatus : stationStatus;
             if (footer != null && !footer.isBlank()) {
                 hud.setColor(new Color(153, 192, 230, 186));
                 hud.drawString(footer, x + 14, textY + lineH * 4);
@@ -631,6 +614,12 @@ if (DevTools.isDebugOverlay()) {
         } finally {
             hud.dispose();
         }
+    }
+
+    private static String statusPercent(double current, double max) {
+        if (max <= 1e-9) return "N/A";
+        int percent = (int) Math.round(Math.max(0.0, Math.min(1.0, current / max)) * 100.0);
+        return percent + "%";
     }
 
     private static boolean hasHostileNearPlayer(GameContext ctx, double radius) {
@@ -678,6 +667,7 @@ if (DevTools.isDebugOverlay()) {
 
     private static void drawFleetSelectionMarker(Graphics2D g2, Ship ship) {
         if (g2 == null || ship == null || !ship.alive || ship.dying || ship.hp <= 0) return;
+        if (isTutorialBase(ship)) return;
         double radius = Math.max(46.0, ship.radius * 1.9);
         int x = (int) Math.round(ship.x - radius);
         int y = (int) Math.round(ship.y - radius);
@@ -697,6 +687,12 @@ if (DevTools.isDebugOverlay()) {
         g2.drawString(label, (int) Math.round(ship.x + radius + 8), (int) Math.round(ship.y - radius - 6));
         g2.setFont(oldFont);
         g2.setStroke(oldStroke);
+    }
+
+    private static boolean isTutorialBase(Ship ship) {
+        return ship != null
+                && ship.role == ShipRole.BASE
+                && "Tutorial Base".equals(ship.name);
     }
 
     private static java.util.List<Ship> fleetHubRenderShips(GameContext ctx) {

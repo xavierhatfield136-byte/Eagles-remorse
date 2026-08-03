@@ -3,6 +3,7 @@ import org.junit.jupiter.api.Test;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
+import java.awt.geom.Rectangle2D;
 import java.lang.reflect.Method;
 import java.util.List;
 
@@ -52,6 +53,60 @@ class RendererHudLayoutTest {
 
         assertTrue(image.getRGB(image.getWidth() / 2, image.getHeight() / 2) != 0,
                 "power management overlay should paint visible panel content");
+    }
+
+    @Test
+    void shieldFxOnlyRendersDuringRecentDamageFlash() throws Exception {
+        FleetShip ship = new FleetShip(ShipRole.BATTLESHIP, Faction.ALLY, 0.0, 0.0);
+        ship.shieldActive = true;
+        ship.shieldMax = Math.max(100.0, ship.shieldMax);
+        ship.shield = ship.shieldMax;
+        ship.resetShieldState();
+
+        BufferedImage image = new BufferedImage(360, 240, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = image.createGraphics();
+        Method shouldRender = Renderer.class.getDeclaredMethod(
+                "shouldRenderShieldFx", Ship.class, Rectangle2D.class, Graphics2D.class);
+        shouldRender.setAccessible(true);
+        Rectangle2D bounds = new Rectangle2D.Double(0.0, 0.0, 180.0, 180.0);
+        try {
+            assertFalse((Boolean) shouldRender.invoke(null, ship, bounds, g2),
+                    "idle shields should not paint a standing aura over the hull");
+
+            ship.drainShieldByAmount(12.0, ship.x + 80.0, ship.y, -120.0, 0.0);
+            assertTrue((Boolean) shouldRender.invoke(null, ship, bounds, g2),
+                    "fresh shield damage should flash the shield effect");
+
+            ship.update(1.35);
+            assertFalse((Boolean) shouldRender.invoke(null, ship, bounds, g2),
+                    "shield impact marks should not leave a lingering colored aura");
+        } finally {
+            g2.dispose();
+        }
+    }
+
+    @Test
+    void tacticalShipViewDoesNotDrawIdleShieldCircle() throws Exception {
+        FleetShip ship = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 80.0, 80.0);
+        ship.shieldActive = true;
+        ship.shieldMax = Math.max(80.0, ship.shieldMax);
+        ship.shield = ship.shieldMax;
+        ship.resetShieldState();
+
+        BufferedImage image = new BufferedImage(180, 180, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = image.createGraphics();
+        Method drawTacticalShip = Renderer.class.getDeclaredMethod("drawTacticalShip", Graphics2D.class, Ship.class);
+        drawTacticalShip.setAccessible(true);
+        try {
+            drawTacticalShip.invoke(null, g2, ship);
+        } finally {
+            g2.dispose();
+        }
+
+        int oldCircleX = (int) Math.round(ship.x + Math.max(8.0, (ship.radius + 12.0) * 1.08));
+        int oldCircleY = (int) Math.round(ship.y);
+        int alpha = (image.getRGB(oldCircleX, oldCircleY) >>> 24) & 0xff;
+        assertTrue(alpha < 16, "idle tactical shields should not draw the old always-on circular aura");
     }
 
     @Test

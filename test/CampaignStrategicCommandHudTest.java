@@ -1860,8 +1860,7 @@ class CampaignStrategicCommandHudTest {
             Rectangle[] galaxyRects = (Rectangle[]) galaxyRectsMethod.invoke(null, 0, 0, 292);
             UiState.CampaignCommandTab[] commandTabs = new UiState.CampaignCommandTab[]{
                     UiState.CampaignCommandTab.NAV,
-                    UiState.CampaignCommandTab.FLEET,
-                    UiState.CampaignCommandTab.RESOURCES
+                    UiState.CampaignCommandTab.FLEET
             };
             for (int i = 0; i < commandTabs.length; i++) {
                 String label = (String) galaxyLabelMethod.invoke(null, commandTabs[i]);
@@ -1879,7 +1878,6 @@ class CampaignStrategicCommandHudTest {
             UiState.TacticalMapTab[] tacticalTabs = new UiState.TacticalMapTab[]{
                     UiState.TacticalMapTab.MISSION,
                     UiState.TacticalMapTab.FLEET,
-                    UiState.TacticalMapTab.RESOURCES,
                     UiState.TacticalMapTab.CONTACTS
             };
             for (int i = 0; i < tacticalTabs.length; i++) {

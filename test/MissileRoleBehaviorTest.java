@@ -70,6 +70,29 @@ class MissileRoleBehaviorTest {
     }
 
     @Test
+    void blueFastMissilesLaunchAtHalfSpeedForPlayerAndAllies() {
+        Ship target = new FleetShip(ShipRole.FIGHTER, Faction.ENEMY, 600.0, 0.0);
+        double originalBlueFastSpeed = 220.0 * Turret.MISSILE_SPEED_MULT
+                * Missile.GLOBAL_SPEED_MULT * 2.35;
+
+        Player player = new Player(ShipRole.MOTHERSHIP, 0.0, 0.0);
+        Missile playerMissile = fireFastMissile(player, target);
+        assertEquals(originalBlueFastSpeed * Turret.BLUE_FAST_MISSILE_SPEED_MULT, playerMissile.speed, 1e-6,
+                "player mothership fast missiles should launch at half their previous speed");
+
+        Ship ally = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 0.0, 0.0);
+        Missile allyMissile = fireFastMissile(ally, target);
+        assertEquals(originalBlueFastSpeed * Turret.BLUE_FAST_MISSILE_SPEED_MULT, allyMissile.speed, 1e-6,
+                "blue-team fast missiles should launch at half their previous speed");
+
+        Ship red = new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 0.0, 0.0);
+        Ship blueTarget = new FleetShip(ShipRole.FIGHTER, Faction.ALLY, 600.0, 0.0);
+        Missile redMissile = fireFastMissile(red, blueTarget);
+        assertEquals(originalBlueFastSpeed, redMissile.speed, 1e-6,
+                "non-blue fast missile tuning should keep its previous speed");
+    }
+
+    @Test
     void interceptMissilesCanHitEnemyMissiles() throws Exception {
         GameContext ctx = new GameContext(new GameConfig(GameMode.SHOOTING_RANGE, 5000, 5000, true, 4321L, false));
 
@@ -90,6 +113,18 @@ class MissileRoleBehaviorTest {
 
         assertFalse(interceptor.alive, "interceptor missile should expend itself on missile interception");
         assertFalse(hostileMissile.alive, "enemy missile should be destroyed by the AAA intercept");
+    }
+
+    private static Missile fireFastMissile(Ship shooter, Ship target) {
+        Turret missileTurret = new Turret(Turret.Kind.MISSILE, 0.0, 0.0);
+        missileTurret.missileRole = Turret.MissileRole.ANTI_LIGHT;
+        missileTurret.primary = false;
+        missileTurret.angle = 0.0;
+        missileTurret.setReady();
+        shooter.addTurret(missileTurret);
+        Projectile fired = missileTurret.fire(shooter, target, GameContext.DT);
+        assertTrue(fired instanceof Missile, "expected fast missile launch");
+        return (Missile) fired;
     }
 
     @Test

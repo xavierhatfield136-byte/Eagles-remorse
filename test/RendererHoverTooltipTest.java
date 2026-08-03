@@ -2,10 +2,13 @@ import app.config.GameConfig;
 import app.config.GameMode;
 import org.junit.jupiter.api.Test;
 
+import java.awt.Font;
+import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.lang.reflect.Method;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -117,6 +120,104 @@ class RendererHoverTooltipTest {
         assertTrue(tooltip.title.contains("OBJECTIVE"));
         assertTrue(tooltip.body.contains(objectiveTitle));
         assertTrue(tooltip.body.contains("warp corridor stabilizes"));
+    }
+
+    @Test
+    void gameplayHudTextAvoidsDenseInternalShorthand() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.SHOOTING_RANGE, 5000, 5000, true, 1234L, false));
+        ctx.player = new Player(ShipRole.FRIGATE, 2400.0, 2400.0);
+        ctx.player.faction = Faction.ALLY;
+        ctx.ships.add(ctx.player);
+        Ship enemy = new FleetShip(ShipRole.HAULER, Faction.ENEMY, 2600.0, 2400.0);
+        enemy.name = "Red Hauler";
+        ctx.ships.add(enemy);
+        ctx.lockedTarget = enemy;
+
+        Method commandLinesMethod = Renderer.class.getDeclaredMethod(
+                "buildCommandStatusLines",
+                Player.class,
+                int.class,
+                boolean.class,
+                boolean.class,
+                int.class,
+                int.class,
+                int.class,
+                double.class,
+                double.class,
+                double.class,
+                double.class,
+                String.class,
+                GameContext.HudDetail.class,
+                GameContext.class);
+        commandLinesMethod.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        List<String> commandLines = (List<String>) commandLinesMethod.invoke(
+                null,
+                ctx.player,
+                3,
+                false,
+                false,
+                0,
+                0,
+                ctx.resourceGoal,
+                1.0,
+                0.0,
+                1.0,
+                0.0,
+                "",
+                GameContext.HudDetail.FULL,
+                ctx);
+
+        BufferedImage canvas = new BufferedImage(32, 32, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = canvas.createGraphics();
+        FontMetrics metrics;
+        try {
+            metrics = g2.getFontMetrics(new Font("Consolas", Font.PLAIN, 12));
+        } finally {
+            g2.dispose();
+        }
+
+        Method shipLinesMethod = Renderer.class.getDeclaredMethod(
+                "buildShipSystemNoteLines",
+                Player.class,
+                Ship.class,
+                int.class,
+                int.class,
+                String.class,
+                String.class,
+                String.class,
+                GameContext.HudDetail.class,
+                FontMetrics.class,
+                int.class,
+                GameContext.class);
+        shipLinesMethod.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        List<String> shipLines = (List<String>) shipLinesMethod.invoke(
+                null,
+                ctx.player,
+                enemy,
+                0,
+                0,
+                "STATIONS C:AI H:MAN",
+                "OVERLAY: POWER MANAGEMENT",
+                "",
+                GameContext.HudDetail.FULL,
+                metrics,
+                260,
+                ctx);
+
+        String combined = String.join("\n", commandLines) + "\n" + String.join("\n", shipLines);
+        assertTrue(combined.contains("Shooting Range"));
+        assertTrue(combined.contains("Shipyard Tier 3"));
+        assertTrue(combined.contains("Hull"));
+        assertTrue(combined.contains("Order:"));
+        assertTrue(combined.contains("Target: Red Hauler"));
+        assertFalse(combined.contains("SHOOTING_RANGE"));
+        assertFalse(combined.contains("Fleet: E"));
+        assertFalse(combined.contains("Command: Titans"));
+        assertFalse(combined.contains("Comms: I"));
+        assertFalse(combined.contains("STATIONS"));
+        assertFalse(combined.contains("OVERLAY:"));
     }
 
     @Test

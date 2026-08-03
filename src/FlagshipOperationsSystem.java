@@ -271,8 +271,14 @@ public final class FlagshipOperationsSystem {
 
     /** Ship rooms remain the damage authority; the schematic projects their state into live power-bus effects. */
     public static CombatEffects applyToShip(State state, Ship ship) {
+        return applyToShip(state, ship, false);
+    }
+
+    /** Ship rooms remain the damage authority; the schematic can report effects without owning manual power buses. */
+    public static CombatEffects applyToShip(State state, Ship ship, boolean preservePowerBuses) {
         if (state == null || ship == null) return combatEffects(state);
         CombatEffects effects = combatEffects(state);
+        if (preservePowerBuses) return effects;
         ship.setPowerBusAllocation(0.18 * effects.propulsion(), 0.18 * effects.shields(),
                 0.19 * effects.weapons(), 0.15 * effects.sensors(),
                 0.18 * effects.repairs(), 0.12 * Math.min(effects.hangar(), effects.lifeSupport()));

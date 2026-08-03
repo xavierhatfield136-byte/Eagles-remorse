@@ -48,13 +48,19 @@ public final class CrewStationsSystem {
         if (manualHelm) ctx.command.helmAutomation = false;
         if (ctx.firingPrimaryManual || ctx.firingSecondaryManual) ctx.command.tacticalAutomation = false;
 
+        if (ctx.command.playerPowerManualOverride) {
+            ctx.command.engineeringAutomation = false;
+        }
+
         if (ctx.command.captainAutomation) applyCaptainDirectives(ctx);
         GameContext.CaptainDirective directive = (ctx.command.captainDirective == null)
                 ? GameContext.CaptainDirective.BALANCED
                 : ctx.command.captainDirective;
         boolean captainNavPriority = isCaptainNavigationDirective(directive) && ctx.command.captainAutomation;
         if (ctx.command.scienceAutomation) applyScienceAutomation(ctx);
-        if (ctx.command.engineeringAutomation && (ctx.ui == null || !ctx.ui.powerManagementOpen)) {
+        if (ctx.command.engineeringAutomation
+                && !ctx.command.playerPowerManualOverride
+                && (ctx.ui == null || !ctx.ui.powerManagementOpen)) {
             applyEngineeringAutomation(ctx);
         }
         if (ctx.command.tacticalAutomation) applyTacticalAutomation(ctx, captainNavPriority, directive);
@@ -281,6 +287,7 @@ public final class CrewStationsSystem {
 
     private static void applyEngineeringAutomation(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
+        if (ctx.command != null && ctx.command.playerPowerManualOverride) return;
         Player p = ctx.player;
 
         double hpFrac = (p.hpMax <= 0) ? 1.0 : (p.hp / (double) p.hpMax);
