@@ -35,19 +35,20 @@ class TitanFleetSystemTest {
     }
 
     @Test
-    void purchaseTitanHonorsMothershipCap() {
-        GameContext ctx = campaignContext(12, 50000);
+    void purchaseTitanRejectsDuplicateTypesWithoutTotalSlotLimit() {
+        GameContext ctx = campaignContext(12, 100_000);
 
-        for (int i = 0; i < TitanFleetSystem.mothershipTitanCap(); i++) {
+        for (TitanArchetype archetype : TitanArchetype.values()) {
             assertEquals(TitanFleetSystem.PurchaseResult.PURCHASED,
-                    TitanFleetSystem.purchaseTitan(ctx, TitanArchetype.TRANSPORT));
+                    TitanFleetSystem.purchaseTitan(ctx, archetype));
         }
 
-        TitanFleetSystem.PurchaseResult extra = TitanFleetSystem.purchaseTitan(ctx, TitanArchetype.TRANSPORT);
+        TitanFleetSystem.PurchaseResult duplicate = TitanFleetSystem.purchaseTitan(ctx, TitanArchetype.TRANSPORT);
 
-        assertEquals(TitanFleetSystem.PurchaseResult.TITAN_CAP_REACHED, extra);
-        assertEquals(8, TitanFleetSystem.ownedTitanCount(ctx));
-        assertEquals(80, TitanFleetSystem.totalStandardShipCommandCapacity(ctx));
+        assertEquals(TitanFleetSystem.PurchaseResult.TITAN_TYPE_ALREADY_OWNED, duplicate);
+        assertEquals(TitanArchetype.values().length, TitanFleetSystem.ownedTitanCount(ctx));
+        assertEquals(126, TitanFleetSystem.totalStandardShipCommandCapacity(ctx));
+        assertEquals(0, TitanFleetSystem.remainingTitanSlots(ctx));
     }
 
     @Test
@@ -65,6 +66,17 @@ class TitanFleetSystemTest {
         assertIterableEquals(expected, restored.ownedTitans);
         assertEquals(20, TitanFleetSystem.totalStandardShipCommandCapacity(campaignContext(restored, 12, 0)));
         assertEquals(5, TitanFleetSystem.totalEliteSupershipCommandCapacity(campaignContext(restored, 12, 0)));
+    }
+
+    @Test
+    void titanRosterRestoreDeduplicatesLegacyDuplicateTypes() {
+        CampaignSystem.CampaignState restored = new CampaignSystem.CampaignState();
+        restored.enabled = true;
+
+        TitanFleetSystem.restoreOwnedTitans(restored, "TRANSPORT,TRANSPORT,BULWARK");
+
+        assertIterableEquals(List.of(TitanArchetype.TRANSPORT, TitanArchetype.BULWARK), restored.ownedTitans);
+        assertEquals("TRANSPORT,BULWARK", TitanFleetSystem.serializeOwnedTitans(restored.ownedTitans));
     }
 
     @Test
@@ -88,7 +100,7 @@ class TitanFleetSystemTest {
         cp.persistentBlueFleet = "1,FRIGATE,false,Qmx1ZSBHdWFyZCBPbmU";
         cp.normalize();
 
-        assertEquals("Sector 6  |  BATTLECRUISER  |  Doctrine BALANCED  |  Titans 3/8  |  Fleet 1", cp.menuSummary());
+        assertEquals("Sector 6  |  BATTLECRUISER  |  Doctrine BALANCED  |  Titans 3  |  Fleet 1", cp.menuSummary());
     }
 
     private static GameContext campaignContext(int sector, int credits) {

@@ -11,7 +11,8 @@ public class Turret {
     public static final double MISSILE_DAMAGE_MULT = 1.55;
     // Baseline launch multiplier before faction doctrine is applied in Missile.
     public static final double MISSILE_SPEED_MULT = 0.90;
-    public static final double BLUE_FAST_MISSILE_SPEED_MULT = 0.50;
+    public static final double BLUE_FAST_MISSILE_SPEED_MULT = 0.32;
+    public static final double BLUE_FAST_MISSILE_MAX_PRE_FACTION_SPEED = 78.0;
     public static final double MISSILE_TURN_MULT = 1.32;
     public static final double MISSILE_LIFE_MULT = 1.22;
     // Tactical alignment: non-beam ordnance should cross the screen visibly instead of feeling nearly hitscan.
@@ -396,6 +397,7 @@ public class Turret {
                     missileSpd_final = missileSpd * 0.92;  // Slightly slower for better hit chance
                 } else if (missileRole == MissileRole.ANTI_LIGHT) {
                     missileSpd_final = missileSpd * BLUE_FAST_MISSILE_SPEED_MULT;
+                    missileSpd_final = Math.min(missileSpd_final, BLUE_FAST_MISSILE_MAX_PRE_FACTION_SPEED);
                 } else if (missileRole == MissileRole.INTERCEPT) {
                     // Interceptor variant: lighter, faster, turns harder
                     missileDamage_final = (int) Math.round(missileDamage * 0.75);

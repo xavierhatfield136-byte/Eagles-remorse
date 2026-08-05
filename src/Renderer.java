@@ -7305,11 +7305,8 @@ public class Renderer {
 
         int chipY = y + h - 58;
         if (prompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_BATTLE) {
-            drawHudStatusChip(g2, "F FOLLOW", inner.x, chipY, 82, 22, new Color(132, 196, 255, 224), true);
-            drawHudStatusChip(g2, "J JOIN", inner.x + 90, chipY, 76, 22, new Color(255, 206, 122, 224), true);
-            drawHudStatusChip(g2, "I IGNORE", inner.x + 174, chipY, 82, 22, new Color(190, 190, 220, 224), true);
-            drawHudStatusChip(g2, "S SUPPORT", inner.x + 264, chipY, 92, 22, new Color(190, 226, 152, 224), true);
-            drawHudStatusChip(g2, "O OBSERVE", inner.x + 364, chipY, 96, 22, new Color(190, 190, 220, 224), true);
+            drawHudStatusChip(g2, "J JOIN", inner.x, chipY, 76, 22, new Color(255, 206, 122, 224), true);
+            drawHudStatusChip(g2, "I IGNORE", inner.x + 90, chipY, 82, 22, new Color(190, 190, 220, 224), true);
         } else {
             drawHudStatusChip(g2, "A AUTO-RESOLVE", inner.x, chipY, 132, 22, new Color(132, 196, 255, 224), true);
             drawHudStatusChip(g2, "C TAKE COMMAND", inner.x + 146, chipY, 142, 22, new Color(255, 206, 122, 224), true);
@@ -12884,7 +12881,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         UiState.StrategicEncounterPrompt prompt = ctx.ui.strategicEncounterPrompt;
         Rectangle[] chips = strategicEncounterChipRects(ctx, viewW, viewH);
         if (prompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_BATTLE) {
-            String[] actions = {"FOLLOW", "JOIN", "IGNORE", "SUPPORT", "OBSERVE"};
+            String[] actions = {"JOIN", "IGNORE"};
             for (int i = 0; i < chips.length && i < actions.length; i++) {
                 if (chips[i].contains(mouseX, mouseY)) {
                     return new CampaignHubClickTarget(CampaignHubClickTarget.Kind.STRATEGIC_ENCOUNTER, "", actions[i]);
@@ -12927,7 +12924,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 case CAMPAIGN_FORCE ->
                         "Auto-resolve avoids tactical deployment. Taking command opens a direct fleet-contact battle.";
                 case CAMPAIGN_BATTLE ->
-                        "F follow fleet  |  J join battle  |  I ignore  |  S offer support  |  O observe";
+                        "J join battle  |  I ignore";
                 case TASK_FORCE ->
                         "Auto-resolve is faster. Taking command opens a full tactical battle for this contact.";
             };
@@ -12943,11 +12940,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         int chipY = y + h - 58;
         if (prompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_BATTLE) {
             return new Rectangle[]{
-                    new Rectangle(inner.x, chipY, 82, 22),
-                    new Rectangle(inner.x + 90, chipY, 76, 22),
-                    new Rectangle(inner.x + 174, chipY, 82, 22),
-                    new Rectangle(inner.x + 264, chipY, 92, 22),
-                    new Rectangle(inner.x + 364, chipY, 96, 22)
+                    new Rectangle(inner.x, chipY, 76, 22),
+                    new Rectangle(inner.x + 90, chipY, 82, 22)
             };
         }
         return new Rectangle[]{

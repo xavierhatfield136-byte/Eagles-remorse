@@ -61,14 +61,27 @@ class CampaignPersistentFleetShopTest {
     }
 
     @Test
-    void campaignShipyardMustClimbBeforeTitansCanBeCommissioned() {
+    void campaignShipyardMustClimbBeforeTitansCanBeCommissionedAndAnyTitanRestoresOreCapacity() {
         GameContext ctx = campaignShopContext(100_000, 10_000, 1, 1);
 
-        assertFalse(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.TRANSPORT_TITAN, TitanArchetype.TRANSPORT.costCredits(), 3));
+        assertFalse(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.BULWARK_TITAN, TitanArchetype.BULWARK.costCredits(), 3));
 
         ctx.baseUpgrades.get(ctx.player).hangarLv = 3;
-        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.TRANSPORT_TITAN, TitanArchetype.TRANSPORT.costCredits(), 3));
+        ctx.player.cargoMax = 1_400;
+        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.BULWARK_TITAN, TitanArchetype.BULWARK.costCredits(), 3));
         assertEquals(10_000, ctx.player.cargoMax);
+    }
+
+    @Test
+    void campaignTitanCommissionsAllowMultipleTypesButRejectDuplicateArchetypes() {
+        GameContext ctx = campaignShopContext(250_000, 35_000, 5, 9);
+
+        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.TRANSPORT_TITAN, TitanArchetype.TRANSPORT.costCredits(), 3));
+        assertFalse(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.TRANSPORT_TITAN, TitanArchetype.TRANSPORT.costCredits(), 3));
+        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.BULWARK_TITAN, TitanArchetype.BULWARK.costCredits(), 3));
+        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.CARRIER_SUPPORT_TITAN, TitanArchetype.CARRIER_SUPPORT.costCredits(), 3));
+
+        assertEquals(3, CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.TITAN));
     }
 
     @Test
@@ -281,6 +294,30 @@ class CampaignPersistentFleetShopTest {
         long afterLaunchVisible = alliedRoleCount(ctx, ShipRole.FRIGATE);
         assertTrue(afterLaunchVisible >= 1,
                 "commissioned hull should spawn with the player in the next mission");
+    }
+
+    @Test
+    void checkpointRestoreRetiresDuplicatePersistentTitanTypes() throws Exception {
+        GameContext source = campaignShopContext(100_000, 20_000, 5, 9);
+        CampaignSystem.addPersistentFleetEntry(source.campaign, ShipRole.TRANSPORT_TITAN, "Blue Transport Titan One", 0, Faction.ALLY);
+        CampaignSystem.addPersistentFleetEntry(source.campaign, ShipRole.TRANSPORT_TITAN, "Blue Transport Titan Two", 0, Faction.ALLY);
+        CampaignSystem.addPersistentFleetEntry(source.campaign, ShipRole.BULWARK_TITAN, "Blue Bulwark Titan", 0, Faction.ALLY);
+
+        CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(source, 10);
+        GameContext restored = campaignShopContext(0, 0, 5, 1);
+        assertTrue(applyCheckpoint(restored, checkpoint));
+
+        long liveTransportTitans = restored.campaign.persistentBlueFleet.stream()
+                .filter(entry -> entry != null && !entry.destroyed && entry.role == ShipRole.TRANSPORT_TITAN)
+                .count();
+        long retiredDuplicateTitans = restored.campaign.persistentBlueFleet.stream()
+                .filter(entry -> entry != null && entry.destroyed && entry.role == ShipRole.TRANSPORT_TITAN)
+                .count();
+
+        assertEquals(1, liveTransportTitans);
+        assertEquals(1, retiredDuplicateTitans);
+        assertTrue(restored.campaign.persistentBlueFleet.stream()
+                .anyMatch(entry -> entry != null && !entry.destroyed && entry.role == ShipRole.BULWARK_TITAN));
     }
 
     private static GameContext campaignShopContext(int credits, int ore, int hangarTier, int sector) {

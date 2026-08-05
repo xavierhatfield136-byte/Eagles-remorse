@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CampaignForceOwnershipTest {
 
     @Test
-    void campaignShipsAreAssignedToNamedForcesAndIntroAttackHasOrigin() throws Exception {
+    void campaignShipsAreAssignedToNamedForcesAndIntroAttackStaysTacticalOnly() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
 
@@ -22,12 +22,21 @@ class CampaignForceOwnershipTest {
         assertFalse(CampaignSystem.campaignForceSummaries(ctx).isEmpty());
         assertEquals(liveShipCount(ctx), st.shipCampaignForceIds.size());
         assertEquals(0, liveHostileShipCountNearPlayer(ctx, 1200.0));
+        int forceRefsBefore = st.shipCampaignForceIds.size();
 
         invokeIntroRedDetachment(ctx, st);
 
-        assertTrue(campaignForceFieldContains(st, "name", "Red Knife Advance Detachment"));
-        assertTrue(campaignForceFieldContains(st, "origin", "Detected warp signature"));
-        assertEquals(liveShipCount(ctx), st.shipCampaignForceIds.size());
+        assertFalse(campaignForceFieldContains(st, "name", "Red Knife Advance Detachment"));
+        assertFalse(campaignForceFieldContains(st, "origin", "Detected warp signature"));
+        assertEquals(forceRefsBefore, st.shipCampaignForceIds.size(),
+                "intro attackers should not create overworld campaign-force ownership");
+        assertTrue(liveHostileShipCountNearPlayer(ctx, 1600.0) > 0,
+                "intro attack should still spawn tactical hostile ships");
+
+        invokePrivate("ensureCampaignForceOwnership",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class}, ctx, st);
+        assertEquals(forceRefsBefore, st.shipCampaignForceIds.size(),
+                "intro attackers should stay tactical-only after the ownership audit runs");
     }
 
     @Test
@@ -302,6 +311,111 @@ class CampaignForceOwnershipTest {
                         && ship.faction == Faction.ENEMY
                         && "Test Damaged Line Ship".equals(ship.name)),
                 "hostile tactical spawns should preserve persistent finite-pool ship names");
+    }
+
+    @Test
+    void deepRedMiningAndDefenseForcesEscalateIntoHeavyHullManifests() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+
+        Object miners = createCampaignForce(st, CampaignSystem.CampaignForceKind.MINING_GROUP, Faction.ENEMY,
+                "Test Red Deep Mining Fleet", 2600.0, 2500.0);
+        setField(miners, "strength", 72.0);
+        setField(miners, "y", 2500.0);
+        Object miningManifest = invokePrivate("encounterManifestForForce",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, miners.getClass(), int.class},
+                ctx, st, miners, 6);
+        List<ShipRole> miningRoles = manifestRoles(miningManifest);
+        assertTrue(miningRoles.contains(ShipRole.LIGHT_CRUISER) || miningRoles.contains(ShipRole.CRUISER),
+                "Red mining fleets in hostile territory should carry cruiser-grade escorts");
+
+        Object defense = createCampaignForce(st, CampaignSystem.CampaignForceKind.BASE_DEFENSE, Faction.ENEMY,
+                "Test Red Deep Defense Fleet", 2700.0, 2400.0);
+        setField(defense, "strength", 88.0);
+        setField(defense, "y", 2400.0);
+        Object defenseManifest = invokePrivate("encounterManifestForForce",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, defense.getClass(), int.class},
+                ctx, st, defense, 6);
+        List<ShipRole> defenseRoles = manifestRoles(defenseManifest);
+        assertTrue(defenseRoles.contains(ShipRole.CRUISER) || defenseRoles.contains(ShipRole.BATTLECRUISER),
+                "Red defense fleets should commit heavy assets around core stations");
+    }
+
+    @Test
+    void completedEnemyStationBecomesBlueForwardBaseWithRealFleetSeedAndPersists() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation station = firstLocationForFaction(st, Faction.ENEMY);
+        assertTrue(station != null, "expected an enemy station to capture");
+        station.facilityType = CampaignSystem.CampaignFacilityType.SHIPYARD;
+        station.strategicValue = Math.max(station.strategicValue, 4);
+        station.canChangeOwner = true;
+        station.destroyed = true;
+        station.discovered = true;
+
+        invokePrivate("markCampaignLocationCompleted",
+                new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignLocation.class},
+                st, station);
+
+        assertEquals(Faction.ALLY, station.ownerFaction);
+        assertFalse(station.destroyed);
+        assertTrue(station.canSpawnFleets);
+        assertTrue(station.services.contains(CampaignSystem.HubService.REPAIR));
+        assertTrue(station.services.contains(CampaignSystem.HubService.SUPPLY));
+        assertTrue(station.services.contains(CampaignSystem.HubService.REFIT));
+        assertTrue(station.services.contains(CampaignSystem.HubService.SHIPYARD));
+        assertTrue(poolRecordCountForBaseFaction(st, station.id, Faction.ALLY) >= 4,
+                "captured FOB should seed real Blue hull records for generated fleets");
+
+        st.facilityFleetGenerationActive = true;
+        invokePrivate("syncFacilityGeneratedFleets",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class},
+                ctx, st);
+        Object blueForce = firstCampaignForceForBaseFaction(st, station.id, Faction.ALLY);
+        assertTrue(blueForce != null, "captured FOB should generate a Blue-owned overmap force");
+        Object manifest = invokePrivate("encounterManifestForForce",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, blueForce.getClass(), int.class},
+                ctx, st, blueForce, 6);
+        assertFalse(manifestRoles(manifest).isEmpty(),
+                "generated Blue FOB force should resolve to actual ships instead of a zero-ship marker");
+
+        CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(ctx, 2);
+        GameContext restored = initializedCampaignContext();
+        assertTrue(applyCheckpoint(restored, checkpoint));
+        CampaignSystem.CampaignLocation restoredStation = campaignLocationById(restored.campaign, station.id);
+        assertTrue(restoredStation != null);
+        assertEquals(Faction.ALLY, restoredStation.ownerFaction);
+        assertTrue(restoredStation.canSpawnFleets);
+        assertTrue(restoredStation.services.contains(CampaignSystem.HubService.REPAIR));
+        assertTrue(restoredStation.services.contains(CampaignSystem.HubService.SHIPYARD));
+    }
+
+    @Test
+    void checkpointRestoreMigratesPreviouslyCompletedEnemyStationsToBlueFobs() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation station = firstLocationForFaction(st, Faction.ENEMY);
+        assertTrue(station != null, "expected an enemy station to migrate");
+        station.facilityType = CampaignSystem.CampaignFacilityType.SHIPYARD;
+        station.strategicValue = Math.max(station.strategicValue, 4);
+        station.canChangeOwner = true;
+        station.ownerFaction = Faction.ENEMY;
+        station.completed = true;
+        station.consumed = true;
+        station.destroyed = false;
+        station.discovered = true;
+
+        CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(ctx, 2);
+        GameContext restored = initializedCampaignContext();
+        assertTrue(applyCheckpoint(restored, checkpoint));
+        CampaignSystem.CampaignLocation restoredStation = campaignLocationById(restored.campaign, station.id);
+
+        assertTrue(restoredStation != null);
+        assertEquals(Faction.ALLY, restoredStation.ownerFaction);
+        assertTrue(restoredStation.canSpawnFleets);
+        assertTrue(restoredStation.services.contains(CampaignSystem.HubService.REPAIR));
+        assertTrue(poolRecordCountForBaseFaction(restored.campaign, restoredStation.id, Faction.ALLY) >= 4,
+                "old completed Red stations should gain real Blue FOB hull records during save migration");
     }
 
     @Test
@@ -1896,6 +2010,45 @@ class CampaignForceOwnershipTest {
             if (force != null && readField(force, "faction") == faction) return force;
         }
         return null;
+    }
+
+    private static Object firstCampaignForceForBaseFaction(CampaignSystem.CampaignState st,
+                                                           String baseId,
+                                                           Faction faction) throws Exception {
+        Object value = readField(st, "campaignForces");
+        if (!(value instanceof java.util.List<?> list)) return null;
+        for (Object force : list) {
+            if (force == null || readField(force, "faction") != faction) continue;
+            if (baseId.equals(String.valueOf(readField(force, "homeBaseId")))) return force;
+        }
+        return null;
+    }
+
+    private static int poolRecordCountForBaseFaction(CampaignSystem.CampaignState st,
+                                                     String baseId,
+                                                     Faction faction) throws Exception {
+        Object value = readField(st, "campaignShipPool");
+        if (!(value instanceof java.util.Map<?, ?> map)) return 0;
+        int count = 0;
+        for (Object record : map.values()) {
+            if (record == null) continue;
+            if (readField(record, "faction") == faction && baseId.equals(String.valueOf(readField(record, "baseId")))) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static List<ShipRole> manifestRoles(Object manifest) throws Exception {
+        ArrayList<ShipRole> roles = new ArrayList<>();
+        if (manifest == null) return roles;
+        Object value = readField(manifest, "ships");
+        if (!(value instanceof java.util.List<?> ships)) return roles;
+        for (Object ship : ships) {
+            Object role = readField(ship, "role");
+            if (role instanceof ShipRole shipRole) roles.add(shipRole);
+        }
+        return roles;
     }
 
     private static Object createCampaignForce(CampaignSystem.CampaignState st,

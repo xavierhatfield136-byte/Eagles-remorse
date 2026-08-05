@@ -70,7 +70,7 @@ class MissileRoleBehaviorTest {
     }
 
     @Test
-    void blueFastMissilesLaunchAtHalfSpeedForPlayerAndAllies() {
+    void blueFastMissilesLaunchAtControlledSpeedForPlayerAndAllies() {
         Ship target = new FleetShip(ShipRole.FIGHTER, Faction.ENEMY, 600.0, 0.0);
         double originalBlueFastSpeed = 220.0 * Turret.MISSILE_SPEED_MULT
                 * Missile.GLOBAL_SPEED_MULT * 2.35;
@@ -78,18 +78,39 @@ class MissileRoleBehaviorTest {
         Player player = new Player(ShipRole.MOTHERSHIP, 0.0, 0.0);
         Missile playerMissile = fireFastMissile(player, target);
         assertEquals(originalBlueFastSpeed * Turret.BLUE_FAST_MISSILE_SPEED_MULT, playerMissile.speed, 1e-6,
-                "player mothership fast missiles should launch at half their previous speed");
+                "player mothership fast missiles should launch at the controlled blue fast-missile speed");
 
         Ship ally = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 0.0, 0.0);
         Missile allyMissile = fireFastMissile(ally, target);
         assertEquals(originalBlueFastSpeed * Turret.BLUE_FAST_MISSILE_SPEED_MULT, allyMissile.speed, 1e-6,
-                "blue-team fast missiles should launch at half their previous speed");
+                "blue-team fast missiles should launch at the controlled blue fast-missile speed");
 
         Ship red = new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 0.0, 0.0);
         Ship blueTarget = new FleetShip(ShipRole.FIGHTER, Faction.ALLY, 600.0, 0.0);
         Missile redMissile = fireFastMissile(red, blueTarget);
         assertEquals(originalBlueFastSpeed, redMissile.speed, 1e-6,
                 "non-blue fast missile tuning should keep its previous speed");
+    }
+
+    @Test
+    void blueFastMissilesClampConvertedHighSpeedRacks() {
+        Ship target = new FleetShip(ShipRole.FIGHTER, Faction.ENEMY, 600.0, 0.0);
+        Player player = new Player(ShipRole.MOTHERSHIP, 0.0, 0.0);
+        Turret rack = new Turret(Turret.Kind.MISSILE, 0.0, 0.0);
+        rack.primary = false;
+        rack.missileRole = Turret.MissileRole.ANTI_LIGHT;
+        rack.missileSpeed = 960.0;
+        rack.setReady();
+        player.addTurret(rack);
+
+        Projectile fired = rack.fire(player, target, GameContext.DT);
+
+        assertTrue(fired instanceof Missile, "expected high-speed fast rack to launch a missile");
+        Missile missile = (Missile) fired;
+        double expectedCap = Turret.BLUE_FAST_MISSILE_MAX_PRE_FACTION_SPEED
+                * Missile.GLOBAL_SPEED_MULT * 2.35;
+        assertEquals(expectedCap, missile.speed, 1e-6,
+                "converted blue fast missile racks should clamp before global/faction speed multipliers");
     }
 
     @Test

@@ -117,7 +117,7 @@ class CampaignLivingWarSystemTest {
     }
 
     @Test
-    void importantNpcBattleOffersSupportIntervention() throws Exception {
+    void importantNpcBattlePromptRejectsSupportAndAllowsIgnore() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         Object red = firstForceForFaction(st, Faction.ENEMY);
@@ -137,9 +137,11 @@ class CampaignLivingWarSystemTest {
                 ctx, st, red, green);
         assertTrue(ctx.ui.strategicEncounterPrompt.active);
         assertEquals("CAMPAIGN_BATTLE", ctx.ui.strategicEncounterPrompt.kind.toString());
-        assertTrue(CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "SUPPORT"));
+        assertFalse(CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "SUPPORT"));
+        assertTrue(ctx.ui.strategicEncounterPrompt.active);
+        assertTrue(CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "IGNORE"));
         assertFalse(ctx.ui.strategicEncounterPrompt.active);
-        assertEquals("SUPPORT", getObject(st.campaignBattles.get(0), "playerIntervention"));
+        assertEquals("IGNORE", getObject(st.campaignBattles.get(0), "playerIntervention"));
     }
 
     @Test
@@ -173,7 +175,7 @@ class CampaignLivingWarSystemTest {
     }
 
     @Test
-    void importantNpcBattleSupportWorksWithLowReserve() throws Exception {
+    void importantNpcBattleObserveIsRejected() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         Object red = firstForceForFaction(st, Faction.ENEMY);
@@ -186,20 +188,18 @@ class CampaignLivingWarSystemTest {
         setDouble(green, "strength", 90.0);
         st.playerGalaxyX = 2100.0;
         st.playerGalaxyY = 2200.0;
-        st.blueInterventionReserve = 4.0;
-        double redBefore = getDouble(red, "strength");
 
         invokePrivate("formCampaignBattle",
                 new Class[]{GameContext.class, CampaignSystem.CampaignState.class,
                         findNestedClass("CampaignForce"), findNestedClass("CampaignForce")},
                 ctx, st, red, green);
 
-        assertTrue(CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "SUPPORT"));
+        assertFalse(CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "OBSERVE"));
 
+        assertTrue(ctx.ui.strategicEncounterPrompt.active);
+        assertTrue(CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "IGNORE"));
         assertFalse(ctx.ui.strategicEncounterPrompt.active);
-        assertEquals("SUPPORT", getObject(st.campaignBattles.get(0), "playerIntervention"));
-        assertTrue(getDouble(red, "strength") < redBefore, "low-reserve support should still disrupt the Red participant");
-        assertTrue(CampaignSystem.campaignStrikeBattleEventSummary(ctx).contains("SUPPORT IMPACT EVENT"));
+        assertEquals("IGNORE", getObject(st.campaignBattles.get(0), "playerIntervention"));
     }
 
     @Test
@@ -996,20 +996,17 @@ class CampaignLivingWarSystemTest {
     }
 
     @Test
-    void openingRedWaveKeepsAuthoredRoutes() throws Exception {
+    void openingRedWaveIsNotSeededOnOvermap() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokePrivate("syncCampaignForceSimulationSeeds",
                 new Class[]{GameContext.class, CampaignSystem.CampaignState.class},
                 ctx, st);
-        int checked = 0;
         for (Object force : st.campaignForces) {
             String name = getObject(force, "name").toString().toUpperCase();
             if (!name.equals("RED SCOUT PAIR") && !name.equals("RED PATROL GROUP") && !name.equals("RED INTERCEPTOR SQUADRON")) continue;
-            assertFalse(((List<?>) getObject(force, "routePoints")).isEmpty(), name + " should keep an authored lane");
-            checked++;
+            throw new AssertionError(name + " should not be seeded on the opening overmap");
         }
-        assertTrue(checked > 0, "expected at least one opening Red wave force");
     }
 
     private static GameContext initializedCampaignContext() {
@@ -1031,20 +1028,56 @@ class CampaignLivingWarSystemTest {
     private static Object firstForceForFaction(CampaignSystem.CampaignState st, Faction faction) throws Exception {
         for (Object force : st.campaignForces) {
             if (getObject(force, "faction") == faction && !"PLAYER_FLEET".equals(getObject(force, "kind").toString())) {
+                ensureRegressionForceRoster(st, force, faction);
                 return force;
             }
+        }
+        if (faction == Faction.ENEMY) {
+            Object red = invokePrivate("ensureCampaignForce",
+                    new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
+                            Faction.class, String.class, String.class, String.class, double.class, double.class},
+                    st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                    "Regression Red Patrol", "Red test yard", "Pressure local route", 2200.0, 2200.0);
+            ensureRegressionForceRoster(st, red, faction);
+            return red;
         }
         return null;
     }
 
     private static Object ensureGreenRegressionPatrol(CampaignSystem.CampaignState st) throws Exception {
         Object green = firstForceForFaction(st, Faction.TEAM_C);
-        if (green != null) return green;
-        return invokePrivate("ensureCampaignForce",
+        if (green != null) {
+            ensureRegressionForceRoster(st, green, Faction.TEAM_C);
+            return green;
+        }
+        green = invokePrivate("ensureCampaignForce",
                 new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
                         Faction.class, String.class, String.class, String.class, double.class, double.class},
                 st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.TEAM_C,
                 "Green Regression Patrol", "Green test yard", "Defend local route", 2240.0, 2200.0);
+        ensureRegressionForceRoster(st, green, Faction.TEAM_C);
+        return green;
+    }
+
+    private static void ensureRegressionForceRoster(CampaignSystem.CampaignState st, Object force, Faction faction) throws Exception {
+        if (st == null || force == null || faction == null) return;
+        int forceId = (Integer) getObject(force, "id");
+        for (Object record : st.campaignShipPool.values()) {
+            if ((Integer) getObject(record, "forceId") == forceId
+                    && getObject(record, "status") == CampaignSystem.CampaignShipPoolStatus.ACTIVE) {
+                return;
+            }
+        }
+        setDouble(force, "strength", Math.max(70.0, getDouble(force, "strength")));
+        setDouble(force, "readiness", Math.max(72.0, getDouble(force, "readiness")));
+        setDouble(force, "hullIntegrity", Math.max(82.0, getDouble(force, "hullIntegrity")));
+        setDouble(force, "supply", Math.max(70.0, getDouble(force, "supply")));
+        setObject(force, "simulationActive", true);
+        invokePrivate("addCampaignShipPoolRecord",
+                new Class[]{CampaignSystem.CampaignState.class, Faction.class, ShipRole.class,
+                        CampaignSystem.CampaignShipPoolStatus.class, String.class, int.class, double.class, String.class},
+                st, faction, ShipRole.FRIGATE, CampaignSystem.CampaignShipPoolStatus.ACTIVE,
+                "regression-yard", forceId, 100.0, faction.name() + " Regression Frigate");
     }
 
     private static int simulationActiveNpcCount(CampaignSystem.CampaignState st) throws Exception {

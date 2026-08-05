@@ -91,6 +91,7 @@ class CampaignOvermapEncounterFlowTest {
     void tacticalManualEntryAutoJoinsSecondStrategicTaskForce() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
+        st.sector = 2;
         Object taskForce = firstStrategicTaskForce(ctx, st);
         assertNotNull(taskForce);
         st.manualEncounterCommitInProgress = true;
@@ -116,6 +117,7 @@ class CampaignOvermapEncounterFlowTest {
     void defeatedStrategicTaskForceIsRemovedFromOvermapAfterManualBattle() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
+        st.sector = 2;
         Object taskForce = firstStrategicTaskForce(ctx, st);
         assertNotNull(taskForce);
         int taskForceId = getInt(taskForce, "id");
@@ -144,6 +146,37 @@ class CampaignOvermapEncounterFlowTest {
         assertTrue(CampaignSystem.strategicTaskForceMarkers(ctx).stream()
                         .noneMatch(marker -> marker != null && label.equals(marker.label)),
                 "resolved Red patrol/strike task forces should not keep overworld markers");
+
+        invokeInitializeStrategicTaskForces(ctx, st);
+
+        assertNull(strategicTaskForceByLabel(st, label),
+                "defeated strategic task forces should not be recreated when the strategic layer is rebuilt");
+        assertTrue(CampaignSystem.strategicTaskForceMarkers(ctx).stream()
+                        .noneMatch(marker -> marker != null && label.equals(marker.label)),
+                "rebuilt strategic task-force markers should still exclude defeated contacts");
+    }
+
+    @Test
+    void manualStrategicTaskForceCommandDoesNotSpawnZeroShipEncounter() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.sector = 2;
+        Object taskForce = firstStrategicTaskForce(ctx, st);
+        assertNotNull(taskForce);
+        int taskForceId = getInt(taskForce, "id");
+        String label = getObject(taskForce, "label").toString();
+
+        setDouble(taskForce, "maxStrength", 100.0);
+        setDouble(taskForce, "currentStrength", 10.0);
+        ctx.ui.showStrategicEncounterPrompt(taskForceId, "CONTACT: " + label, "", "", "");
+
+        assertFalse(CampaignSystem.takeCommandOfPendingStrategicEncounter(ctx),
+                "task forces below all spawn thresholds should be resolved instead of launching an empty battle");
+        assertTrue(getBoolean(taskForce, "encounterResolved"));
+        assertFalse(getBoolean(taskForce, "encounterSpawned"));
+        assertTrue(((java.util.Set<?>) getObject(taskForce, "spawnedShipIds")).isEmpty());
+        assertFalse(st.galaxyEncounterActive);
+        assertFalse(ctx.ui.strategicEncounterPrompt.active);
     }
 
     @Test
@@ -419,6 +452,71 @@ class CampaignOvermapEncounterFlowTest {
         assertFalse(st.campaignBattles.isEmpty(), "overlapping allied and Red fleets should resolve into a battle");
         assertEquals("ENGAGING", getObject(red, "state").toString());
         assertEquals("ENGAGING", getObject(green, "state").toString());
+    }
+
+    @Test
+    void adjacentSensorBattlePromptOnlyAcceptsJoinOrIgnore() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.sectorElapsed = 240.0;
+        st.playerGalaxyX = 2500.0;
+        st.playerGalaxyY = 2500.0;
+
+        Object red = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Regression Red Adjacent Battle", "Red local intercept", "test adjacent battle",
+                2600.0, 2500.0);
+        Object green = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ALLY,
+                "Regression Green Adjacent Battle", "Green response patrol", "test adjacent battle",
+                2640.0, 2500.0);
+        for (Object force : List.of(red, green)) {
+            setBoolean(force, "simulationActive", true);
+            setDouble(force, "strength", 70.0);
+            setEnumByName(force, "intent", "INTERCEPTING");
+            setEnumByName(force, "state", "IDLE");
+        }
+        addPoolRecord(st, Faction.ENEMY, ShipRole.PATROL, getInt(red, "id"), "Adjacent Red Patrol");
+        addPoolRecord(st, Faction.ALLY, ShipRole.PATROL, getInt(green, "id"), "Adjacent Green Patrol");
+
+        invokeNpcBattleResolution(ctx, st, 0.2);
+
+        assertTrue(ctx.ui.strategicEncounterPrompt.active);
+        assertEquals(UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_BATTLE, ctx.ui.strategicEncounterPrompt.kind);
+        assertTrue(ctx.ui.strategicEncounterPrompt.body.contains("Join the battle or ignore it"));
+        assertFalse(CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "SUPPORT"),
+                "remote battle prompts should reject support/observe/follow choices");
+        assertTrue(ctx.ui.strategicEncounterPrompt.active);
+        assertTrue(CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "IGNORE"));
+        assertFalse(ctx.ui.strategicEncounterPrompt.active);
+    }
+
+    @Test
+    void distantNpcBattleDoesNotPromptJoin() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.sectorElapsed = 240.0;
+        st.playerGalaxyX = 600.0;
+        st.playerGalaxyY = 600.0;
+
+        Object red = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
+                "Regression Red Distant Battle", "Red distant front", "test distant battle",
+                3300.0, 3300.0);
+        Object green = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ALLY,
+                "Regression Green Distant Battle", "Green distant front", "test distant battle",
+                3340.0, 3300.0);
+        for (Object force : List.of(red, green)) {
+            setBoolean(force, "simulationActive", true);
+            setDouble(force, "strength", 95.0);
+            setEnumByName(force, "intent", "INTERCEPTING");
+            setEnumByName(force, "state", "IDLE");
+        }
+        addPoolRecord(st, Faction.ENEMY, ShipRole.CRUISER, getInt(red, "id"), "Distant Red Cruiser");
+        addPoolRecord(st, Faction.ALLY, ShipRole.CRUISER, getInt(green, "id"), "Distant Green Cruiser");
+
+        invokeNpcBattleResolution(ctx, st, 0.2);
+
+        assertFalse(st.campaignBattles.isEmpty(), "distant fleets should still form NPC battles");
+        assertFalse(ctx.ui.strategicEncounterPrompt.active,
+                "distant battles should not offer the player a join prompt");
     }
 
     @Test
@@ -807,6 +905,54 @@ class CampaignOvermapEncounterFlowTest {
     }
 
     @Test
+    void shiplessNewFleetIsRemovedDuringSpawnReconciliation() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        for (CampaignSystem.CampaignLocation location : allKnownCampaignLocations(ctx)) {
+            if (location != null && location.ownerFaction == Faction.ENEMY) {
+                location.ownerFaction = Faction.ALLY;
+            }
+        }
+
+        Object shipless = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Regression Red Shipless Spawn Guard", "spawn guard", "should not survive without hulls",
+                2600.0, 2600.0);
+        st.campaignShipPool.clear();
+        setBoolean(shipless, "simulationActive", true);
+        setDouble(shipless, "strength", 64.0);
+        setDouble(shipless, "readiness", 90.0);
+        setDouble(shipless, "hullIntegrity", 95.0);
+        setBoolean(shipless, "visibleToPlayer", true);
+        setObject(shipless, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+
+        invokeRemoveShiplessPhysicalCampaignForces(ctx, st);
+
+        assertNull(forceNamed(st, "Regression Red Shipless Spawn Guard"),
+                "new physical fleets should not remain on the campaign map when no ship can be assigned");
+    }
+
+    @Test
+    void openingNamedRedFleetsAreNotSeededWhenPlayerMoves() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+
+        CampaignSystem.syncCampaignForceSimulationSeedsForTest(ctx);
+        assertNull(forceNamed(st, "Red Scout Pair"));
+        assertNull(forceNamed(st, "Red Patrol Group"));
+        assertNull(forceNamed(st, "Red Interceptor Squadron"));
+
+        st.galaxyTravel.traveling = true;
+        st.playerGalaxyX += 420.0;
+        st.playerGalaxyY -= 180.0;
+        CampaignSystem.syncCampaignForceSimulationSeedsForTest(ctx);
+
+        assertNull(forceNamed(st, "Red Scout Pair"));
+        assertNull(forceNamed(st, "Red Patrol Group"),
+                "movement-triggered seed sync should not create opening Red overmap fleets");
+        assertNull(forceNamed(st, "Red Interceptor Squadron"));
+    }
+
+    @Test
     void destroyedConcreteFleetIsRemovedBeforeItCanBecomeOvermapGhost() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
@@ -845,6 +991,46 @@ class CampaignOvermapEncounterFlowTest {
 
         assertFalse(CampaignSystem.engageSelectedCampaignContact(ctx));
         assertFalse(ctx.ui.strategicEncounterPrompt.active);
+    }
+
+    @Test
+    void missionCompletionRemovesDefeatedLinkedFleetBeforeReturningToOvermap() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object group = firstSearchGroup(st);
+        assertNotNull(group);
+        int groupId = getInt(group, "id");
+
+        Object hostile = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Regression Red Linked Mission Fleet", "mission contact", "test linked mission cleanup",
+                2600.0, 2600.0);
+        int forceId = getInt(hostile, "id");
+        setInt(hostile, "linkedSearchGroupId", groupId);
+        setBoolean(hostile, "simulationActive", true);
+        setDouble(hostile, "strength", 58.0);
+        setDouble(hostile, "readiness", 90.0);
+        setDouble(hostile, "hullIntegrity", 100.0);
+        setBoolean(hostile, "visibleToPlayer", true);
+        setObject(hostile, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+
+        Ship redShip = new FleetShip(ShipRole.PATROL, Faction.ENEMY, 2600.0, 2600.0);
+        ctx.ships.add(redShip);
+        invokeRegisterShipWithCampaignForce(st, redShip, hostile);
+        invokeTrackActiveTacticalForce(st, hostile);
+        redShip.hp = 0;
+        redShip.alive = false;
+        redShip.dying = true;
+
+        st.strategicOvermapMode = false;
+        st.galaxyEncounterActive = false;
+        st.objectiveSecured = true;
+
+        assertTrue(CampaignSystem.completeMissionExtraction(ctx));
+
+        assertNull(forceById(st, forceId),
+                "mission completion should delete a linked force after its last tactical member is destroyed");
+        assertFalse(containsSearchGroup(st, groupId),
+                "the linked search group should be retired with the defeated mission fleet");
     }
 
     @Test
@@ -1078,6 +1264,27 @@ class CampaignOvermapEncounterFlowTest {
         method.invoke(null, ctx, st, dt);
     }
 
+    private static void invokeRemoveDestroyedCampaignForces(GameContext ctx, CampaignSystem.CampaignState st) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "removeDestroyedCampaignForces",
+                GameContext.class,
+                CampaignSystem.CampaignState.class
+        );
+        method.setAccessible(true);
+        method.invoke(null, ctx, st);
+    }
+
+    private static void invokeRemoveShiplessPhysicalCampaignForces(GameContext ctx, CampaignSystem.CampaignState st) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "removeShiplessPhysicalCampaignForces",
+                GameContext.class,
+                CampaignSystem.CampaignState.class,
+                String.class
+        );
+        method.setAccessible(true);
+        method.invoke(null, ctx, st, "test_shipless_spawn_guard");
+    }
+
     private static void invokeNpcBattleResolution(GameContext ctx, CampaignSystem.CampaignState st, double dt) throws Exception {
         Method method = CampaignSystem.class.getDeclaredMethod(
                 "resolveNpcFactionFleetBattles",
@@ -1173,6 +1380,16 @@ class CampaignOvermapEncounterFlowTest {
         return false;
     }
 
+    private static void invokeTrackActiveTacticalForce(CampaignSystem.CampaignState st, Object force) throws Exception {
+        Method method = CampaignForceRosterSystem.class.getDeclaredMethod(
+                "trackActiveTacticalForce",
+                CampaignSystem.CampaignState.class,
+                force.getClass()
+        );
+        method.setAccessible(true);
+        method.invoke(null, st, force);
+    }
+
     private static void invokeFinishGalaxyEncounterAndReturn(GameContext ctx, CampaignSystem.CampaignState st) throws Exception {
         Method method = CampaignSystem.class.getDeclaredMethod(
                 "finishGalaxyEncounterAndReturn",
@@ -1191,6 +1408,13 @@ class CampaignOvermapEncounterFlowTest {
     private static Object linkedForceForSearchGroup(CampaignSystem.CampaignState st, int groupId) throws Exception {
         for (Object force : st.campaignForces) {
             if (force != null && getInt(force, "linkedSearchGroupId") == groupId) return force;
+        }
+        return null;
+    }
+
+    private static Object forceById(CampaignSystem.CampaignState st, int forceId) throws Exception {
+        for (Object force : st.campaignForces) {
+            if (force != null && getInt(force, "id") == forceId) return force;
         }
         return null;
     }
@@ -1220,6 +1444,14 @@ class CampaignOvermapEncounterFlowTest {
     }
 
     private static Object firstStrategicTaskForce(GameContext ctx, CampaignSystem.CampaignState st) throws Exception {
+        invokeInitializeStrategicTaskForces(ctx, st);
+        Field field = CampaignSystem.CampaignState.class.getDeclaredField("strategicTaskForces");
+        field.setAccessible(true);
+        List<?> taskForces = (List<?>) field.get(st);
+        return taskForces.isEmpty() ? null : taskForces.get(0);
+    }
+
+    private static void invokeInitializeStrategicTaskForces(GameContext ctx, CampaignSystem.CampaignState st) throws Exception {
         Method method = CampaignSystem.class.getDeclaredMethod(
                 "initializeStrategicTaskForces",
                 GameContext.class,
@@ -1227,10 +1459,16 @@ class CampaignOvermapEncounterFlowTest {
         );
         method.setAccessible(true);
         method.invoke(null, ctx, st);
+    }
+
+    private static Object strategicTaskForceByLabel(CampaignSystem.CampaignState st, String label) throws Exception {
         Field field = CampaignSystem.CampaignState.class.getDeclaredField("strategicTaskForces");
         field.setAccessible(true);
         List<?> taskForces = (List<?>) field.get(st);
-        return taskForces.isEmpty() ? null : taskForces.get(0);
+        for (Object taskForce : taskForces) {
+            if (taskForce != null && label.equals(getObject(taskForce, "label"))) return taskForce;
+        }
+        return null;
     }
 
     private static CampaignSystem.CampaignLocation findAreaOfInterest(GameContext ctx, String id) {

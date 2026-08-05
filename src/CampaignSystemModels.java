@@ -1278,7 +1278,7 @@ class CampaignSystemModels {
         public final boolean primaryMission;
         public final int missionIndex;
         public final String detail;
-        public final List<HubService> services;
+        public List<HubService> services;
         public String facilityId = "";
         public String legacyPoiId = "";
         public String zoneId = "";
@@ -1373,7 +1373,7 @@ class CampaignSystemModels {
                     }
                 }
             }
-            this.services = List.copyOf(resolvedServices);
+            this.services = new ArrayList<>(resolvedServices);
             this.discovered = true;
             this.missionOuterThreatSuppression = primaryMission ? 0.0 : 1.0;
         }
@@ -3462,8 +3462,10 @@ class CampaignSystemModels {
         public final List<CampaignInstallationThreatCase> installationThreatCases = new ArrayList<>();
         public int nextInstallationThreatCaseId = 1;
         public final List<StrategicTaskForce> strategicTaskForces = new ArrayList<>();
+        public final java.util.LinkedHashSet<String> defeatedStrategicTaskForceKeys = new java.util.LinkedHashSet<>();
         public int nextStrategicTaskForceId = 1;
         public final List<CampaignSystem.CampaignForce> campaignForces = new ArrayList<>();
+        public final java.util.LinkedHashSet<String> defeatedCampaignForceKeys = new java.util.LinkedHashSet<>();
         public final Map<Integer, Integer> shipCampaignForceIds = new HashMap<>();
         public final Map<Integer, String> shipCampaignSpawnCategories = new HashMap<>();
         public final Set<Integer> fallbackOwnedShipIds = new HashSet<>();

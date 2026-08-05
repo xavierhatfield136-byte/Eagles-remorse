@@ -73,6 +73,11 @@ final class CampaignForceRosterSystem {
         }
     }
 
+    static void trackActiveTacticalForce(CampaignSystem.CampaignState st,
+                                         CampaignSystem.CampaignForce force) {
+        addActiveEncounterRef(st, force);
+    }
+
     static void captureActiveEncounterRefsFromLiveShips(GameContext ctx, CampaignSystem.CampaignState st) {
         clearActiveEncounterRefs(st);
         if (ctx == null || st == null || ctx.ships == null) return;

@@ -326,6 +326,42 @@ class CampaignOvermapCheckpointTest {
     }
 
     @Test
+    void zeroedTravelStoresFromBadCheckpointAreRepairedSoOvermapCanMove() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation current = findLocation(ctx, "poi-05");
+        CampaignSystem.CampaignLocation destination = findLocation(ctx, "poi-06");
+        assertNotNull(current);
+        assertNotNull(destination);
+
+        st.strategicOvermapMode = true;
+        st.currentGalaxyLocationId = current.id;
+        st.dockedGalaxyLocationId = current.id;
+        st.selectedGalaxyLocationId = destination.id;
+        st.playerGalaxyX = current.x;
+        st.playerGalaxyY = current.y;
+        CampaignSystem.grantCampaignOre(ctx, 700);
+
+        CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(ctx, 6);
+        checkpoint.campaignFuel = 0;
+        checkpoint.campaignSupplies = 0;
+        checkpoint.campaignAmmo = 0;
+        checkpoint.campaignSalvage = 0;
+        checkpoint.campaignOre = Math.max(checkpoint.campaignOre, 700);
+        checkpoint.campaignFiniteEconomyInitialized = true;
+        checkpoint.sourceVersion = 5;
+
+        GameContext restored = initializedCampaignContext();
+        assertTrue(applyCheckpoint(restored, checkpoint));
+        assertTrue(restored.campaign.campaignFuel > 0);
+        assertTrue(restored.campaign.campaignSupplies > 0);
+        assertTrue(restored.campaign.campaignAmmo > 0);
+        assertTrue(CampaignSystem.startTravelToSelectedLocation(restored),
+                "restored campaign should be able to engage an overmap route after repairing zeroed stores");
+        assertTrue(restored.campaign.galaxyTravel.traveling);
+    }
+
+    @Test
     void checkpointPreservesDetachedStrategicDivisionOrders() throws Exception {
         GameContext ctx = initializedCampaignContext();
         startSector(ctx, 10);

@@ -49,6 +49,10 @@ public final class CarrierSystem {
         if (dt <= 0.0) return;
 
         Map<Integer, Ship> carriersById = collectAliveCarriers(ctx);
+        if (campaignPlayerSideHasNoEnemyThreats(ctx)) {
+            retireIdlePlayerAuxiliaryCraft(ctx);
+            return;
+        }
         updateOrphanedCraft(ctx, dt, carriersById.keySet());
         updateWingBehavior(ctx, dt, carriersById);
 
@@ -115,6 +119,53 @@ public final class CarrierSystem {
             out.put(s.id, s);
         }
         return out;
+    }
+
+    private static boolean campaignPlayerSideHasNoEnemyThreats(GameContext ctx) {
+        if (ctx == null || ctx.player == null || ctx.player.faction == null) return false;
+        if (!CampaignSystem.isCampaignActive(ctx)) return false;
+        for (Ship s : ctx.ships) {
+            if (s == null || s == ctx.player) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (s.faction == null) continue;
+            if (!ctx.player.faction.isFriendlyTo(s.faction)) return false;
+        }
+        return true;
+    }
+
+    private static void retireIdlePlayerAuxiliaryCraft(GameContext ctx) {
+        if (ctx == null || ctx.player == null || ctx.player.faction == null) return;
+        for (Ship s : ctx.ships) {
+            if (!shouldRetireIdlePlayerAuxiliaryCraft(ctx, s)) continue;
+            retireCraft(s);
+        }
+    }
+
+    private static boolean shouldRetireIdlePlayerAuxiliaryCraft(GameContext ctx, Ship s) {
+        if (s == null || s == ctx.player) return false;
+        if (!s.alive || s.dying || s.hp <= 0) return false;
+        if (s.faction == null || !ctx.player.faction.isFriendlyTo(s.faction)) return false;
+        if (isCampaignPersistentShip(ctx, s)) return false;
+
+        if (s.role == ShipRole.FIGHTER
+                || s.role == ShipRole.BOMBER
+                || s.role == ShipRole.DRONE
+                || s.role == ShipRole.PD_CRAFT) {
+            return true;
+        }
+        if (s.role != ShipRole.CIWS_CORVETTE && s.role != ShipRole.PICKET) return false;
+        return s.carrierOwnerId >= 0
+                || s.minerHomeBase == ctx.player
+                || (s.minerHomeBase != null && s.minerHomeBase.isCarrier);
+    }
+
+    private static boolean isCampaignPersistentShip(GameContext ctx, Ship ship) {
+        if (ctx == null || ctx.campaign == null || ship == null) return false;
+        for (CampaignSystem.PersistentFleetEntry entry : ctx.campaign.persistentBlueFleet) {
+            if (entry == null || entry.destroyed) continue;
+            if (entry.activeShipId == ship.id) return true;
+        }
+        return false;
     }
 
     private static void updateOrphanedCraft(GameContext ctx, double dt, Set<Integer> aliveCarrierIds) {

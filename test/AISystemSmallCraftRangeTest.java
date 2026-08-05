@@ -117,6 +117,40 @@ class AISystemSmallCraftRangeTest {
     }
 
     @Test
+    void playerFleetShipsProsecuteKnownHostilesAtTwentyFiveHundredUnits() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 6200, 2600, true, 51L, false));
+        ctx.player = new Player(ShipRole.MOTHERSHIP, 0.0, 1300.0);
+        ctx.player.faction = Faction.ALLY;
+        FleetShip escort = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 0.0, 1300.0);
+        FleetShip enemyCruiser = new FleetShip(ShipRole.CRUISER, Faction.ENEMY, 2500.0, 1300.0);
+        Turret gun = escort.turrets.getFirst();
+
+        double sustained = AISystem.sustainedEngagementRangeForTarget(ctx, escort, enemyCruiser);
+        double authorized = AISystem.gunFireAuthorityRange(ctx, escort, gun, enemyCruiser, 460.0);
+
+        assertTrue(sustained >= 2500.0,
+                "player-fleet ships should prosecute known hostiles out to 2,500 units");
+        assertTrue(authorized >= 2500.0,
+                "gun fire authority should match the player-fleet prosecution envelope");
+    }
+
+    @Test
+    void redShipsProsecuteThreatsAtTwentyFiveHundredUnits() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 6200, 2600, true, 52L, false));
+        FleetShip redCruiser = new FleetShip(ShipRole.CRUISER, Faction.ENEMY, 0.0, 1300.0);
+        FleetShip blueFrigate = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 2500.0, 1300.0);
+        Turret gun = redCruiser.turrets.getFirst();
+
+        double sustained = AISystem.sustainedEngagementRangeForTarget(ctx, redCruiser, blueFrigate);
+        double authorized = AISystem.gunFireAuthorityRange(ctx, redCruiser, gun, blueFrigate, 460.0);
+
+        assertTrue(sustained >= 2500.0,
+                "Red ships should prosecute hostile contacts out to 2,500 units");
+        assertTrue(authorized >= 2500.0,
+                "Red kinetic fire authority should open at the prosecution envelope instead of waiting near 1,000 units");
+    }
+
+    @Test
     void blueEscortFiresBeyondOldGunGateWhenMothershipHasContact() throws Exception {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 3200, 1800, true, 48L, false));
         ctx.player = new Player(ShipRole.MOTHERSHIP, 0.0, 900.0);

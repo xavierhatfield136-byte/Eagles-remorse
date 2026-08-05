@@ -197,7 +197,9 @@ public final class CampaignCheckpointStore {
         public double atomicStrikeCooldownSec = 0.0;
         public int nextGalaxySearchGroupId = 1;
         public int nextStrategicStrikeObjectId = 1;
+        public String defeatedStrategicTaskForceKeys = "";
         public int nextCampaignForceId = 1;
+        public String defeatedCampaignForceKeys = "";
         public int lastChecklistFleetSeedSector = 0;
         public String strategicStrikeObjects = "";
         public String strategicDivisions = "";
@@ -377,7 +379,9 @@ public final class CampaignCheckpointStore {
             atomicStrikeCooldownSec = Math.max(0.0, finiteOr(atomicStrikeCooldownSec, 0.0));
             nextGalaxySearchGroupId = Math.max(1, nextGalaxySearchGroupId);
             nextStrategicStrikeObjectId = Math.max(1, nextStrategicStrikeObjectId);
+            defeatedStrategicTaskForceKeys = (defeatedStrategicTaskForceKeys == null) ? "" : defeatedStrategicTaskForceKeys.trim();
             nextCampaignForceId = Math.max(1, nextCampaignForceId);
+            defeatedCampaignForceKeys = (defeatedCampaignForceKeys == null) ? "" : defeatedCampaignForceKeys.trim();
             lastChecklistFleetSeedSector = clamp(lastChecklistFleetSeedSector, 0, MAX_CAMPAIGN_SECTORS);
             strategicStrikeObjects = (strategicStrikeObjects == null) ? "" : strategicStrikeObjects.trim();
             strategicDivisions = (strategicDivisions == null) ? "" : strategicDivisions.trim();
@@ -464,7 +468,7 @@ public final class CampaignCheckpointStore {
             return "Sector " + nextSector
                     + "  |  " + role
                     + "  |  Doctrine " + branchRoute
-                    + "  |  Titans " + countCsvEntries(ownedTitans) + "/8"
+                    + "  |  Titans " + countCsvEntries(ownedTitans)
                     + "  |  Fleet " + countSerializedFleetEntries(persistentBlueFleet);
         }
 
@@ -609,7 +613,9 @@ public final class CampaignCheckpointStore {
                 cp.atomicStrikeCooldownSec = parseDouble(props, "atomicStrikeCooldownSec", cp.atomicStrikeCooldownSec);
                 cp.nextGalaxySearchGroupId = parseInt(props, "nextGalaxySearchGroupId", cp.nextGalaxySearchGroupId);
                 cp.nextStrategicStrikeObjectId = parseInt(props, "nextStrategicStrikeObjectId", cp.nextStrategicStrikeObjectId);
+                cp.defeatedStrategicTaskForceKeys = props.getProperty("defeatedStrategicTaskForceKeys", cp.defeatedStrategicTaskForceKeys);
                 cp.nextCampaignForceId = parseInt(props, "nextCampaignForceId", cp.nextCampaignForceId);
+                cp.defeatedCampaignForceKeys = props.getProperty("defeatedCampaignForceKeys", cp.defeatedCampaignForceKeys);
                 cp.lastChecklistFleetSeedSector = parseInt(props, "lastChecklistFleetSeedSector", cp.lastChecklistFleetSeedSector);
                 cp.strategicStrikeObjects = props.getProperty("strategicStrikeObjects", cp.strategicStrikeObjects);
                 cp.strategicDivisions = props.getProperty("strategicDivisions", cp.strategicDivisions);
@@ -755,7 +761,7 @@ public final class CampaignCheckpointStore {
                 + Math.max(0, cp.campaignSupplies)
                 + Math.max(0, cp.campaignAmmo)
                 + Math.max(0, cp.campaignSalvage) * 100;
-        if (migratedOre > 0) {
+        if (sourceVersion < 5 && migratedOre > 0) {
             cp.campaignOre = Math.max(0, cp.campaignOre) + migratedOre;
             cp.campaignFuel = 0;
             cp.campaignSupplies = 0;
@@ -1047,7 +1053,9 @@ public final class CampaignCheckpointStore {
             props.setProperty("atomicStrikeCooldownSec", String.valueOf(cp.atomicStrikeCooldownSec));
             props.setProperty("nextGalaxySearchGroupId", String.valueOf(cp.nextGalaxySearchGroupId));
             props.setProperty("nextStrategicStrikeObjectId", String.valueOf(cp.nextStrategicStrikeObjectId));
+            props.setProperty("defeatedStrategicTaskForceKeys", cp.defeatedStrategicTaskForceKeys);
             props.setProperty("nextCampaignForceId", String.valueOf(cp.nextCampaignForceId));
+            props.setProperty("defeatedCampaignForceKeys", cp.defeatedCampaignForceKeys);
             props.setProperty("lastChecklistFleetSeedSector", String.valueOf(cp.lastChecklistFleetSeedSector));
             props.setProperty("strategicStrikeObjects", cp.strategicStrikeObjects);
             props.setProperty("strategicDivisions", cp.strategicDivisions);
