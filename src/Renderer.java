@@ -2452,7 +2452,7 @@ public class Renderer {
         int rows = 4;
         int topOffset = 24;
         int cardW = (area.width - gap) / cols;
-        int cardH = Math.max(92, Math.min(102, (area.height - topOffset - gap * (rows - 1)) / rows));
+        int cardH = Math.max(70, Math.min(102, (area.height - topOffset - gap * (rows - 1)) / rows));
         int col = Math.max(0, index % cols);
         int row = Math.max(0, index / cols);
         int x = area.x + col * (cardW + gap);
@@ -2494,7 +2494,7 @@ public class Renderer {
         int gap = 12;
         int cardW = (area.width - gap * (cols - 1)) / cols;
         int rows = Math.max(1, (SHOP_HULL_PAGE_SIZE + cols - 1) / cols);
-        int cardH = Math.max(150, Math.min(218, (area.height - 74 - gap * (rows - 1)) / rows));
+        int cardH = Math.max(128, Math.min(218, (area.height - 74 - gap * (rows - 1)) / rows));
         int col = Math.max(0, slot % cols);
         int row = Math.max(0, slot / cols);
         int x = area.x + col * (cardW + gap);
@@ -2517,9 +2517,9 @@ public class Renderer {
 
     private static Rectangle getShopCardButtonRect(Rectangle cardRect) {
         int w = Math.min(190, Math.max(94, cardRect.width - 24));
-        int h = 24;
+        int h = cardRect.height < 82 ? 20 : 24;
         int x = cardRect.x + (cardRect.width - w) / 2;
-        int y = cardRect.y + cardRect.height - h - 10;
+        int y = cardRect.y + cardRect.height - h - (cardRect.height < 82 ? 6 : 10);
         return new Rectangle(x, y, w, h);
     }
 
@@ -8651,11 +8651,14 @@ public class Renderer {
         g2.setColor(new Color(245, 248, 255, 222));
         FontMetrics titleMetrics = g2.getFontMetrics();
         g2.drawString(fitShopText(titleMetrics, title, card.width - 24), card.x + 12, card.y + 18);
-        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+        boolean compact = card.height < 84;
+        g2.setFont(new Font("Consolas", Font.PLAIN, compact ? 10 : 11));
         g2.setColor(new Color(204, 216, 230, 182));
         FontMetrics bodyMetrics = g2.getFontMetrics();
-        g2.drawString(fitShopText(bodyMetrics, line1, card.width - 24), card.x + 12, card.y + 39);
-        g2.drawString(fitShopText(bodyMetrics, line2, card.width - 24), card.x + 12, card.y + 54);
+        g2.drawString(fitShopText(bodyMetrics, line1, card.width - 24), card.x + 12, card.y + (compact ? 36 : 39));
+        if (!compact) {
+            g2.drawString(fitShopText(bodyMetrics, line2, card.width - 24), card.x + 12, card.y + 54);
+        }
         drawShopActionButton(g2, getShopCardButtonRect(card), buttonLabel, enabled, accent, accentStrong);
     }
 
