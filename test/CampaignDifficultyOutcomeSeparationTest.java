@@ -9,29 +9,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CampaignDifficultyOutcomeSeparationTest {
     @Test
-    void pairedSeedPresetsSeparateContactPressureResourceLossAndRecoveryDifficulty() throws Exception {
+    void legacyDifficultyPresetsNormalizeToOneHardCampaignProfile() throws Exception {
         GameContext relaxed = campaign(65001L, ExperienceSettings.Preset.RELAXED);
         GameContext standard = campaign(65001L, ExperienceSettings.Preset.STANDARD);
         GameContext iron = campaign(65001L, ExperienceSettings.Preset.IRON_COMMAND);
         GameContext tacticalOnly = campaign(65001L, ExperienceSettings.Preset.TACTICAL_ONLY);
 
-        assertTrue(routeInterdictionRiskFloor(relaxed) > routeInterdictionRiskFloor(standard));
-        assertTrue(routeInterdictionRiskFloor(iron) < routeInterdictionRiskFloor(standard));
-        assertTrue(routeInterdictionRiskFloor(tacticalOnly) >= 100.0);
+        assertTrue(routeInterdictionRiskFloor(relaxed) == routeInterdictionRiskFloor(standard));
+        assertTrue(routeInterdictionRiskFloor(iron) == routeInterdictionRiskFloor(standard));
+        assertTrue(routeInterdictionRiskFloor(tacticalOnly) == routeInterdictionRiskFloor(standard));
 
         int relaxedLoss = runLongRouteAndResourceLoss(relaxed);
         int standardLoss = runLongRouteAndResourceLoss(standard);
         int ironLoss = runLongRouteAndResourceLoss(iron);
         int tacticalLoss = runLongRouteAndResourceLoss(tacticalOnly);
 
-        assertTrue(tacticalLoss <= relaxedLoss, "Tactical Only should minimize strategic route attrition");
-        assertTrue(relaxedLoss < standardLoss, "Relaxed should lose fewer stores than Standard on the same route");
-        assertTrue(standardLoss < ironLoss, "Iron should lose more stores than Standard on the same route");
+        assertTrue(relaxedLoss == standardLoss, "Relaxed should normalize to the same campaign attrition");
+        assertTrue(ironLoss == standardLoss, "Iron should normalize to the same campaign attrition");
+        assertTrue(tacticalLoss == standardLoss, "Tactical Only should no longer suppress strategic attrition");
 
         String relaxedRecovery = String.join("\n", CampaignSystem.campaignDifficultyTelemetryLines(relaxed));
         String ironRecovery = String.join("\n", CampaignSystem.campaignDifficultyModifierLines(iron));
         assertTrue(relaxedRecovery.contains("one ordinary mistake remains recoverable"));
-        assertTrue(ironRecovery.contains("Travel attrition: x1.45"));
+        assertTrue(ironRecovery.contains("Travel attrition: x1.32"));
     }
 
     @Test
@@ -71,6 +71,7 @@ class CampaignDifficultyOutcomeSeparationTest {
         ctx.experience.tacticalOnly = settings.tacticalOnly;
         ctx.experience.commandOnly = settings.commandOnly;
         ctx.experience.ironCommand = settings.ironCommand;
+        ctx.experience.normalize();
         ctx.campaignUnlockProfile = null;
         SpawnSystem.initWorld(ctx);
         return ctx;

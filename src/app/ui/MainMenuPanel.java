@@ -25,6 +25,8 @@ public final class MainMenuPanel extends JPanel {
     private static final long MENU_BG_SEED = 0x5A17C0DEL;
     private static final String NO_CHECKPOINT_MESSAGE =
             "No checkpoint saved yet. Clear a sector in Campaign Ops to unlock resume.";
+    private static final String[] CAMPAIGN_SLOT_IDS = {"slot-1", "slot-2", "slot-3"};
+    private static final String[] CAMPAIGN_SLOT_LABELS = {"Save 1", "Save 2", "Save 3"};
     private static final String[] CUSTOM_BATTLE_ROLE_IDS = {
             "PICKET", "PATROL", "STEALTH_SHIP", "FIGHTER", "BOMBER", "PD_CRAFT", "DRONE",
             "FRIGATE", "ARTILLERY_SHIP", "MISSILE_BOAT", "CIWS_CORVETTE", "LIGHT_CRUISER",
@@ -41,6 +43,8 @@ public final class MainMenuPanel extends JPanel {
     private final Timer backgroundTimer;
     private final JButton continueCampaignButton;
     private final JLabel continueCampaignLabel;
+    private final JButton[] campaignSlotButtons = new JButton[CAMPAIGN_SLOT_IDS.length];
+    private final JLabel[] campaignSlotLabels = new JLabel[CAMPAIGN_SLOT_IDS.length];
     private final ResumeCampaignProvider resumeCampaignProvider;
     private final SpaceBackgroundPainter spaceBackgroundPainter;
 
@@ -106,7 +110,7 @@ public final class MainMenuPanel extends JPanel {
         JButton customBattle = createMenuButton("Custom Battle", new Color(64, 126, 177), uiScale);
         JButton galaxyMapTest = createMenuButton("Galaxy Map Test", new Color(72, 103, 150), uiScale);
         JButton tutorialStart = createMenuButton("Tutorial", new Color(60, 118, 186), uiScale);
-        JButton experienceButton = createMenuButton("Difficulty / Accessibility", new Color(64, 80, 116), uiScale);
+        JButton experienceButton = createMenuButton("Accessibility", new Color(64, 80, 116), uiScale);
         JButton controlsButton = createMenuButton("Controls", new Color(65, 91, 126), uiScale);
         customBattle.setName("customBattleButton");
         tutorialStart.setName("tutorialStartButton");
@@ -135,6 +139,11 @@ public final class MainMenuPanel extends JPanel {
         versionLabel.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 14, uiScale));
         continueCampaignLabel = bodyLabel("", uiScale);
         continueCampaignLabel.setForeground(new Color(196, 219, 192, 220));
+        for (int i = 0; i < campaignSlotButtons.length; i++) {
+            campaignSlotButtons[i] = createMenuButton(CAMPAIGN_SLOT_LABELS[i], new Color(68, 111, 154), uiScale);
+            campaignSlotLabels[i] = bodyLabel("", uiScale);
+            campaignSlotLabels[i].setForeground(new Color(204, 222, 238, 216));
+        }
 
         JLabel fullscreenHint = metaLabel("Alt+Enter toggles fullscreen during battle", uiScale);
         JLabel singlePlayerLead = bodyLabel(
@@ -259,6 +268,42 @@ public final class MainMenuPanel extends JPanel {
             persistSettings.accept(GameMode.CAMPAIGN_OPS);
             onStart.accept(checkpoint.config().withExperience(experience[0]));
         });
+        for (int i = 0; i < campaignSlotButtons.length; i++) {
+            final int slotIndex = i;
+            campaignSlotButtons[i].addActionListener(e -> {
+                String slotId = CAMPAIGN_SLOT_IDS[slotIndex];
+                ResumeCampaignState checkpoint = loadResumeCampaignState(slotId);
+                persistSettings.accept(GameMode.CAMPAIGN_OPS);
+                if (checkpoint.available() && checkpoint.config() != null) {
+                    onStart.accept(checkpoint.config().withCampaignSlot(slotId).withExperience(experience[0]));
+                    return;
+                }
+                int w = 5000;
+                int h = 5000;
+                if (mapBox.getSelectedIndex() == 1) {
+                    w = 10000;
+                    h = 10000;
+                }
+                if (mapBox.getSelectedIndex() == 2) {
+                    w = 20000;
+                    h = 20000;
+                }
+                long seed;
+                try {
+                    seed = Long.parseLong(seedField.getText().trim());
+                } catch (Exception ex) {
+                    seed = System.nanoTime();
+                }
+                if (seed == 0) seed = System.nanoTime();
+                PlayerTeamChoice choice = (PlayerTeamChoice) teamBox.getSelectedItem();
+                int playerTeamId = (choice == null) ? 0 : choice.teamId();
+                GameConfig launch = new GameConfig(GameMode.CAMPAIGN_OPS, w, h, true, seed, false,
+                        playerTeamId, false)
+                        .withAutoLaunchCampaignStartSite(true)
+                        .withCampaignSlot(slotId);
+                onStart.accept(launch.withExperience(experience[0]));
+            });
+        }
         campaignOps.addActionListener(e -> startWithMode.accept(GameMode.CAMPAIGN_OPS));
         customBattle.addActionListener(e -> {
             modeBox.setSelectedItem(GameMode.CUSTOM_BATTLES);
@@ -415,6 +460,23 @@ public final class MainMenuPanel extends JPanel {
         JPanel checkpointPanel = createInsetPanel(new Color(16, 35, 31, 190), new Color(86, 150, 111, 135), uiScale);
         checkpointPanel.add(continueCampaignLabel);
         singlePlayerCard.add(checkpointPanel);
+        singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(12, uiScale)));
+        JPanel slotPanel = createInsetPanel(new Color(14, 28, 43, 196), new Color(91, 135, 181, 130), uiScale);
+        slotPanel.add(eyebrowLabel("Save Files", uiScale, new Color(151, 203, 234)));
+        slotPanel.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
+        for (int i = 0; i < campaignSlotButtons.length; i++) {
+            JPanel row = transparentPanel();
+            row.setLayout(new BorderLayout(MenuDisplay.scaled(10, uiScale), 0));
+            campaignSlotButtons[i].setPreferredSize(new Dimension(MenuDisplay.scaled(112, uiScale), MenuDisplay.scaled(38, uiScale)));
+            row.add(campaignSlotButtons[i], BorderLayout.WEST);
+            row.add(campaignSlotLabels[i], BorderLayout.CENTER);
+            row.setAlignmentX(Component.LEFT_ALIGNMENT);
+            slotPanel.add(row);
+            if (i < campaignSlotButtons.length - 1) {
+                slotPanel.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
+            }
+        }
+        singlePlayerCard.add(slotPanel);
 
         JPanel missionCard = createSectionPanel(new Color(221, 139, 75, 145), uiScale);
         missionCard.add(eyebrowLabel("Mission Setup", uiScale, new Color(235, 176, 111)));
@@ -842,6 +904,16 @@ public final class MainMenuPanel extends JPanel {
         ResumeCampaignState checkpoint = loadResumeCampaignState();
         continueCampaignButton.setEnabled(checkpoint.available() && checkpoint.config() != null);
         continueCampaignLabel.setText("<html><div style='width:300px;'>" + checkpoint.summaryText() + "</div></html>");
+        for (int i = 0; i < campaignSlotButtons.length; i++) {
+            ResumeCampaignState slot = loadResumeCampaignState(CAMPAIGN_SLOT_IDS[i]);
+            campaignSlotButtons[i].setText(slot.available() ? "Load" : "Start");
+            campaignSlotButtons[i].setEnabled(true);
+            String summary = slot.available()
+                    ? slot.summaryText()
+                    : "Empty slot. Start a campaign here; F10 saves back to this file.";
+            campaignSlotLabels[i].setText("<html><div style='width:245px;'><b>"
+                    + CAMPAIGN_SLOT_LABELS[i] + "</b><br>" + summary + "</div></html>");
+        }
     }
 
     private ResumeCampaignState loadResumeCampaignState() {
@@ -851,6 +923,17 @@ public final class MainMenuPanel extends JPanel {
         ResumeCampaignState checkpoint = resumeCampaignProvider.load();
         if (checkpoint == null) {
             return ResumeCampaignState.unavailable(NO_CHECKPOINT_MESSAGE);
+        }
+        return checkpoint;
+    }
+
+    private ResumeCampaignState loadResumeCampaignState(String slotId) {
+        if (resumeCampaignProvider == null) {
+            return ResumeCampaignState.unavailable("Empty slot.");
+        }
+        ResumeCampaignState checkpoint = resumeCampaignProvider.load(slotId);
+        if (checkpoint == null) {
+            return ResumeCampaignState.unavailable("Empty slot.");
         }
         return checkpoint;
     }
@@ -1621,6 +1704,10 @@ public final class MainMenuPanel extends JPanel {
     @FunctionalInterface
     public interface ResumeCampaignProvider {
         ResumeCampaignState load();
+
+        default ResumeCampaignState load(String slotId) {
+            return load();
+        }
     }
 
     @FunctionalInterface

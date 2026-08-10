@@ -9,6 +9,8 @@ public class Turret {
 
     // Universal missile buff (applies to all factions/ships).
     public static final double MISSILE_DAMAGE_MULT = 1.55;
+    public static final double GLOBAL_MISSILE_LAUNCH_RATE_MULT = 0.50;
+    public static final double GLOBAL_MISSILE_DAMAGE_OUTPUT_MULT = 2.00;
     // Baseline launch multiplier before faction doctrine is applied in Missile.
     public static final double MISSILE_SPEED_MULT = 0.90;
     public static final double BLUE_FAST_MISSILE_SPEED_MULT = 0.32;
@@ -243,8 +245,8 @@ public class Turret {
         double cycleMul = host.weaponCycleRateMultiplier();
         double damageMul = host.weaponDamageMultiplier();
         if (kind == Kind.MISSILE) {
-            cycleMul *= host.missileCycleRateMultiplier();
-            damageMul *= host.missileDamageMultiplier();
+            cycleMul *= host.missileCycleRateMultiplier() * GLOBAL_MISSILE_LAUNCH_RATE_MULT;
+            damageMul *= host.missileDamageMultiplier() * GLOBAL_MISSILE_DAMAGE_OUTPUT_MULT;
         }
         if (kind == Kind.GUN && prof.doctrine == Doctrine.KINETIC_CONSORTIUM) {
             // Red favors fewer, heavier shells instead of gun spam.

@@ -336,7 +336,7 @@ public final class UISystem {
             }
         }
         java.util.List<CommSystem.CommsContactView> contacts = CommSystem.contactViews(ctx, ctx.ui.commsFilter);
-        int rows = Math.min(7, contacts.size());
+        int rows = Math.min(Renderer.commsVisibleContactRows(viewW, viewH), contacts.size());
         for (int i = 0; i < rows; i++) {
             if (Renderer.commsContactRowRect(viewW, viewH, i).contains(e.getX(), e.getY())) {
                 ctx.ui.commsSelectedContactId = contacts.get(i).shipId;
@@ -695,6 +695,14 @@ public final class UISystem {
                         if (fleetTarget.shipId > 0) selectFleetShip(ctx, fleetTarget.shipId);
                         return true;
                     }
+                    case SET_REFIT_FILTER -> {
+                        selectFleetRefitFilter(ctx, fleetTarget.refitFilter);
+                        return true;
+                    }
+                    case SELECT_LOADOUT_GROUP -> {
+                        selectFleetLoadoutGroup(ctx, fleetTarget.loadoutGroup);
+                        return true;
+                    }
                     case SELECT_TURRET -> {
                         if (fleetTarget.shipId > 0) selectFleetShip(ctx, fleetTarget.shipId);
                         if (fleetTarget.turretIndex >= 0) selectFleetTurret(ctx, fleetTarget.turretIndex);
@@ -742,10 +750,29 @@ public final class UISystem {
         return false;
     }
 
+    public static boolean handleShopWheel(GameContext ctx, MouseWheelEvent e, int viewportW, int viewportH) {
+        if (ctx == null || ctx.ui == null || e == null || !ctx.ui.shopOpen) return false;
+        if (!CampaignSystem.usesPersistentFleetShop(ctx) || !ctx.ui.fleetRefitMode) return false;
+        int rotation = e.getWheelRotation();
+        if (rotation == 0) return true;
+        if (Renderer.fleetRefitShipListContains(viewportW, viewportH, e.getX(), e.getY())) {
+            int max = Renderer.fleetRefitShipMaxScroll(ctx, ctx.ui, viewportW, viewportH);
+            ctx.ui.fleetRefitShipScroll = MathUtil.clamp(ctx.ui.fleetRefitShipScroll + rotation, 0, max);
+            return true;
+        }
+        if (Renderer.fleetRefitSlotListContains(viewportW, viewportH, e.getX(), e.getY())) {
+            int max = Renderer.fleetRefitSlotMaxScroll(ctx, ctx.ui, viewportW, viewportH);
+            ctx.ui.fleetRefitSlotScroll = MathUtil.clamp(ctx.ui.fleetRefitSlotScroll + rotation, 0, max);
+            return true;
+        }
+        return false;
+    }
+
     public static void selectFleetShip(GameContext ctx, int shipId) {
         if (ctx == null || !campaignFleetOverlayAvailable(ctx)) return;
         ctx.ui.fleetSelectedShipId = shipId;
         ctx.ui.fleetSelectedTurretIndex = -1;  // Reset turret selection when changing ships
+        ctx.ui.fleetRefitSlotScroll = 0;
     }
 
     public static void selectFleetTurret(GameContext ctx, int turretIndex) {
@@ -759,6 +786,24 @@ public final class UISystem {
         ctx.ui.fleetSelectedTurretIndex = turretIndex;
     }
 
+    public static void selectFleetRefitFilter(GameContext ctx, RefitHullFilter filter) {
+        if (ctx == null || ctx.ui == null || filter == null || !campaignFleetOverlayAvailable(ctx)) return;
+        ctx.ui.fleetRefitFilter = filter;
+        ctx.ui.fleetRefitShipScroll = 0;
+        ctx.ui.fleetSelectedTurretIndex = -1;
+        Ship selected = findShipInFleet(ctx, ctx.ui.fleetSelectedShipId);
+        if (selected == null || !filter.matches(selected.role)) {
+            ctx.ui.fleetSelectedShipId = -1;
+        }
+    }
+
+    public static void selectFleetLoadoutGroup(GameContext ctx, int group) {
+        if (ctx == null || ctx.ui == null || !campaignFleetOverlayAvailable(ctx)) return;
+        ctx.ui.fleetRefitLoadoutGroup = MathUtil.clamp(group, 0, 2);
+        ctx.ui.fleetRefitSlotScroll = 0;
+        ctx.ui.fleetSelectedTurretIndex = -1;
+    }
+
     public static void setMissileRoleForSelectedTurret(GameContext ctx, Turret.MissileRole role) {
         if (ctx == null || !campaignFleetOverlayAvailable(ctx)) return;
         if (ctx.ui.fleetSelectedShipId < 0 || ctx.ui.fleetSelectedTurretIndex < 0) return;
@@ -767,6 +812,7 @@ public final class UISystem {
         Turret turret = selected.turrets.get(ctx.ui.fleetSelectedTurretIndex);
         if (turret != null && turret.kind == Turret.Kind.MISSILE) {
             turret.missileRole = role;
+            CampaignSystem.syncPersistentFleetEntrySnapshotForShip(ctx, selected);
         }
     }
 
@@ -834,12 +880,13 @@ public final class UISystem {
         }
 
         ship.turrets.set(turretIndex, nt);
+        CampaignSystem.syncPersistentFleetEntrySnapshotForShip(ctx, ship);
     }
 
     private static Ship findShipInFleet(GameContext ctx, int shipId) {
         if (ctx == null || ctx.ships == null) return null;
         for (Ship s : ctx.ships) {
-            if (s.id == shipId && CampaignSystem.isFleetSelectionCandidate(ctx, s)) {
+            if (s.id == shipId && CampaignSystem.isFleetRefitEditableCandidate(ctx, s)) {
                 return s;
             }
         }
@@ -2715,6 +2762,7 @@ public final class UISystem {
                 return;
             }
         }
+        CampaignSystem.syncPersistentFleetEntrySnapshotForShip(ctx, base);
     }
 
     public static void applyTurretSystemsUpgrade(Ship ship, int levels) {

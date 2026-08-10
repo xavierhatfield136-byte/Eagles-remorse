@@ -61,12 +61,11 @@ class CampaignPhaseFiveDifficultyAttritionTest {
         String manager = String.join("\n", CampaignSystem.campaignResourceManagerLines(ctx));
 
         assertTrue(resources.contains("2-JUMP FORECAST"));
-        assertTrue(resources.contains("FUEL"));
-        assertTrue(resources.contains("SUP"));
-        assertTrue(resources.contains("AMMO"));
+        assertTrue(resources.contains("enemy pressure"));
+        assertTrue(resources.contains("fleet strain"));
         assertTrue(resources.contains("full armor/systems require a repair hub"));
-        assertTrue(strikes.contains("Ammo"));
-        assertTrue(strikes.contains("Rearm at"));
+        assertTrue(strikes.contains("ammo"));
+        assertTrue(strikes.contains("per-battle cooldowns"));
         assertTrue(manager.contains("Credits:"));
         assertTrue(manager.contains("Ore"));
     }

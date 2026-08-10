@@ -242,6 +242,10 @@ public final class UiState {
     public final CommsContextMenu commsContextMenu = new CommsContextMenu();
     public int fleetSelectedShipId = -1;
     public int fleetSelectedTurretIndex = -1;
+    public RefitHullFilter fleetRefitFilter = RefitHullFilter.ALL;
+    public int fleetRefitShipScroll = 0;
+    public int fleetRefitSlotScroll = 0;
+    public int fleetRefitLoadoutGroup = 0;
     public int campaignFleetFocusSlotId = -1;
     public int campaignFleetRosterScroll = 0;
     // Fleet hub: when the campaign shop is open (TAB), toggle between "commission" (buy hulls) and "refit"

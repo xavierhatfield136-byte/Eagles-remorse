@@ -9,6 +9,7 @@ import java.util.Map;
 
 public final class AISystem {
     private AISystem(){}
+    static final double UNIVERSAL_SUPERWEAPON_RANGE = Ship.UNIVERSAL_SPECIAL_WEAPON_RANGE;
 
     private static final class FleetState {
         final Map<Integer, Ship> flagships = new HashMap<>();
@@ -1912,6 +1913,11 @@ public final class AISystem {
         int teamId = ship.faction.teamId();
         if (ctx == null || ctx.player == null || ctx.player.faction == null) return teamId;
         if (!CampaignSystem.isCampaignActive(ctx)) return teamId;
+        if (ship.minerHomeBase == ctx.player && !isPlayerCommandedFleetFaction(ctx, ship.faction)) {
+            ship.minerHomeBase = null;
+            ship.escortAnchorId = -1;
+            return teamId;
+        }
         if (!ship.faction.isFriendlyTo(ctx.player.faction)) return teamId;
         if (ship == ctx.player || (ship.minerHomeBase == ctx.player && isPlayerCommandedFleetFaction(ctx, ship.faction))) {
             return playerFleetGroupKey(ctx);
@@ -3265,15 +3271,12 @@ public final class AISystem {
         REAR_SUPPORT
     }
 
-    private static boolean isMediumCruiserOrLarger(ShipRole role) {
+    private static boolean isLineHullOrLarger(ShipRole role) {
         if (role == null) return false;
-        if (role.isTitanOrMothership()) return true;
-        return switch (role) {
-            case MEDIUM_CRUISER, CRUISER,
-                 BATTLECRUISER, BATTLESHIP, DREADNOUGHT, SUPERSHIP,
-                 CARRIER, DRONE_CARRIER -> true;
-            default -> false;
-        };
+        ShopHullCategory category = ShopHullCategory.forRole(role);
+        return category == ShopHullCategory.LINE
+                || category == ShopHullCategory.CAPITAL
+                || category == ShopHullCategory.TITAN;
     }
 
     private static boolean isFriendlyToPlayer(GameContext ctx, Ship ship) {
@@ -3295,7 +3298,7 @@ public final class AISystem {
             double r2 = range * range;
             for (Ship enemy : nearby) {
                 if (!isAlive(enemy) || enemy.faction == null) continue;
-                if (!isMediumCruiserOrLarger(enemy.role)) continue;
+                if (!isLineHullOrLarger(enemy.role)) continue;
                 if (!TargetingSystem.isDetectableToObserver(shooter, enemy)) continue;
 
                 double d2 = dist2(shooter.x, shooter.y, enemy.x, enemy.y);
@@ -4297,15 +4300,7 @@ public final class AISystem {
         }
 
         if (s.hasSuperweapon) {
-            double superweaponRangeBase = 2200.0;
-            if (s.superweaponPattern == Ship.SuperweaponPattern.DIRECT_BEAM
-                    || s.superweaponPattern == Ship.SuperweaponPattern.LANCE_CONE) {
-                // Match fire gating to actual beam reach so beam-pattern supers don't waste casts at extreme standoff.
-                double beamScale = (s.superweaponPattern == Ship.SuperweaponPattern.LANCE_CONE) ? 0.74 : 0.96;
-                double beamReach = MathUtil.clamp(s.superweaponSpeed * beamScale, 720.0, 1760.0);
-                superweaponRangeBase = Math.max(640.0, beamReach * 0.92);
-            }
-            double superweaponRange = superweaponRangeBase * rangeMul;
+            double superweaponRange = UNIVERSAL_SUPERWEAPON_RANGE * rangeMul;
 
             Ship swTarget = target;
             double swDist = dist;
@@ -4314,29 +4309,26 @@ public final class AISystem {
             boolean swOverkillLikely = overkillLikely;
             double swHull = targetHull;
 
-            boolean friendlyToPlayer = isFriendlyToPlayer(ctx, s);
             boolean canStartSuperweapon = s.canFireSuperweapon();
-            boolean aggressiveLargestTargeting = friendlyToPlayer && canStartSuperweapon;
+            Ship largest = selectLargestSuperweaponTarget(ctx, s, superweaponRange);
+            boolean aggressiveLargestTargeting = isAlive(largest)
+                    && (canStartSuperweapon || s.isSuperweaponCharging() || s.isSuperweaponBeamActive());
             if (aggressiveLargestTargeting) {
-                Ship largest = selectLargestSuperweaponTarget(ctx, s, superweaponRange);
-                if (isAlive(largest)) {
-                    swTarget = largest;
-                    swDist = Math.hypot(largest.x - s.x, largest.y - s.y);
-                    double swSensorConfidence = observerEWConfidence(ctx, s, swTarget, swDist);
-                    swConfidence = Math.max(0.0, Math.min(1.0, swSensorConfidence * Math.max(0.20, teamConfidence)));
-                    swKillConfirm = isKillConfirmActive(swTarget);
-                    swOverkillLikely = isOverkillLikely(ctx, s, swTarget);
-                    swHull = hullFrac(swTarget);
-                }
+                swTarget = largest;
+                swDist = Math.hypot(largest.x - s.x, largest.y - s.y);
+                double swSensorConfidence = observerEWConfidence(ctx, s, swTarget, swDist);
+                swConfidence = Math.max(0.0, Math.min(1.0, swSensorConfidence * Math.max(0.20, teamConfidence)));
+                swKillConfirm = isKillConfirmActive(swTarget);
+                swOverkillLikely = isOverkillLikely(ctx, s, swTarget);
+                swHull = hullFrac(swTarget);
             }
 
             if (swDist <= superweaponRange) {
                 boolean superShip = (s.role == ShipRole.SUPERSHIP || s.role == ShipRole.HYPERWEAPON_TITAN);
                 boolean allowSuperweapon;
 
-                if (aggressiveLargestTargeting && swTarget != null && isMediumCruiserOrLarger(swTarget.role)) {
-                    // Phase 5.4: Friendly superweapon ships should take high-impact shots as soon as they're ready.
-                    allowSuperweapon = swConfidence >= 0.32 && !swKillConfirm;
+                if (aggressiveLargestTargeting && swTarget != null && isLineHullOrLarger(swTarget.role)) {
+                    allowSuperweapon = canStartSuperweapon && !swKillConfirm;
                 } else if (superShip) {
                     // Normal supership gating (still more aggressive than non-superweapon ships).
                     double confGate = isCapitalRole(swTarget.role) ? 0.38 : 0.46;
@@ -4346,16 +4338,16 @@ public final class AISystem {
                     allowSuperweapon = swConfidence >= 0.62 && swHull > 0.30 && !swKillConfirm && !swOverkillLikely;
                 }
 
-                if (objective == SquadObjective.RESERVE) {
+                if (objective == SquadObjective.RESERVE && !aggressiveLargestTargeting) {
                     allowSuperweapon = allowSuperweapon
                             && swConfidence >= (superShip ? 0.58 : 0.78)
                             && swDist <= superweaponRange * (superShip ? 0.82 : 0.70);
                 }
-                if (objective == SquadObjective.INTERCEPT) {
+                if (objective == SquadObjective.INTERCEPT && !aggressiveLargestTargeting) {
                     allowSuperweapon = allowSuperweapon && swConfidence >= (superShip ? 0.44 : 0.56);
                 }
 
-                if (allowSuperweapon && swTarget != null) {
+                if ((allowSuperweapon || s.isSuperweaponCharging() || s.isSuperweaponBeamActive()) && swTarget != null) {
                     s.trackSuperweaponAim(swTarget.x, swTarget.y);
                 }
 
@@ -6004,7 +5996,7 @@ public final class AISystem {
         double rangeMul = (ctx == null) ? 1.0 : CampaignSystem.targetingRangeMul(ctx);
         double maxRange = 240.0;
         if (seeker != null && seeker.hasSuperweapon) {
-            maxRange = Math.max(maxRange, 2200.0 * rangeMul);
+            maxRange = Math.max(maxRange, UNIVERSAL_SUPERWEAPON_RANGE * rangeMul);
         }
         if (seeker != null && seeker.turrets != null) {
             for (Turret turret : seeker.turrets) {

@@ -589,6 +589,7 @@ class CampaignSystemModels {
         public final int priority;
         public final boolean interactive;
         public final int sourceForceId;
+        public final int fleetLevel;
 
         CampaignSupportMarker(SupportMarkerType type,
                               String label,
@@ -597,7 +598,7 @@ class CampaignSystemModels {
                               double y,
                               double radius,
                               int priority) {
-            this(type, label, subtitle, null, x, y, radius, priority, true, 0);
+            this(type, label, subtitle, null, x, y, radius, priority, true, 0, 0);
         }
 
         CampaignSupportMarker(SupportMarkerType type,
@@ -608,7 +609,7 @@ class CampaignSystemModels {
                               double y,
                               double radius,
                               int priority) {
-            this(type, label, subtitle, faction, x, y, radius, priority, true, 0);
+            this(type, label, subtitle, faction, x, y, radius, priority, true, 0, 0);
         }
 
         CampaignSupportMarker(SupportMarkerType type,
@@ -620,7 +621,7 @@ class CampaignSystemModels {
                               double radius,
                               int priority,
                               boolean interactive) {
-            this(type, label, subtitle, faction, x, y, radius, priority, interactive, 0);
+            this(type, label, subtitle, faction, x, y, radius, priority, interactive, 0, 0);
         }
 
         CampaignSupportMarker(SupportMarkerType type,
@@ -633,6 +634,20 @@ class CampaignSystemModels {
                               int priority,
                               boolean interactive,
                               int sourceForceId) {
+            this(type, label, subtitle, faction, x, y, radius, priority, interactive, sourceForceId, 0);
+        }
+
+        CampaignSupportMarker(SupportMarkerType type,
+                              String label,
+                              String subtitle,
+                              Faction faction,
+                              double x,
+                              double y,
+                              double radius,
+                              int priority,
+                              boolean interactive,
+                              int sourceForceId,
+                              int fleetLevel) {
             this.type = (type == null) ? SupportMarkerType.ANOMALY : type;
             this.label = (label == null || label.isBlank()) ? "SUPPORT CONTACT" : label.trim();
             this.subtitle = (subtitle == null) ? "" : subtitle.trim();
@@ -643,6 +658,7 @@ class CampaignSystemModels {
             this.priority = Math.max(0, priority);
             this.interactive = interactive;
             this.sourceForceId = Math.max(0, sourceForceId);
+            this.fleetLevel = MathUtil.clamp(fleetLevel, 0, 5);
         }
     }
 
@@ -3467,6 +3483,7 @@ class CampaignSystemModels {
         public final List<CampaignSystem.CampaignForce> campaignForces = new ArrayList<>();
         public final java.util.LinkedHashSet<String> defeatedCampaignForceKeys = new java.util.LinkedHashSet<>();
         public final Map<Integer, Integer> shipCampaignForceIds = new HashMap<>();
+        public final Map<Integer, CampaignShipProvenance> shipCampaignProvenance = new HashMap<>();
         public final Map<Integer, String> shipCampaignSpawnCategories = new HashMap<>();
         public final Set<Integer> fallbackOwnedShipIds = new HashSet<>();
         public final List<String> campaignForceAuditWarnings = new ArrayList<>();

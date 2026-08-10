@@ -111,7 +111,7 @@ class CampaignStrategicTravelPressureTest {
         assertTrue(CampaignSystem.campaignVisibleActions(ctx).stream()
                 .anyMatch(action -> action.id.equals("ENGAGE_COURSE")
                         && !action.enabled
-                        && action.disabledReason.contains("critically low")));
+                        && action.disabledReason.contains("route cannot be sustained")));
 
         CampaignSystem.CampaignAction recovery = CampaignSystem.campaignVisibleActions(ctx).stream()
                 .filter(action -> action.id.equals("PLOT_RECOVERY_ROUTE"))
@@ -159,21 +159,21 @@ class CampaignStrategicTravelPressureTest {
     }
 
     @Test
-    void encounterDensityFollowsDifficultyPreset() throws Exception {
+    void legacyDifficultyPresetsNormalizeToUniversalEncounterDensity() throws Exception {
         GameContext relaxed = initializedCampaignContext(ExperienceSettings.forPreset(ExperienceSettings.Preset.RELAXED));
         GameContext standard = initializedCampaignContext(ExperienceSettings.forPreset(ExperienceSettings.Preset.STANDARD));
         GameContext iron = initializedCampaignContext(ExperienceSettings.forPreset(ExperienceSettings.Preset.IRON_COMMAND));
         GameContext tacticalOnly = initializedCampaignContext(ExperienceSettings.forPreset(ExperienceSettings.Preset.TACTICAL_ONLY));
 
-        assertTrue(routeInterdictionRiskFloor(relaxed) > routeInterdictionRiskFloor(standard));
-        assertTrue(routeInterdictionRiskFloor(iron) < routeInterdictionRiskFloor(standard));
-        assertTrue(routeInterdictionRiskFloor(tacticalOnly) >= 100.0);
+        assertEquals(routeInterdictionRiskFloor(standard), routeInterdictionRiskFloor(relaxed));
+        assertEquals(routeInterdictionRiskFloor(standard), routeInterdictionRiskFloor(iron));
+        assertEquals(routeInterdictionRiskFloor(standard), routeInterdictionRiskFloor(tacticalOnly));
 
         CampaignSystem.CampaignLocation northernObjective = findLocation(relaxed, "poi-22");
         assertNotNull(northernObjective);
         relaxed.campaign.selectedGalaxyLocationId = northernObjective.id;
         List<String> routeLines = CampaignSystem.selectedRouteAssessmentLines(relaxed);
-        assertTrue(routeLines.stream().anyMatch(line -> line.equals("Encounter Density: Light  x0.58")));
+        assertTrue(routeLines.stream().anyMatch(line -> line.equals("Encounter Density: Extreme  x1.55")));
     }
 
     @Test
@@ -182,10 +182,9 @@ class CampaignStrategicTravelPressureTest {
 
         List<String> lines = CampaignSystem.campaignResourceTrendLines(ctx);
         assertTrue(lines.stream().anyMatch(line -> line.startsWith("STRIKE RECOVERY")
-                        && line.contains("REARM")
-                        && line.contains("BUY fuel/supplies")
-                        && line.contains("SELL salvage")),
-                "resource trends should explain how to recover strategic strike capacity");
+                        && line.contains("cooldowns reset per battle")
+                        && line.contains("no ammo, fuel, supply, or charge stockpile")),
+                "resource trends should explain the current strategic strike recovery model");
     }
 
     @Test
@@ -459,12 +458,12 @@ class CampaignStrategicTravelPressureTest {
         st.campaignFuel = 12;
         st.campaignSupplies = 9;
         st.campaignAmmo = 11;
-        assertTrue(invokeArrivalConsequence(ctx, st, resource).contains("depleted arrival"));
+        assertTrue(invokeArrivalConsequence(ctx, st, resource).contains("on-time arrival"));
 
         st.campaignFuel = 120;
         st.campaignSupplies = 90;
         st.campaignAmmo = 110;
-        assertTrue(invokeArrivalConsequence(ctx, st, resource).contains("overprepared arrival"));
+        assertTrue(invokeArrivalConsequence(ctx, st, resource).contains("on-time arrival"));
     }
 
     @Test
@@ -554,6 +553,7 @@ class CampaignStrategicTravelPressureTest {
     }
 
     private static GameContext initializedCampaignContext(ExperienceSettings experience) {
+        if (experience != null) experience.normalize();
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false)
                 .withExperience(experience));
         ctx.campaignUnlockProfile = null;

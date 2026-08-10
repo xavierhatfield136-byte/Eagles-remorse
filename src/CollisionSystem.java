@@ -46,7 +46,11 @@ public class CollisionSystem {
             Ship shooter = resolveSourceShip(ctx, ships, p);
             Iterable<Ship> candidates = ships;
             if (ctx != null) {
-                ctx.entityQuery.collectProjectileShipCandidates(p.x, p.y, p.radius, nearbyShips);
+                double candidateRadius = p.radius;
+                if (p instanceof Missile missile && isSmallCraftProximityFuseMissile(missile)) {
+                    candidateRadius += Math.max(18.0, missile.blastRadius * 0.42);
+                }
+                ctx.entityQuery.collectProjectileShipCandidates(p.x, p.y, candidateRadius, nearbyShips);
                 candidates = nearbyShips;
             }
             for (Ship s : candidates) {
@@ -55,15 +59,15 @@ public class CollisionSystem {
                 if (projectilePressure && p instanceof CIWSPellet && !s.isSmallCraft()) continue;
                 if (!canProjectileDamageShip(ctx, shooter, p, s)) continue;
 
-                Missile interceptorMissile = (p instanceof Missile missile
-                        && missile.role == Turret.MissileRole.INTERCEPT)
+                Missile proximityMissile = (p instanceof Missile missile
+                        && isSmallCraftProximityFuseMissile(missile))
                         ? missile
                         : null;
-                boolean interceptorFuse = interceptorMissile != null
+                boolean interceptorFuse = proximityMissile != null
                         && s.isSmallCraft();
                 double shipHitRadius = HullGeometry.broadPhaseRadius(s);
                 if (interceptorFuse) {
-                    shipHitRadius += Math.max(18.0, interceptorMissile.blastRadius * 0.32);
+                    shipHitRadius += Math.max(18.0, proximityMissile.blastRadius * 0.42);
                 }
                 if (!circleHit(p.x, p.y, p.radius, s.x, s.y, shipHitRadius)) continue;
                 // CIWS pellets use simple circle collision (performance optimization for high-volume fire)
@@ -587,6 +591,12 @@ public class CollisionSystem {
 
     private static boolean isArmorBypassingTorpedo(Missile missile) {
         return missile != null && missile.strikeVisual == Missile.StrikeVisual.TORPEDO;
+    }
+
+    private static boolean isSmallCraftProximityFuseMissile(Missile missile) {
+        if (missile == null || missile.role == null) return false;
+        return missile.role == Turret.MissileRole.ANTI_LIGHT
+                || missile.role == Turret.MissileRole.INTERCEPT;
     }
 
     private static void applyArmorBypassingTorpedoImpact(Missile missile, Ship target) {
@@ -1364,13 +1374,15 @@ public class CollisionSystem {
         }
         boolean interceptorMissile = projectile instanceof Missile missile
                 && missile.role == Turret.MissileRole.INTERCEPT;
+        boolean smallCraftMissile = projectile instanceof Missile missile
+                && isSmallCraftProximityFuseMissile(missile);
         if (projectile instanceof CIWSPellet || projectile instanceof PointDefenseLaser) {
             return target.isSmallCraft();
         }
-        if (TargetingSystem.isCiwsOnlyTarget(target) && !interceptorMissile) return false;
+        if (TargetingSystem.isCiwsOnlyTarget(target) && !interceptorMissile && !smallCraftMissile) return false;
 
         if (shooter == null || shooter.role == null) return true;
-        if (isCapitalShip(shooter.role) && target.isSmallCraft() && !interceptorMissile) return false;
+        if (isCapitalShip(shooter.role) && target.isSmallCraft() && !interceptorMissile && !smallCraftMissile) return false;
         return true;
     }
 

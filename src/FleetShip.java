@@ -29,6 +29,8 @@ public class FleetShip extends Ship {
         assignDefaultMissileRoles();
         resetFlightDeckLoadout();
         applyCustomFlightDeckLoadout();
+        applyStrikeCraftDurabilityAndDamageRebalance();
+        applyCarrierWingCapacityRebalance();
     }
 
     public FleetBuildingSystem.HullProfile hullProfile() {
@@ -42,6 +44,25 @@ public class FleetShip extends Ship {
     private void enforceSuperweaponChargeSfxTiming() {
         if (!hasSuperweapon) return;
         superweaponChargeTime = SUPERWEAPON_CHARGE_SFX_SECONDS;
+    }
+
+    private void applyStrikeCraftDurabilityAndDamageRebalance() {
+        if (role != ShipRole.FIGHTER && role != ShipRole.BOMBER && role != ShipRole.DRONE) return;
+        hpMax = Math.max(1, hpMax * 2);
+        hp = hpMax;
+        if (shieldMax > 0.0) {
+            shieldMax *= 2.0;
+            shield = shieldMax;
+        }
+        for (Turret turret : turrets) {
+            if (turret == null) continue;
+            turret.damage = Math.max(1, turret.damage * 2);
+        }
+    }
+
+    private void applyCarrierWingCapacityRebalance() {
+        if (!isCarrier || maxFighters <= 0) return;
+        maxFighters = Math.max(1, (int) Math.ceil(maxFighters * 0.5));
     }
 
     private void assignDefaultMissileRoles() {

@@ -101,7 +101,14 @@ public final class ExperienceSettings {
     public VisualDetail visualDetail = VisualDetail.AUTO;
 
     public static ExperienceSettings defaults() {
-        return forPreset(Preset.STANDARD);
+        return universalCampaign();
+    }
+
+    public static ExperienceSettings universalCampaign() {
+        ExperienceSettings out = new ExperienceSettings();
+        out.preset = Preset.STANDARD;
+        applyUniversalDifficulty(out);
+        return out;
     }
 
     public static ExperienceSettings forPreset(Preset preset) {
@@ -190,12 +197,21 @@ public final class ExperienceSettings {
         if (firingMode == null) firingMode = InteractionMode.HOLD;
         if (mapMode == null) mapMode = InteractionMode.TOGGLE;
         if (visualDetail == null) visualDetail = VisualDetail.AUTO;
-        commandComplexity = clamp(commandComplexity, 0.4, 1.8);
-        combatLethality = clamp(combatLethality, 0.4, 1.8);
-        strategicPressure = clamp(strategicPressure, 0.0, 1.8);
-        attrition = clamp(attrition, 0.0, 1.8);
+        applyUniversalDifficulty(this);
         uiTextScale = clamp(uiTextScale, 0.8, 1.6);
         subtitleScale = clamp(subtitleScale, 0.8, 1.8);
+    }
+
+    private static void applyUniversalDifficulty(ExperienceSettings settings) {
+        if (settings == null) return;
+        settings.preset = Preset.STANDARD;
+        settings.commandComplexity = 1.12;
+        settings.combatLethality = 1.28;
+        settings.strategicPressure = 1.55;
+        settings.attrition = 1.32;
+        settings.tacticalOnly = false;
+        settings.commandOnly = false;
+        settings.ironCommand = true;
     }
 
     private static double clamp(double value, double min, double max) {

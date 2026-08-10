@@ -14,7 +14,17 @@ public class Main {
     public Main() {
         shell = new AppShell(
                 this::createGameView,
-                this::loadResumeCampaignState,
+                new MainMenuPanel.ResumeCampaignProvider() {
+                    @Override
+                    public MainMenuPanel.ResumeCampaignState load() {
+                        return loadResumeCampaignState();
+                    }
+
+                    @Override
+                    public MainMenuPanel.ResumeCampaignState load(String slotId) {
+                        return loadResumeCampaignState(slotId);
+                    }
+                },
                 this::paintMenuSpaceBackground,
                 () -> System.exit(0));
     }
@@ -89,11 +99,24 @@ public class Main {
             }
             return MainMenuPanel.ResumeCampaignState.available(
                     "Recovered autosave: " + recovered.menuSummary() + slotStatusSuffix(),
-                    recovered.toGameConfig(app.config.GameMode.CAMPAIGN_OPS));
+                    recovered.toGameConfig(app.config.GameMode.CAMPAIGN_OPS).withCampaignSlot("primary"));
         }
         return MainMenuPanel.ResumeCampaignState.available(
                 checkpoint.menuSummary() + slotStatusSuffix(),
-                checkpoint.toGameConfig(app.config.GameMode.CAMPAIGN_OPS));
+                checkpoint.toGameConfig(app.config.GameMode.CAMPAIGN_OPS).withCampaignSlot("primary"));
+    }
+
+    private MainMenuPanel.ResumeCampaignState loadResumeCampaignState(String slotId) {
+        if (slotId == null || slotId.isBlank() || "primary".equalsIgnoreCase(slotId.trim())) {
+            return loadResumeCampaignState();
+        }
+        CampaignCheckpointStore.Checkpoint checkpoint = CampaignCheckpointStore.loadSlot(slotId);
+        if (checkpoint == null || !checkpoint.isUsable()) {
+            return MainMenuPanel.ResumeCampaignState.unavailable("Empty slot.");
+        }
+        return MainMenuPanel.ResumeCampaignState.available(
+                checkpoint.menuSummary(),
+                checkpoint.toGameConfig(app.config.GameMode.CAMPAIGN_OPS).withCampaignSlot(slotId));
     }
 
     private String slotStatusSuffix() {

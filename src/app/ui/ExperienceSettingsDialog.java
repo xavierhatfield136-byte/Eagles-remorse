@@ -11,19 +11,13 @@ import javax.swing.JPanel;
 import javax.swing.JSlider;
 
 /**
- * Compact custom difficulty and accessibility editor for the launch console.
+ * Compact accessibility editor for the launch console.
  */
 final class ExperienceSettingsDialog {
     private ExperienceSettingsDialog() {}
 
     static ExperienceSettings show(JPanel parent, ExperienceSettings source) {
         ExperienceSettings base = (source == null) ? ExperienceSettings.defaults() : source.copy();
-        JComboBox<ExperienceSettings.Preset> preset = new JComboBox<>(ExperienceSettings.Preset.values());
-        preset.setSelectedItem(base.preset);
-        JSlider command = slider(base.commandComplexity);
-        JSlider lethality = slider(base.combatLethality);
-        JSlider pressure = slider(base.strategicPressure);
-        JSlider attrition = slider(base.attrition);
         JComboBox<ExperienceSettings.ColorblindPalette> palette = new JComboBox<>(ExperienceSettings.ColorblindPalette.values());
         palette.setSelectedItem(base.colorblindPalette);
         JSlider textScale = scaleSlider(base.uiTextScale);
@@ -43,25 +37,10 @@ final class ExperienceSettingsDialog {
         firing.setSelectedItem(base.firingMode);
         map.setSelectedItem(base.mapMode);
         visualDetail.setSelectedItem(base.visualDetail);
-        preset.addActionListener(e -> {
-            ExperienceSettings.Preset selected = (ExperienceSettings.Preset) preset.getSelectedItem();
-            if (selected == null || selected == ExperienceSettings.Preset.CUSTOM) return;
-            ExperienceSettings values = ExperienceSettings.forPreset(selected);
-            command.setValue((int) Math.round(values.commandComplexity * 100.0));
-            lethality.setValue((int) Math.round(values.combatLethality * 100.0));
-            pressure.setValue((int) Math.round(values.strategicPressure * 100.0));
-            attrition.setValue((int) Math.round(values.attrition * 100.0));
-            modifierPreview.setText(modifierPreview(values));
-        });
-        modifierPreview.setText(modifierPreview(base));
+        modifierPreview.setText(modifierPreview(ExperienceSettings.universalCampaign()));
 
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.add(row("Preset", preset));
-        panel.add(row("Command complexity", command));
-        panel.add(row("Combat lethality", lethality));
-        panel.add(row("Strategic pressure", pressure));
-        panel.add(row("Attrition", attrition));
         panel.add(modifierPreview);
         panel.add(Box.createVerticalStrut(8));
         panel.add(row("Colorblind palette", palette));
@@ -78,19 +57,11 @@ final class ExperienceSettingsDialog {
         panel.add(row("Map input", map));
         panel.add(row("Visual detail", visualDetail));
 
-        int result = JOptionPane.showConfirmDialog(parent, panel, "Difficulty And Accessibility",
+        int result = JOptionPane.showConfirmDialog(parent, panel, "Accessibility",
                 JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
         if (result != JOptionPane.OK_OPTION) return source;
 
         ExperienceSettings out = base;
-        out.preset = (ExperienceSettings.Preset) preset.getSelectedItem();
-        out.commandComplexity = number(command);
-        out.combatLethality = number(lethality);
-        out.strategicPressure = number(pressure);
-        out.attrition = number(attrition);
-        out.tacticalOnly = out.preset == ExperienceSettings.Preset.TACTICAL_ONLY;
-        out.commandOnly = out.preset == ExperienceSettings.Preset.COMMAND_ONLY;
-        out.ironCommand = out.preset == ExperienceSettings.Preset.IRON_COMMAND;
         out.colorblindPalette = (ExperienceSettings.ColorblindPalette) palette.getSelectedItem();
         out.uiTextScale = number(textScale);
         out.subtitleScale = number(subtitleScale);
@@ -115,10 +86,6 @@ final class ExperienceSettingsDialog {
         return row;
     }
 
-    private static JSlider slider(double value) {
-        return new JSlider(40, 180, (int) Math.round(value * 100.0));
-    }
-
     private static JSlider scaleSlider(double value) {
         return new JSlider(80, 180, (int) Math.round(value * 100.0));
     }
@@ -128,7 +95,7 @@ final class ExperienceSettingsDialog {
     }
 
     private static String modifierPreview(ExperienceSettings settings) {
-        return "<html><b>Rules shown before launch</b><br>"
+        return "<html><b>Campaign difficulty is fixed</b><br>"
                 + String.join("<br>", settings.modifierSummaryLines())
                 + "</html>";
     }

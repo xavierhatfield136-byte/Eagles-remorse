@@ -46,9 +46,11 @@ class CampaignSaveCompatibilityContractTest {
         assertTrue(migrated.migrationApplied);
         assertEquals(1, migrated.sourceVersion);
         assertEquals(CampaignCheckpointStore.currentVersion(), migrated.version);
-        assertTrue(migrated.campaignFuel > 0);
-        assertTrue(migrated.campaignSupplies > 0);
-        assertTrue(migrated.campaignAmmo > 0);
+        assertTrue(migrated.campaignOre > 0);
+        assertEquals(0, migrated.campaignFuel);
+        assertEquals(0, migrated.campaignSupplies);
+        assertEquals(0, migrated.campaignAmmo);
+        assertTrue(migrated.migrationRepairs.contains("legacy resource conversion"));
         assertEquals("PLAYER", migrated.playerFactionName);
         assertEquals("BALANCED", migrated.branchRoute);
         assertArrayEquals(sourceBytes, Files.readAllBytes(SAVE),

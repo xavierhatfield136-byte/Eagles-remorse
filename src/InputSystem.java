@@ -18,6 +18,9 @@ public final class InputSystem {
                 CommSystem.adjustTradeQuantity(ctx, -rot);
                 return;
             }
+            if (UISystem.handleShopWheel(ctx, e, panel.viewportW(), panel.viewportH())) {
+                return;
+            }
             if (ctx.ui.mapOpen) {
                 if (UISystem.handleCampaignMapWheel(ctx, e, panel.viewportW(), panel.viewportH())) {
                     return;

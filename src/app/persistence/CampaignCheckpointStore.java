@@ -205,6 +205,7 @@ public final class CampaignCheckpointStore {
         public String strategicDivisions = "";
         public String campaignForces = "";
         public String shipCampaignForceIds = "";
+        public String shipCampaignProvenance = "";
         public long campaignIntelTick = 0L;
         public String campaignFleetIntel = "";
         public String campaignOperationIntel = "";
@@ -387,6 +388,7 @@ public final class CampaignCheckpointStore {
             strategicDivisions = (strategicDivisions == null) ? "" : strategicDivisions.trim();
             campaignForces = (campaignForces == null) ? "" : campaignForces.trim();
             shipCampaignForceIds = (shipCampaignForceIds == null) ? "" : shipCampaignForceIds.trim();
+            shipCampaignProvenance = (shipCampaignProvenance == null) ? "" : shipCampaignProvenance.trim();
             campaignIntelTick = Math.max(0L, campaignIntelTick);
             campaignFleetIntel = (campaignFleetIntel == null) ? "" : campaignFleetIntel.trim();
             campaignOperationIntel = (campaignOperationIntel == null) ? "" : campaignOperationIntel.trim();
@@ -621,6 +623,7 @@ public final class CampaignCheckpointStore {
                 cp.strategicDivisions = props.getProperty("strategicDivisions", cp.strategicDivisions);
                 cp.campaignForces = props.getProperty("campaignForces", cp.campaignForces);
                 cp.shipCampaignForceIds = props.getProperty("shipCampaignForceIds", cp.shipCampaignForceIds);
+                cp.shipCampaignProvenance = props.getProperty("shipCampaignProvenance", cp.shipCampaignProvenance);
                 cp.campaignIntelTick = parseLong(props, "campaignIntelTick", cp.campaignIntelTick);
                 cp.campaignFleetIntel = props.getProperty("campaignFleetIntel", cp.campaignFleetIntel);
                 cp.campaignOperationIntel = props.getProperty("campaignOperationIntel", cp.campaignOperationIntel);
@@ -811,6 +814,7 @@ public final class CampaignCheckpointStore {
         if (!props.containsKey("campaignForces")) {
             cp.campaignForces = "";
             cp.shipCampaignForceIds = "";
+            cp.shipCampaignProvenance = "";
             cp.nextCampaignForceId = 1;
             repairs.add("faction fleets");
         }
@@ -1061,6 +1065,7 @@ public final class CampaignCheckpointStore {
             props.setProperty("strategicDivisions", cp.strategicDivisions);
             props.setProperty("campaignForces", cp.campaignForces);
             props.setProperty("shipCampaignForceIds", cp.shipCampaignForceIds);
+            props.setProperty("shipCampaignProvenance", cp.shipCampaignProvenance);
             props.setProperty("campaignIntelTick", String.valueOf(cp.campaignIntelTick));
             props.setProperty("campaignFleetIntel", cp.campaignFleetIntel);
             props.setProperty("campaignOperationIntel", cp.campaignOperationIntel);
@@ -1168,13 +1173,19 @@ public final class CampaignCheckpointStore {
 
     public static void clear() {
         synchronized (IO_LOCK) {
+            clearPrimary();
+            clearDirectory(slotDir(), "slot_clear");
+            clearDirectory(autosaveDir(), "autosave_clear");
+        }
+    }
+
+    public static void clearPrimary() {
+        synchronized (IO_LOCK) {
             try {
                 Files.deleteIfExists(CHECKPOINT_FILE);
             } catch (IOException ex) {
                 ErrorLog.logException("[campaign] checkpoint_clear_failed path=" + CHECKPOINT_FILE, ex);
             }
-            clearDirectory(slotDir(), "slot_clear");
-            clearDirectory(autosaveDir(), "autosave_clear");
         }
     }
 

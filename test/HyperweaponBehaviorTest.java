@@ -2,6 +2,8 @@ import app.config.GameConfig;
 import app.config.GameMode;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -236,9 +238,20 @@ class HyperweaponBehaviorTest {
         Projectile shot = chargeAndFireSuperweapon(greenHyperweapon, target.x, target.y);
         PhaserBeam beam = assertInstanceOf(PhaserBeam.class, shot);
 
-        assertTrue(beam.length >= 1800.0);
+        assertEquals(Ship.UNIVERSAL_SPECIAL_WEAPON_RANGE, beam.length, 1e-6);
         assertTrue(beam.width >= 60.0);
         assertTrue(beam.damagePerSecond >= 300.0);
+    }
+
+    @Test
+    void npcSuperweaponAimCueUsesUniversalSpecialWeaponRange() throws Exception {
+        FleetShip greenHyperweapon = new FleetShip(ShipRole.HYPERWEAPON_TITAN, Faction.TEAM_C, 0.0, 0.0);
+
+        Method method = Renderer.class.getDeclaredMethod("npcSuperweaponCueLength", Ship.class);
+        method.setAccessible(true);
+        double cueLength = (double) method.invoke(null, greenHyperweapon);
+
+        assertEquals(Ship.UNIVERSAL_SPECIAL_WEAPON_RANGE, cueLength, 1e-6);
     }
 
     @Test

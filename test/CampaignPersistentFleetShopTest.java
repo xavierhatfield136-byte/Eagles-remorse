@@ -297,6 +297,33 @@ class CampaignPersistentFleetShopTest {
     }
 
     @Test
+    void fleetRefitWeaponChangesPersistThroughCheckpointRestore() throws Exception {
+        GameContext ctx = campaignShopContext(100_000, 20_000, 5, 5);
+        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.FRIGATE, 0, 0));
+
+        CampaignSystem.PersistentFleetEntry entry = ctx.campaign.persistentBlueFleet.get(0);
+        Ship ship = shipById(ctx, entry.activeShipId);
+        assertTrue(ship != null && !ship.turrets.isEmpty(), "commissioned frigate should have editable turrets");
+        int turretIndex = firstTurretNotKind(ship, Turret.Kind.MISSILE);
+        assertTrue(turretIndex >= 0, "fixture needs a non-missile turret to swap");
+
+        invokeUiPrivate("swapFleetTurretKind",
+                new Class<?>[]{GameContext.class, int.class, int.class, Turret.Kind.class},
+                ctx, ship.id, turretIndex, Turret.Kind.MISSILE);
+
+        assertTrue(entry.turretData.contains("MISSILE"),
+                "refit UI should snapshot turret edits onto the persistent fleet entry immediately");
+
+        CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(ctx, 6);
+        GameContext restored = campaignShopContext(0, 0, 5, 1);
+        assertTrue(applyCheckpoint(restored, checkpoint));
+
+        CampaignSystem.PersistentFleetEntry restoredEntry = restored.campaign.persistentBlueFleet.get(0);
+        assertTrue(restoredEntry.turretData.contains("MISSILE"),
+                "checkpoint restore should preserve per-ship refit turret data");
+    }
+
+    @Test
     void checkpointRestoreRetiresDuplicatePersistentTitanTypes() throws Exception {
         GameContext source = campaignShopContext(100_000, 20_000, 5, 9);
         CampaignSystem.addPersistentFleetEntry(source.campaign, ShipRole.TRANSPORT_TITAN, "Blue Transport Titan One", 0, Faction.ALLY);
@@ -368,6 +395,12 @@ class CampaignPersistentFleetShopTest {
         return method.invoke(null, args);
     }
 
+    private static Object invokeUiPrivate(String name, Class<?>[] signature, Object... args) throws Exception {
+        Method method = UISystem.class.getDeclaredMethod(name, signature);
+        method.setAccessible(true);
+        return method.invoke(null, args);
+    }
+
     private static long alliedRoleCount(GameContext ctx, ShipRole role) {
         return ctx.ships.stream()
                 .filter(ship -> ship != null
@@ -377,6 +410,21 @@ class CampaignPersistentFleetShopTest {
                         && !ship.dying
                         && ship.hp > 0)
                 .count();
+    }
+
+    private static Ship shipById(GameContext ctx, int shipId) {
+        for (Ship ship : ctx.ships) {
+            if (ship != null && ship.id == shipId) return ship;
+        }
+        return null;
+    }
+
+    private static int firstTurretNotKind(Ship ship, Turret.Kind kind) {
+        for (int i = 0; i < ship.turrets.size(); i++) {
+            Turret turret = ship.turrets.get(i);
+            if (turret != null && turret.kind != kind) return i;
+        }
+        return -1;
     }
 
     private static void setField(Object target, String name, Object value) throws Exception {

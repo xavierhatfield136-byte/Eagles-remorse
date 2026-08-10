@@ -29,7 +29,7 @@ public final class CarrierSystem {
     private static final double PD_ESCORT_RESPAWN_SECONDS = 9.0;
     private static final double PD_ESCORT_ANCHOR_RANGE = 360.0;
     private static final int STRIKE_WING_SIZE = 2;
-    private static final int STRIKE_SQUAD_SIZE = 2;
+    private static final int STRIKE_SQUAD_SIZE = 1;
     private static final double STRIKE_FORMATION_SPACING = 120.0;
     private static final double STRIKE_COHESION_RANGE = 420.0;
     private static final double BOMBER_ESCORT_RANGE = 360.0;

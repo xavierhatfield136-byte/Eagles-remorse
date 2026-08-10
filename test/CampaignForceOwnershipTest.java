@@ -82,6 +82,54 @@ class CampaignForceOwnershipTest {
     }
 
     @Test
+    void checkpointRoundTripPreservesAndMigratesShipProvenance() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+
+        CampaignSystem.update(ctx, 0.1);
+        CampaignSystem.inferMissingShipCampaignProvenance(ctx, st);
+        assertEquals(CampaignShipProvenance.PLAYER_ROSTER,
+                CampaignSystem.shipCampaignProvenance(ctx, st, ctx.player));
+
+        CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(ctx, 2);
+        assertFalse(checkpoint.shipCampaignProvenance.isBlank());
+
+        GameContext restored = initializedCampaignContext();
+        assertTrue(applyCheckpoint(restored, checkpoint));
+        assertEquals(CampaignShipProvenance.PLAYER_ROSTER,
+                CampaignSystem.shipCampaignProvenance(restored, restored.campaign, restored.player));
+
+        checkpoint.shipCampaignProvenance = "";
+        GameContext migrated = initializedCampaignContext();
+        assertTrue(applyCheckpoint(migrated, checkpoint));
+        assertEquals(CampaignShipProvenance.PLAYER_ROSTER,
+                CampaignSystem.shipCampaignProvenance(migrated, migrated.campaign, migrated.player),
+                "legacy checkpoints without the new field should infer active Blue roster provenance immediately");
+    }
+
+    @Test
+    void resumeRepairsOvermapCheckpointWithFalseModeFlag() {
+        CampaignSystem.CampaignState st = new CampaignSystem.CampaignState();
+        CampaignCheckpointStore.Checkpoint checkpoint = new CampaignCheckpointStore.Checkpoint();
+        checkpoint.nextSector = 15;
+        checkpoint.strategicOvermapMode = false;
+        checkpoint.currentGalaxyLocationId = "poi-01";
+        checkpoint.selectedGalaxyLocationId = "poi-02";
+        checkpoint.dockedGalaxyLocationId = "transit-31";
+        checkpoint.playerGalaxyX = 16481.0;
+        checkpoint.playerGalaxyY = 25417.0;
+        checkpoint.galaxyLocationStates = "poi-01|true|false|false";
+        checkpoint.campaignForces = "force-data-present";
+
+        assertTrue(CampaignSystem.shouldResumeCheckpointOnStrategicOvermap(checkpoint, st),
+                "resume should prefer the overworld when a save has real galaxy state even if the old mode flag is false");
+
+        checkpoint.galaxyEncounterActive = true;
+        assertFalse(CampaignSystem.shouldResumeCheckpointOnStrategicOvermap(checkpoint, st),
+                "active tactical encounters should not be force-converted to the overworld");
+    }
+
+    @Test
     void checkpointRoundTripPreservesCampaignClarityHistory() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;

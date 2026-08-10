@@ -1,5 +1,5 @@
 public enum ShopHullCategory {
-    ESCORT("ESCORT", "Patrol hulls, escorts, and light utility craft"),
+    ESCORT("PICKET", "Patrol hulls, escorts, and light utility craft"),
     LINE("LINE", "Frigates, cruisers, and logistics line hulls"),
     CAPITAL("CAPITAL", "Heavy capitals, carriers, and super-capitals"),
     TITAN("TITAN", "Titan command hulls and the Mothership");

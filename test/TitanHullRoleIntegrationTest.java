@@ -32,14 +32,14 @@ class TitanHullRoleIntegrationTest {
         FleetShip transportTitan = new FleetShip(ShipRole.TRANSPORT_TITAN, Faction.ALLY, 0, 0);
 
         assertTrue(carrierSupport.isCarrier);
-        assertTrue(carrierSupport.maxFighters >= 14);
+        assertTrue(carrierSupport.maxFighters >= 12);
         assertTrue(carrierSupport.repairRange >= 400.0);
 
         assertTrue(hyperweapon.hasSuperweapon);
         assertFalse(hyperweapon.isCarrier);
 
         assertTrue(mothership.isCarrier);
-        assertTrue(mothership.maxFighters >= 18);
+        assertTrue(mothership.maxFighters >= 10);
         assertTrue(mothership.repairRange >= 500.0);
         assertTrue(mothership.radius > carrierSupport.radius);
 
@@ -47,6 +47,23 @@ class TitanHullRoleIntegrationTest {
         assertTrue(transportTitan.cargoMax >= 900);
         assertTrue(transportTitan.repairShieldPerSec > 0.0);
     }
+
+    @Test
+    void strikeCraftRebalanceHalvesWingsAndDoublesCraftStats() {
+        FleetShip carrier = new FleetShip(ShipRole.CARRIER, Faction.ALLY, 0, 0);
+        FleetShip fighter = new FleetShip(ShipRole.FIGHTER, Faction.ALLY, 0, 0);
+        FleetShip bomber = new FleetShip(ShipRole.BOMBER, Faction.ALLY, 0, 0);
+        FleetShip drone = new FleetShip(ShipRole.DRONE, Faction.ALLY, 0, 0);
+
+        assertEquals(5, carrier.maxFighters);
+        assertEquals(2, fighter.hpMax);
+        assertEquals(2, bomber.hpMax);
+        assertEquals(2, drone.hpMax);
+        assertTrue(fighter.turrets.stream().allMatch(turret -> turret.damage >= 2));
+        assertTrue(bomber.turrets.stream().allMatch(turret -> turret.damage >= 2));
+        assertTrue(drone.turrets.stream().allMatch(turret -> turret.damage >= 2));
+    }
+
 
     @Test
     void titanHullSilhouettesResolveForLiveBlueSkins() {

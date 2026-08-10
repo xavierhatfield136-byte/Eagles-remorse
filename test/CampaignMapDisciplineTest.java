@@ -3,6 +3,7 @@ import app.config.GameMode;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -117,6 +118,101 @@ class CampaignMapDisciplineTest {
         CameraSystem.updateManualPan(ctx, 1.0);
 
         assertTrue(ctx.cameraOffsetX > 0.0, "battlefield-focused arrows should pan the camera");
+    }
+
+    @Test
+    void redMissionOuterThreatMarkersKeepRedFactionDespiteRecurringContact() throws Exception {
+        CampaignSystem.CampaignLocation kharon = new CampaignSystem.CampaignLocation(
+                "poi-14",
+                "Red Listening Bastion Kharon",
+                2400.0,
+                2100.0,
+                CampaignSystem.CampaignLocationType.MAIN_MISSION,
+                0.72f,
+                true,
+                14,
+                "Red Occupied Zone facility  |  hostile listening post");
+        kharon.ownerFaction = Faction.ENEMY;
+        kharon.recurringContactId = "MARR";
+        kharon.missionOuterThreatSuppression = 0.0;
+
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "missionOuterThreatMarkers", CampaignSystem.CampaignLocation.class);
+        method.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        List<CampaignSystem.CampaignSupportMarker> markers =
+                (List<CampaignSystem.CampaignSupportMarker>) method.invoke(null, kharon);
+
+        assertFalse(markers.isEmpty(), "Kharon should emit outer-threat support markers");
+        assertTrue(markers.stream().allMatch(marker -> marker.faction == Faction.ENEMY),
+                "red-owned mission screens should remain red even when a yellow recurring contact exists");
+    }
+
+    @Test
+    void edgeNonMissionFortressAnchorsAreDemotedAndRoamersMoveInward() throws Exception {
+        GameContext ctx = strategicMapContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation left = new CampaignSystem.CampaignLocation(
+                "aoi-edge-fort",
+                "Red Edge Fort",
+                50.0,
+                2200.0,
+                CampaignSystem.CampaignLocationType.ENEMY_ACTIVITY,
+                0.72f,
+                false,
+                0,
+                "Non-mission edge fleet magnet");
+        left.facilityType = CampaignSystem.CampaignFacilityType.FORTRESS;
+        left.canSpawnFleets = true;
+        left.strategicValue = 5;
+        CampaignSystem.CampaignLocation center = new CampaignSystem.CampaignLocation(
+                "aoi-center",
+                "Center Reference",
+                2500.0,
+                2200.0,
+                CampaignSystem.CampaignLocationType.STORY_EVENT,
+                0.2f,
+                false,
+                0,
+                "Reference point");
+        CampaignSystem.CampaignLocation right = new CampaignSystem.CampaignLocation(
+                "aoi-right-reference",
+                "Right Reference",
+                4950.0,
+                2200.0,
+                CampaignSystem.CampaignLocationType.STORY_EVENT,
+                0.2f,
+                false,
+                0,
+                "Reference point");
+        st.galaxyAreasOfInterest.add(left);
+        st.galaxyAreasOfInterest.add(center);
+        st.galaxyAreasOfInterest.add(right);
+        CampaignSystem.GalaxySearchGroup roam = new CampaignSystem.GalaxySearchGroup(
+                77,
+                "Open-Space Edge Roamer",
+                80.0,
+                2100.0,
+                100.0,
+                300.0,
+                180.0,
+                0.7f,
+                CampaignSystem.CampaignLocationType.ENEMY_ACTIVITY,
+                4);
+        roam.anchorLocationId = "roam-poi-19";
+        roam.behavior = CampaignSystem.GalaxySearchBehavior.GUARDING;
+        st.galaxySearchGroups.add(roam);
+
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "sanitizeEdgeFleetFortressAnchors", GameContext.class, CampaignSystem.CampaignState.class);
+        method.setAccessible(true);
+        method.invoke(null, ctx, st);
+
+        assertEquals(CampaignSystem.CampaignFacilityType.LISTENING_POST, left.facilityType);
+        assertFalse(left.canSpawnFleets);
+        assertTrue(left.strategicValue <= 2);
+        assertTrue(roam.x > 300.0, "edge roaming search groups should be moved inward");
+        assertEquals(CampaignSystem.GalaxySearchBehavior.SEARCHING, roam.behavior);
     }
 
     private static GameContext strategicMapContext() {

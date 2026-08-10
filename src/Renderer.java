@@ -58,6 +58,17 @@ public class Renderer {
     private static int frameSimplifiedProjectiles = 0;
     private static final Map<String, BufferedImage> HUD_FRAME_CACHE = new BoundedCache<>(96);
     private static final Map<String, BufferedImage> SPACE_BACKGROUND_CACHE = new BoundedCache<>(12);
+    private static final Map<String, BufferedImage> SHIP_PREVIEW_THUMBNAIL_CACHE = new BoundedCache<>(192);
+    private static final int UI_PAD_SMALL = 6;
+    private static final int UI_PAD = 10;
+    private static final int UI_PAD_LARGE = 16;
+    private static final int UI_SECTION_GAP = 14;
+    private static final int UI_ROW_GAP = 8;
+    private static final int UI_TAB_HEIGHT = 28;
+    private static final int UI_BUTTON_HEIGHT = 26;
+    private static final int UI_FOOTER_HEIGHT = 28;
+    private static final double POPUP_FRAME_SCALE = 1.20;
+    private static final int POPUP_FRAME_MARGIN = 4;
 
     private static double animationTimeSeconds() {
         String override = System.getProperty("game.renderTimeSeconds", "").trim();
@@ -247,7 +258,9 @@ public class Renderer {
         public enum Kind {
             MODE_COMMISSION,
             MODE_REFIT,
+            SET_REFIT_FILTER,
             SELECT_SHIP,
+            SELECT_LOADOUT_GROUP,
             SELECT_TURRET,
             SWAP_TO_GUN,
             SWAP_TO_MISSILE,
@@ -258,12 +271,21 @@ public class Renderer {
         public final int shipId;
         public final int turretIndex;
         public final Turret.MissileRole missileRole;
+        public final RefitHullFilter refitFilter;
+        public final int loadoutGroup;
 
         public FleetOverlayClickTarget(Kind kind, int shipId, int turretIndex, Turret.MissileRole missileRole) {
+            this(kind, shipId, turretIndex, missileRole, null, -1);
+        }
+
+        public FleetOverlayClickTarget(Kind kind, int shipId, int turretIndex, Turret.MissileRole missileRole,
+                                       RefitHullFilter refitFilter, int loadoutGroup) {
             this.kind = kind;
             this.shipId = shipId;
             this.turretIndex = turretIndex;
             this.missileRole = missileRole;
+            this.refitFilter = refitFilter;
+            this.loadoutGroup = loadoutGroup;
         }
     }
 
@@ -601,14 +623,16 @@ public class Renderer {
     public static Rectangle getStrategicMapRect(int viewW, int viewH) {
         int padX = Math.max(10, viewW / 90);
         int padY = Math.max(10, viewH / 85);
-        return new Rectangle(padX, padY, Math.max(320, viewW - padX * 2), Math.max(240, viewH - padY * 2));
+        Rectangle base = new Rectangle(padX, padY, Math.max(320, viewW - padX * 2), Math.max(240, viewH - padY * 2));
+        return expandPopupFrameRect(base, viewW, viewH);
     }
 
     public static Rectangle getStrategicMapRect(int viewW, int viewH, boolean galaxyMode) {
         if (!galaxyMode) return getStrategicMapRect(viewW, viewH);
         int padX = Math.max(14, viewW / 80);
         int padY = Math.max(12, viewH / 70);
-        return new Rectangle(padX, padY, Math.max(320, viewW - padX * 2), Math.max(240, viewH - padY * 2));
+        Rectangle base = new Rectangle(padX, padY, Math.max(320, viewW - padX * 2), Math.max(240, viewH - padY * 2));
+        return expandPopupFrameRect(base, viewW, viewH);
     }
 
     public static Rectangle getStrategicMapInnerRect(int viewW, int viewH) {
@@ -674,7 +698,7 @@ public class Renderer {
         int h = Math.min(Math.min(780, viewH - padY * 2), Math.max(620, viewH - padY * 2));
         int x = (viewW - w) / 2;
         int y = Math.max(4, (viewH - h) / 2);
-        return new Rectangle(x, y, w, h);
+        return expandPopupFrameRect(new Rectangle(x, y, w, h), viewW, viewH);
     }
 
     public static int shopHullPageCount(ShopHullCategory category) {
@@ -782,28 +806,28 @@ public class Renderer {
 
     private static Rectangle getFleetCapUpgradeButtonRect(Rectangle panel, int idx) {
         if (panel == null) return new Rectangle();
-        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
+        Rectangle inner = framedSafeContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
         int buttonW = 240;
         int buttonH = 28;
         int gap = 16;
         int x = inner.x + idx * (buttonW + gap);
-        int y = inner.y + 116;
+        int y = shopBodyTop(panel) - buttonH - UI_ROW_GAP;
         return new Rectangle(x, y, buttonW, buttonH);
     }
 
     private static Rectangle getFleetEditorShipListRect(Rectangle panel) {
         if (panel == null) return new Rectangle();
-        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
+        Rectangle inner = framedSafeContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
         int x = inner.x;
-        int y = inner.y + 44;
-        int w = Math.min(268, Math.max(228, inner.width / 4));
-        int h = Math.max(160, inner.y + inner.height - y - 28);
+        int y = fleetEditorBodyTop(panel);
+        int w = Math.min(292, Math.max(242, inner.width / 4));
+        int h = Math.max(160, fleetEditorFooterTop(panel) - y - UI_ROW_GAP);
         return new Rectangle(x, y, w, h);
     }
 
     private static Rectangle getFleetEditorEditorRect(Rectangle panel, Rectangle shipList) {
         if (panel == null || shipList == null) return new Rectangle();
-        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
+        Rectangle inner = framedSafeContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
         int x = shipList.x + shipList.width + 18;
         int y = shipList.y;
         int w = (inner.x + inner.width) - x;
@@ -811,11 +835,53 @@ public class Renderer {
         return new Rectangle(x, y, Math.max(240, w), h);
     }
 
+    private static Rectangle getFleetEditorPreviewRect(Rectangle editor) {
+        if (editor == null) return new Rectangle();
+        int loadoutW = Math.min(330, Math.max(270, editor.width / 3));
+        return new Rectangle(editor.x, editor.y, Math.max(260, editor.width - loadoutW - 16), editor.height);
+    }
+
+    private static Rectangle getFleetEditorLoadoutRect(Rectangle editor) {
+        if (editor == null) return new Rectangle();
+        int loadoutW = Math.min(330, Math.max(270, editor.width / 3));
+        return new Rectangle(editor.x + editor.width - loadoutW, editor.y, loadoutW, editor.height);
+    }
+
+    private static Rectangle getFleetRefitFilterTabRect(Rectangle panel, RefitHullFilter filter) {
+        if (panel == null || filter == null) return new Rectangle();
+        Rectangle inner = framedSafeContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
+        RefitHullFilter[] filters = RefitHullFilter.values();
+        int gap = 8;
+        int h = UI_TAB_HEIGHT;
+        int y = inner.y + 34;
+        int w = Math.min(104, Math.max(74, (inner.width - 260 - gap * (filters.length - 1)) / filters.length));
+        int idx = Math.max(0, filter.ordinal());
+        return new Rectangle(inner.x + idx * (w + gap), y, w, h);
+    }
+
+    private static int fleetEditorBodyTop(Rectangle panel) {
+        if (panel == null) return 0;
+        Rectangle inner = framedSafeContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
+        return inner.y + 34 + UI_TAB_HEIGHT + UI_SECTION_GAP;
+    }
+
+    private static int fleetEditorFooterTop(Rectangle panel) {
+        if (panel == null) return 0;
+        Rectangle inner = framedSafeContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
+        return inner.y + inner.height - UI_FOOTER_HEIGHT;
+    }
+
     private static List<Ship> fleetEditorShips(GameContext ctx) {
+        return fleetEditorShips(ctx, RefitHullFilter.ALL);
+    }
+
+    private static List<Ship> fleetEditorShips(GameContext ctx, RefitHullFilter filter) {
         ArrayList<Ship> out = new ArrayList<>();
         if (ctx == null || ctx.ships == null) return out;
+        RefitHullFilter resolved = (filter == null) ? RefitHullFilter.ALL : filter;
         for (Ship s : ctx.ships) {
-            if (!CampaignSystem.isFleetSelectionCandidate(ctx, s)) continue;
+            if (!CampaignSystem.isFleetRefitEditableCandidate(ctx, s)) continue;
+            if (!resolved.matches(s.role)) continue;
             out.add(s);
         }
         // Stable ordering: flagship first, then by role + id.
@@ -829,6 +895,104 @@ public class Renderer {
             int ib = (b == null) ? 0 : b.id;
             return Integer.compare(ia, ib);
         });
+        return out;
+    }
+
+    public static boolean fleetRefitShipListContains(int viewW, int viewH, int mouseX, int mouseY) {
+        Rectangle panel = getShopOverlayRect(viewW, viewH);
+        return getFleetEditorShipListRect(panel).contains(mouseX, mouseY);
+    }
+
+    public static boolean fleetRefitSlotListContains(int viewW, int viewH, int mouseX, int mouseY) {
+        Rectangle panel = getShopOverlayRect(viewW, viewH);
+        Rectangle shipList = getFleetEditorShipListRect(panel);
+        Rectangle editor = getFleetEditorEditorRect(panel, shipList);
+        Rectangle loadout = getFleetEditorLoadoutRect(editor);
+        return getFleetRefitSlotListRect(loadout).contains(mouseX, mouseY);
+    }
+
+    public static int fleetRefitShipMaxScroll(GameContext ctx, UiState ui, int viewW, int viewH) {
+        Rectangle panel = getShopOverlayRect(viewW, viewH);
+        Rectangle shipList = getFleetEditorShipListRect(panel);
+        List<Ship> ships = fleetEditorShips(ctx, (ui == null) ? RefitHullFilter.ALL : ui.fleetRefitFilter);
+        return Math.max(0, ships.size() - fleetRefitShipVisibleRows(shipList));
+    }
+
+    public static int fleetRefitSlotMaxScroll(GameContext ctx, UiState ui, int viewW, int viewH) {
+        Ship selected = selectedFleetEditorShip(ctx, ui);
+        if (selected == null) return 0;
+        Rectangle panel = getShopOverlayRect(viewW, viewH);
+        Rectangle shipList = getFleetEditorShipListRect(panel);
+        Rectangle editor = getFleetEditorEditorRect(panel, shipList);
+        Rectangle loadout = getFleetEditorLoadoutRect(editor);
+        int group = (ui == null) ? 0 : MathUtil.clamp(ui.fleetRefitLoadoutGroup, 0, 2);
+        return Math.max(0, selectedTurretIndexesForGroup(selected, group).size()
+                - fleetRefitSlotVisibleRows(getFleetRefitSlotListRect(loadout)));
+    }
+
+    private static int fleetRefitShipVisibleRows(Rectangle shipList) {
+        return Math.max(0, (shipList.height - 34) / 58);
+    }
+
+    private static int fleetRefitSlotVisibleRows(Rectangle slotList) {
+        return Math.max(0, (slotList.height - 30) / 46);
+    }
+
+    private static Rectangle getFleetRefitSlotListRect(Rectangle loadout) {
+        if (loadout == null) return new Rectangle();
+        return new Rectangle(loadout.x + 10, loadout.y + 154, loadout.width - 20,
+                Math.max(96, loadout.height - 154 - 150));
+    }
+
+    private static Rectangle getFleetLoadoutGroupRect(Rectangle loadout, int group) {
+        if (loadout == null) return new Rectangle();
+        return new Rectangle(loadout.x + 10, loadout.y + 48 + Math.max(0, group) * 32,
+                loadout.width - 20, 26);
+    }
+
+    private static Rectangle getFleetEquipmentEditorRect(Rectangle loadout) {
+        if (loadout == null) return new Rectangle();
+        return new Rectangle(loadout.x + 10, loadout.y + loadout.height - 132,
+                loadout.width - 20, 122);
+    }
+
+    private static Rectangle getFleetSwapButtonRect(Rectangle editor) {
+        if (editor == null) return new Rectangle();
+        return new Rectangle(editor.x + 8, editor.y + editor.height - 34, 128, 26);
+    }
+
+    private static Rectangle getFleetMissileRoleButtonRect(Rectangle editor, int index) {
+        if (editor == null) return new Rectangle();
+        int gap = 6;
+        int x = editor.x + 144;
+        int usable = Math.max(80, editor.width - 152);
+        int w = Math.max(58, (usable - gap * 3) / 4);
+        return new Rectangle(x + Math.max(0, index) * (w + gap), editor.y + editor.height - 34, w, 26);
+    }
+
+    private static Ship selectedFleetEditorShip(GameContext ctx, UiState ui) {
+        RefitHullFilter filter = (ui == null || ui.fleetRefitFilter == null)
+                ? RefitHullFilter.ALL
+                : ui.fleetRefitFilter;
+        List<Ship> ships = fleetEditorShips(ctx, filter);
+        if (ui != null && ui.fleetSelectedShipId > 0) {
+            for (Ship ship : ships) {
+                if (ship != null && ship.id == ui.fleetSelectedShipId) return ship;
+            }
+        }
+        return ships.isEmpty() ? null : ships.get(0);
+    }
+
+    private static List<Integer> selectedTurretIndexesForGroup(Ship ship, int group) {
+        ArrayList<Integer> out = new ArrayList<>();
+        if (ship == null || ship.turrets == null) return out;
+        int resolved = MathUtil.clamp(group, 0, 2);
+        for (int i = 0; i < ship.turrets.size(); i++) {
+            Turret turret = ship.turrets.get(i);
+            if (turret == null) continue;
+            if (resolved == 0 && turret.kind == Turret.Kind.GUN) out.add(i);
+            if (resolved == 1 && turret.kind == Turret.Kind.MISSILE) out.add(i);
+        }
         return out;
     }
 
@@ -852,56 +1016,54 @@ public class Renderer {
         if (ui == null || !ui.fleetRefitMode) return null;
         if (ctx == null || ctx.ships == null) return null;
 
+        for (RefitHullFilter filter : RefitHullFilter.values()) {
+            Rectangle tab = getFleetRefitFilterTabRect(panel, filter);
+            if (tab.contains(mouseX, mouseY)) {
+                return new FleetOverlayClickTarget(
+                        FleetOverlayClickTarget.Kind.SET_REFIT_FILTER, -1, -1, null, filter, -1);
+            }
+        }
+
         Rectangle shipList = getFleetEditorShipListRect(panel);
         Rectangle editor = getFleetEditorEditorRect(panel, shipList);
+        Rectangle loadout = getFleetEditorLoadoutRect(editor);
 
         // Ship selection list (left)
-        List<Ship> ships = fleetEditorShips(ctx);
-        int headerH = 22;
-        int rowH = 18;
-        int startY = shipList.y + headerH + 4;
-        int maxRows = Math.max(0, (shipList.height - headerH - 10) / rowH);
-        for (int i = 0; i < ships.size() && i < maxRows; i++) {
-            int ry = startY + i * rowH;
-            Rectangle row = new Rectangle(shipList.x + 6, ry - rowH + 4, shipList.width - 12, rowH);
+        List<Ship> ships = fleetEditorShips(ctx, ui.fleetRefitFilter);
+        int rowH = 58;
+        int visibleShips = fleetRefitShipVisibleRows(shipList);
+        int shipScroll = MathUtil.clamp(ui.fleetRefitShipScroll, 0, Math.max(0, ships.size() - visibleShips));
+        for (int i = 0; i < visibleShips && i + shipScroll < ships.size(); i++) {
+            int ry = shipList.y + 30 + i * rowH;
+            Rectangle row = new Rectangle(shipList.x + 6, ry, shipList.width - 12, rowH - 8);
             if (row.contains(mouseX, mouseY)) {
-                Ship s = ships.get(i);
+                Ship s = ships.get(i + shipScroll);
                 if (s != null) return new FleetOverlayClickTarget(FleetOverlayClickTarget.Kind.SELECT_SHIP, s.id, -1, null);
             }
         }
 
         // Selected ship context for turret clicks (right)
-        Ship selected = null;
-        if (ui.fleetSelectedShipId > 0) {
-            for (Ship s : ships) {
-                if (s != null && s.id == ui.fleetSelectedShipId) {
-                    selected = s;
-                    break;
-                }
-            }
-        }
-        if (selected == null && !ships.isEmpty()) selected = ships.get(0);
+        Ship selected = selectedFleetEditorShip(ctx, ui);
         if (selected == null) return null;
 
-        int editorHeaderH = 72;
-        int controlsH = 92;
-        int turretRowH = 18;
-        Rectangle turretList = new Rectangle(
-                editor.x + 6,
-                editor.y + editorHeaderH,
-                editor.width - 12,
-                Math.max(80, editor.height - editorHeaderH - controlsH - 8));
-        Rectangle controls = new Rectangle(
-                editor.x + 6,
-                turretList.y + turretList.height + 8,
-                editor.width - 12,
-                Math.max(60, editor.y + editor.height - (turretList.y + turretList.height + 8)));
+        for (int i = 0; i < 3; i++) {
+            Rectangle group = getFleetLoadoutGroupRect(loadout, i);
+            if (group.contains(mouseX, mouseY)) {
+                return new FleetOverlayClickTarget(
+                        FleetOverlayClickTarget.Kind.SELECT_LOADOUT_GROUP, selected.id, -1, null, null, i);
+            }
+        }
 
         // Turret row selection
+        Rectangle turretList = getFleetRefitSlotListRect(loadout);
         if (turretList.contains(mouseX, mouseY)) {
-            int idx = (mouseY - (turretList.y + 16)) / turretRowH;
-            if (idx >= 0 && idx < selected.turrets.size()) {
-                return new FleetOverlayClickTarget(FleetOverlayClickTarget.Kind.SELECT_TURRET, selected.id, idx, null);
+            List<Integer> indexes = selectedTurretIndexesForGroup(selected, ui.fleetRefitLoadoutGroup);
+            int visibleSlots = fleetRefitSlotVisibleRows(turretList);
+            int slotScroll = MathUtil.clamp(ui.fleetRefitSlotScroll, 0, Math.max(0, indexes.size() - visibleSlots));
+            int row = (mouseY - (turretList.y + 26)) / 46;
+            if (row >= 0 && row < visibleSlots && row + slotScroll < indexes.size()) {
+                return new FleetOverlayClickTarget(
+                        FleetOverlayClickTarget.Kind.SELECT_TURRET, selected.id, indexes.get(row + slotScroll), null);
             }
         }
 
@@ -909,8 +1071,9 @@ public class Renderer {
         int ti = ui.fleetSelectedTurretIndex;
         if (ti >= 0 && ti < selected.turrets.size()) {
             Turret t = selected.turrets.get(ti);
+            Rectangle controls = getFleetEquipmentEditorRect(loadout);
             if (t != null && controls.contains(mouseX, mouseY)) {
-                Rectangle swap = new Rectangle(controls.x + 8, controls.y + 24, 136, 24);
+                Rectangle swap = getFleetSwapButtonRect(controls);
                 if (swap.contains(mouseX, mouseY)) {
                     boolean toMissile = (t.kind == Turret.Kind.GUN);
                     return new FleetOverlayClickTarget(
@@ -919,11 +1082,6 @@ public class Renderer {
                 }
 
                 if (t.kind == Turret.Kind.MISSILE) {
-                    int bx = controls.x + 158;
-                    int by = controls.y + 24;
-                    int bw = 110;
-                    int bh = 24;
-                    int gap = 8;
                     Turret.MissileRole[] roles = new Turret.MissileRole[]{
                             Turret.MissileRole.INTERCEPT,
                             Turret.MissileRole.ANTI_LIGHT,
@@ -931,7 +1089,7 @@ public class Renderer {
                             Turret.MissileRole.ANTI_HEAVY
                     };
                     for (int i = 0; i < roles.length; i++) {
-                        Rectangle b = new Rectangle(bx + i * (bw + gap), by, bw, bh);
+                        Rectangle b = getFleetMissileRoleButtonRect(controls, i);
                         if (b.contains(mouseX, mouseY)) {
                             return new FleetOverlayClickTarget(FleetOverlayClickTarget.Kind.SET_MISSILE_ROLE, selected.id, ti, roles[i]);
                         }
@@ -1565,43 +1723,61 @@ public class Renderer {
         }
         if (!ctx.ui.fleetRefitMode) return null;
 
-        List<Ship> ships = fleetEditorShips(ctx);
+        for (RefitHullFilter filter : RefitHullFilter.values()) {
+            Rectangle tab = getFleetRefitFilterTabRect(panel, filter);
+            if (tab.contains(mouseX, mouseY)) {
+                return new HoverTooltip("fleet:filter:" + filter.name(), filter.label(),
+                        filter == RefitHullFilter.ALL
+                                ? "Show every editable fleet hull."
+                                : "Show hulls whose canonical fleet band matches " + filter.label() + ".");
+            }
+        }
+
+        RefitHullFilter activeFilter = (ctx.ui.fleetRefitFilter == null) ? RefitHullFilter.ALL : ctx.ui.fleetRefitFilter;
+        List<Ship> ships = fleetEditorShips(ctx, activeFilter);
         Rectangle shipList = getFleetEditorShipListRect(panel);
-        int headerH = 22;
-        int rowH = 18;
-        int startY = shipList.y + headerH + 4;
-        int maxRows = Math.max(0, (shipList.height - headerH - 10) / rowH);
-        for (int i = 0; i < ships.size() && i < maxRows; i++) {
-            Rectangle row = new Rectangle(shipList.x + 6, startY + i * rowH - rowH + 4, shipList.width - 12, rowH);
+        int rowH = 58;
+        int visibleShips = fleetRefitShipVisibleRows(shipList);
+        int shipScroll = MathUtil.clamp(ctx.ui.fleetRefitShipScroll, 0, Math.max(0, ships.size() - visibleShips));
+        for (int i = 0; i < visibleShips && i + shipScroll < ships.size(); i++) {
+            Rectangle row = new Rectangle(shipList.x + 6, shipList.y + 30 + i * rowH, shipList.width - 12, rowH - 8);
             if (!row.contains(mouseX, mouseY)) continue;
-            Ship ship = ships.get(i);
+            Ship ship = ships.get(i + shipScroll);
             if (ship == null) break;
             String shipName = (ship.name == null || ship.name.isBlank()) ? shopRoleTitle(ship.role) : ship.name;
             return new HoverTooltip("fleet:ship:" + ship.id, shipName,
                     "Select this hull for refit. Current fit: " + ship.turrets.size() + " mounts, hull " + ship.hp + "/" + ship.hpMax + ".");
         }
 
-        Ship selected = null;
-        if (ctx.ui.fleetSelectedShipId > 0) {
-            for (Ship ship : ships) {
-                if (ship != null && ship.id == ctx.ui.fleetSelectedShipId) {
-                    selected = ship;
-                    break;
-                }
-            }
-        }
-        if (selected == null && !ships.isEmpty()) selected = ships.get(0);
+        Ship selected = selectedFleetEditorShip(ctx, ctx.ui);
         if (selected == null) return null;
 
         Rectangle editor = getFleetEditorEditorRect(panel, shipList);
-        Rectangle turretList = new Rectangle(editor.x + 6, editor.y + 72, editor.width - 12, Math.max(80, editor.height - 72 - 92 - 8));
+        Rectangle loadout = getFleetEditorLoadoutRect(editor);
+        for (int i = 0; i < 3; i++) {
+            Rectangle group = getFleetLoadoutGroupRect(loadout, i);
+            if (!group.contains(mouseX, mouseY)) continue;
+            String[] titles = {"Guns", "Missiles", "Defense"};
+            String[] bodies = {
+                    "Show direct-fire weapon turrets on the selected ship.",
+                    "Show missile racks and their target-role packages.",
+                    defenseSummary(selected)
+            };
+            return new HoverTooltip("fleet:loadout:" + i, titles[i], bodies[i]);
+        }
+
+        Rectangle turretList = getFleetRefitSlotListRect(loadout);
         if (turretList.contains(mouseX, mouseY)) {
-            int idx = (mouseY - (turretList.y + 16)) / 18;
-            if (idx >= 0 && idx < selected.turrets.size()) {
+            List<Integer> indexes = selectedTurretIndexesForGroup(selected, ctx.ui.fleetRefitLoadoutGroup);
+            int visibleSlots = fleetRefitSlotVisibleRows(turretList);
+            int slotScroll = MathUtil.clamp(ctx.ui.fleetRefitSlotScroll, 0, Math.max(0, indexes.size() - visibleSlots));
+            int row = (mouseY - (turretList.y + 26)) / 46;
+            if (row >= 0 && row < visibleSlots && row + slotScroll < indexes.size()) {
+                int idx = indexes.get(row + slotScroll);
                 Turret turret = selected.turrets.get(idx);
                 if (turret != null) {
-                    return new HoverTooltip("fleet:turret:" + idx, "Turret " + (idx + 1),
-                            "Selected mount: " + turret.kind.name() + ". Click to edit this turret's mount type and doctrine.");
+                    return new HoverTooltip("fleet:turret:" + idx, turretSlotLabel(turret, idx),
+                            turretDisplayName(turret) + ". Click to edit this slot.");
                 }
             }
         }
@@ -1609,12 +1785,11 @@ public class Renderer {
         int ti = ctx.ui.fleetSelectedTurretIndex;
         if (ti >= 0 && ti < selected.turrets.size()) {
             Turret turret = selected.turrets.get(ti);
-            Rectangle controls = new Rectangle(editor.x + 6, turretList.y + turretList.height + 8, editor.width - 12,
-                    Math.max(60, editor.y + editor.height - (turretList.y + turretList.height + 8)));
-            Rectangle swap = new Rectangle(controls.x + 8, controls.y + 24, 136, 24);
+            Rectangle controls = getFleetEquipmentEditorRect(loadout);
+            Rectangle swap = getFleetSwapButtonRect(controls);
             if (swap.contains(mouseX, mouseY)) {
                 boolean toMissile = turret != null && turret.kind == Turret.Kind.GUN;
-                return new HoverTooltip("fleet:swap", toMissile ? "Swap To Missile" : "Swap To Gun",
+                return new HoverTooltip("fleet:swap", toMissile ? "Install Missile Rack" : "Install Gun",
                         toMissile
                                 ? "Convert the selected mount into a missile rack so this hull can threaten targets at standoff range."
                                 : "Convert the selected missile rack back into a gun mount for direct-fire pressure.");
@@ -1633,9 +1808,8 @@ public class Renderer {
                         "Bias the rack toward line ships and medium combatants.",
                         "Bias the rack toward capitals and the heaviest available targets."
                 };
-                int bx = controls.x + 158;
                 for (int i = 0; i < roles.length; i++) {
-                    Rectangle rect = new Rectangle(bx + i * 118, controls.y + 24, 110, 24);
+                    Rectangle rect = getFleetMissileRoleButtonRect(controls, i);
                     if (rect.contains(mouseX, mouseY)) {
                         return new HoverTooltip("fleet:role:" + roles[i].name(), labels[i], bodies[i]);
                     }
@@ -1672,12 +1846,9 @@ public class Renderer {
 
     private static HoverTooltip powerManagementHoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
         if (ctx == null || ctx.player == null) return null;
-        int w = Math.min(1040, Math.max(640, viewW - 32));
-        int h = Math.min(660, Math.max(540, viewH - 32));
-        int x = (viewW - w) / 2;
-        int y = Math.max(8, (viewH - h) / 2);
-        if (!new Rectangle(x, y, w, h).contains(mouseX, mouseY)) return null;
-        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
+        Rectangle panel = powerManagementPanelRect(viewW, viewH);
+        if (!panel.contains(mouseX, mouseY)) return null;
+        Rectangle inner = framedSafeContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
 
         String[] titles = {"Propulsion", "Shield", "Tactical", "Sensor", "Engineering", "Supercharge"};
         String[] bodies = {
@@ -1688,7 +1859,7 @@ public class Renderer {
                 "Controls repair throughput and ship survivability under load.",
                 "Controls superweapon recharge tempo and burst readiness."
         };
-        int rowY = inner.y + 66;
+        int rowY = powerBusStartY(inner);
         for (int i = 0; i < titles.length; i++) {
             Rectangle row = new Rectangle(inner.x, rowY + i * 28 - 2, inner.width, 22);
             if (!row.contains(mouseX, mouseY)) continue;
@@ -1697,6 +1868,19 @@ public class Renderer {
         }
         return new HoverTooltip("power:panel", "Power Management",
                 "Hover a bus row to read its role. This panel lets you redistribute the flagship power budget and preview the resulting combat tradeoffs.");
+    }
+
+    private static Rectangle powerManagementPanelRect(int viewW, int viewH) {
+        int w = Math.min(1040, Math.max(640, viewW - 32));
+        int h = Math.min(660, Math.max(540, viewH - 32));
+        int x = (viewW - w) / 2;
+        int y = Math.max(8, (viewH - h) / 2);
+        return expandPopupFrameRect(new Rectangle(x, y, w, h), viewW, viewH);
+    }
+
+    private static int powerBusStartY(Rectangle safeContent) {
+        if (safeContent == null) return 0;
+        return safeContent.y + 22 + UI_ROW_GAP + 2 * 16 + UI_SECTION_GAP;
     }
 
     private static HoverTooltip flightDeckHoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
@@ -1725,18 +1909,15 @@ public class Renderer {
 
     private static HoverTooltip crewStationsHoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
         if (ctx == null || ctx.player == null) return null;
-        int w = Math.min(1160, Math.max(860, viewW - 32));
-        int h = Math.min(680, Math.max(580, viewH - 32));
-        int x = (viewW - w) / 2;
-        int y = Math.max(8, (viewH - h) / 2);
-        if (!new Rectangle(x, y, w, h).contains(mouseX, mouseY)) return null;
-        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
+        Rectangle panel = crewStationsPanelRect(viewW, viewH);
+        if (!panel.contains(mouseX, mouseY)) return null;
+        Rectangle inner = framedSafeContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
 
         int portraitPaneW = 232;
         int panelX = inner.x + portraitPaneW + 14;
         int panelW = inner.x + inner.width - panelX;
         int tabX = panelX + 8;
-        int tabY = inner.y + 36;
+        int tabY = crewTabsY(inner);
         int tabGap = 8;
         int stationCount = GameContext.CrewStation.values().length;
         int tw = Math.max(104, (panelW - 16 - tabGap * (stationCount - 1)) / stationCount);
@@ -1756,6 +1937,19 @@ public class Renderer {
             tabX += tw + tabGap;
         }
         return null;
+    }
+
+    private static Rectangle crewStationsPanelRect(int viewW, int viewH) {
+        int w = Math.min(1160, Math.max(860, viewW - 32));
+        int h = Math.min(680, Math.max(580, viewH - 32));
+        int x = (viewW - w) / 2;
+        int y = Math.max(8, (viewH - h) / 2);
+        return expandPopupFrameRect(new Rectangle(x, y, w, h), viewW, viewH);
+    }
+
+    private static int crewTabsY(Rectangle safeContent) {
+        if (safeContent == null) return 0;
+        return safeContent.y + 22 + UI_ROW_GAP + 16 + UI_SECTION_GAP;
     }
 
     private static HoverTooltip shipHoverTooltipAt(GameContext ctx) {
@@ -1803,7 +1997,7 @@ public class Renderer {
         int h = Math.min(440, Math.max(360, viewH - 80));
         int x = Math.max(pad, viewW - w - pad);
         int y = Math.max(16, (viewH - h) / 2);
-        return new Rectangle(x, y, w, h);
+        return expandPopupFrameRect(new Rectangle(x, y, w, h), viewW, viewH);
     }
 
     private static java.util.List<String> wrapTooltipLines(FontMetrics metrics, String raw, int maxWidth) {
@@ -2221,22 +2415,34 @@ public class Renderer {
     }
 
     private static Rectangle getShopUpgradeArea(Rectangle panel) {
-        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
+        Rectangle inner = framedSafeContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
         int x = inner.x;
-        int y = inner.y + 116;
+        int y = shopBodyTop(panel);
         int w = Math.min(404, Math.max(332, (int) Math.round(inner.width * 0.34)));
-        int h = Math.max(260, inner.y + inner.height - y - 34);
+        int h = Math.max(260, shopFooterTop(panel) - y - UI_ROW_GAP);
         return new Rectangle(x, y, w, h);
     }
 
     private static Rectangle getShopHullArea(Rectangle panel) {
         Rectangle upgrades = getShopUpgradeArea(panel);
-        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
+        Rectangle inner = framedSafeContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
         int x = upgrades.x + upgrades.width + 20;
         int y = upgrades.y;
         int w = inner.x + inner.width - x;
         int h = upgrades.height;
         return new Rectangle(x, y, w, h);
+    }
+
+    private static int shopBodyTop(Rectangle panel) {
+        if (panel == null) return 0;
+        Rectangle inner = framedSafeContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
+        return inner.y + 24 + UI_ROW_GAP + 20 + UI_ROW_GAP + 46 + UI_ROW_GAP + 44 + UI_SECTION_GAP;
+    }
+
+    private static int shopFooterTop(Rectangle panel) {
+        if (panel == null) return 0;
+        Rectangle inner = framedSafeContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
+        return inner.y + inner.height - UI_FOOTER_HEIGHT;
     }
 
     private static Rectangle getShopUpgradeCardRect(Rectangle panel, int index) {
@@ -2258,8 +2464,8 @@ public class Renderer {
         Rectangle area = getShopHullArea(panel);
         ShopHullCategory[] categories = ShopHullCategory.values();
         int tabGap = 8;
-        int tabY = area.y + 18;
-        int tabH = 28;
+        int tabY = area.y + 30;
+        int tabH = UI_TAB_HEIGHT;
         int usableW = area.width - 128;
         int tabW = Math.max(100, (usableW - tabGap * (categories.length - 1)) / categories.length);
         int idx = 0;
@@ -2276,8 +2482,8 @@ public class Renderer {
     private static Rectangle getShopHullPageButtonRect(Rectangle panel, boolean next) {
         Rectangle area = getShopHullArea(panel);
         int w = 42;
-        int h = 28;
-        int y = area.y + 18;
+        int h = UI_TAB_HEIGHT;
+        int y = area.y + 30;
         int x = area.x + area.width - (next ? w : (w * 2 + 8));
         return new Rectangle(x, y, w, h);
     }
@@ -2288,11 +2494,11 @@ public class Renderer {
         int gap = 12;
         int cardW = (area.width - gap * (cols - 1)) / cols;
         int rows = Math.max(1, (SHOP_HULL_PAGE_SIZE + cols - 1) / cols);
-        int cardH = Math.max(116, Math.min(136, (area.height - 64 - gap * (rows - 1)) / rows));
+        int cardH = Math.max(150, Math.min(218, (area.height - 74 - gap * (rows - 1)) / rows));
         int col = Math.max(0, slot % cols);
         int row = Math.max(0, slot / cols);
         int x = area.x + col * (cardW + gap);
-        int y = area.y + 64 + row * (cardH + gap);
+        int y = area.y + 74 + row * (cardH + gap);
         return new Rectangle(x, y, cardW, cardH);
     }
 
@@ -2310,9 +2516,9 @@ public class Renderer {
     }
 
     private static Rectangle getShopCardButtonRect(Rectangle cardRect) {
-        int w = Math.min(94, Math.max(74, cardRect.width - 24));
+        int w = Math.min(190, Math.max(94, cardRect.width - 24));
         int h = 24;
-        int x = cardRect.x + cardRect.width - w - 12;
+        int x = cardRect.x + (cardRect.width - w) / 2;
         int y = cardRect.y + cardRect.height - h - 10;
         return new Rectangle(x, y, w, h);
     }
@@ -4802,7 +5008,7 @@ public class Renderer {
         for (Ship ship : ships) {
             if (ship == null || ship == player) continue;
             if (!ship.alive || ship.dying || ship.hp <= 0) continue;
-            if (!ship.hasSuperweapon || !ship.isSuperweaponCharging()) continue;
+            if (!ship.hasSuperweapon || (!ship.isSuperweaponCharging() && !ship.isSuperweaponBeamActive())) continue;
             if (!FogOfWarSystem.isVisibleToPerspective(fog, perspective, ship)) continue;
             double aim = ship.getSuperweaponAimAngle();
             double len = npcSuperweaponCueLength(ship);
@@ -4847,13 +5053,7 @@ public class Renderer {
     }
 
     private static double npcSuperweaponCueLength(Ship ship) {
-        if (ship == null) return 2200.0;
-        if (ship.superweaponPattern == Ship.SuperweaponPattern.DIRECT_BEAM
-                || ship.superweaponPattern == Ship.SuperweaponPattern.LANCE_CONE) {
-            double beamScale = (ship.superweaponPattern == Ship.SuperweaponPattern.LANCE_CONE) ? 0.74 : 0.96;
-            return MathUtil.clamp(ship.superweaponSpeed * beamScale, 720.0, 1760.0);
-        }
-        return 2200.0;
+        return Ship.UNIVERSAL_SPECIAL_WEAPON_RANGE;
     }
 
     private static Color npcSuperweaponCueColor(Faction faction) {
@@ -5718,28 +5918,28 @@ public class Renderer {
         int h = computeObjectiveCardHeight(objectiveTitle, objectiveDetail, w, detail);
         drawHudPanelFrame(g2, x, y, w, h, "OBJECTIVE", new Color(255, 214, 132, 220));
 
-        Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, x, y, w, h);
+        Rectangle inner = framedSafeContentRect(ThemeArt.HUD_STANDARD_PANEL, x, y, w, h);
         Shape oldClip = g2.getClip();
         g2.clip(inner);
-        int rowY = inner.y + 4;
+        int rowY = inner.y;
         g2.setFont(titleFont);
         g2.setColor(new Color(255, 232, 170, 232));
         for (String line : titleLines) {
-            g2.drawString(line, inner.x, rowY);
-            rowY += 16;
+            g2.drawString(line, inner.x, rowY + titleFm.getAscent());
+            rowY += titleFm.getHeight();
         }
 
         if (!titleLines.isEmpty() && !detailLines.isEmpty()) {
             g2.setColor(new Color(255, 255, 255, 44));
-            g2.drawLine(inner.x, rowY + 1, inner.x + inner.width, rowY + 1);
-            rowY += 16;
+            g2.drawLine(inner.x, rowY + UI_PAD_SMALL, inner.x + inner.width, rowY + UI_PAD_SMALL);
+            rowY += UI_ROW_GAP + UI_PAD_SMALL;
         }
 
         g2.setFont(bodyFont);
         g2.setColor(new Color(220, 232, 244, 208));
         for (String line : detailLines) {
-            g2.drawString(line, inner.x, rowY);
-            rowY += 15;
+            g2.drawString(line, inner.x, rowY + bodyFm.getAscent());
+            rowY += bodyFm.getHeight();
         }
 
         g2.setFont(oldFont);
@@ -5760,9 +5960,9 @@ public class Renderer {
         List<String> detailLines = buildObjectiveDetailLines(bodyFm, objectiveDetail, contentW, detail);
         if (titleLines.isEmpty() && detailLines.isEmpty()) return 0;
         ThemeArt.FrameMetrics metrics = ThemeArt.metrics(ThemeArt.HUD_STANDARD_PANEL, w, 120);
-        int h = metrics.top() + 4 + titleLines.size() * 16;
-        if (!titleLines.isEmpty() && !detailLines.isEmpty()) h += 16;
-        h += detailLines.size() * 15 + metrics.bottom();
+        int h = metrics.top() + UI_PAD_SMALL + titleLines.size() * titleFm.getHeight();
+        if (!titleLines.isEmpty() && !detailLines.isEmpty()) h += UI_ROW_GAP + UI_PAD_SMALL;
+        h += detailLines.size() * bodyFm.getHeight() + metrics.bottom() + UI_PAD_SMALL;
         return Math.max(metrics.top() + metrics.bottom() + 28, h);
     }
 
@@ -5800,7 +6000,7 @@ public class Renderer {
 
         drawHudPanelFrame(g2, x, y, w, h, "STATUS", factionHudColor(player.faction, 210));
 
-        Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, x, y, w, h);
+        Rectangle inner = framedSafeContentRect(ThemeArt.HUD_STANDARD_PANEL, x, y, w, h);
         int titleY = inner.y;
         g2.setFont(new Font("Consolas", Font.BOLD, 16));
         g2.setColor(new Color(244, 248, 255, 235));
@@ -5813,24 +6013,29 @@ public class Renderer {
         g2.setColor(new Color(150, 214, 255, 225));
         int creditW = creditFm.stringWidth(creditLabel);
         g2.setFont(new Font("Consolas", Font.BOLD, 16));
+        FontMetrics shipFm = g2.getFontMetrics();
         g2.setColor(new Color(244, 248, 255, 235));
-        g2.drawString(fitShopText(g2.getFontMetrics(), shipLabel, Math.max(40, inner.width - creditW - 12)), inner.x, titleY);
+        g2.drawString(fitShopText(shipFm, shipLabel, Math.max(40, inner.width - creditW - 12)),
+                inner.x, titleY + shipFm.getAscent());
         g2.setFont(new Font("Consolas", Font.BOLD, 14));
+        FontMetrics creditDrawFm = g2.getFontMetrics();
         g2.setColor(new Color(150, 214, 255, 225));
-        g2.drawString(creditLabel, inner.x + inner.width - creditFm.stringWidth(creditLabel), titleY);
+        g2.drawString(creditLabel, inner.x + inner.width - creditFm.stringWidth(creditLabel),
+                titleY + creditDrawFm.getAscent());
 
-        int rowY = inner.y + 24;
+        int rowY = inner.y + Math.max(shipFm.getHeight(), creditDrawFm.getHeight()) + UI_ROW_GAP;
         g2.setColor(new Color(255, 255, 255, 58));
         g2.drawLine(inner.x, rowY, inner.x + inner.width, rowY);
-        rowY += 18;
+        rowY += UI_ROW_GAP;
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+        FontMetrics rowFm = g2.getFontMetrics();
         for (String line : statusLines) {
             g2.setColor(line.startsWith("Status:")
                     ? new Color(255, 196, 148, 226)
                     : new Color(190, 214, 236, 198));
-            g2.drawString(fitShopText(g2.getFontMetrics(), line, inner.width), inner.x, rowY);
-            rowY += 15;
+            g2.drawString(fitShopText(rowFm, line, inner.width), inner.x, rowY + rowFm.getAscent());
+            rowY += rowFm.getHeight();
         }
 
         g2.setFont(oldFont);
@@ -5847,7 +6052,14 @@ public class Renderer {
         List<String> statusLines = buildCommandStatusLines(player, hangarTier, dockedAtBase, resourceRush,
                 allyOre, enemyOre, goal, orePriceMul, orePriceT, miningMul, miningT, gameOverText, detail, ctx);
         ThemeArt.FrameMetrics metrics = ThemeArt.metrics(ThemeArt.HUD_STANDARD_PANEL, w, 120);
-        return metrics.top() + 24 + 18 + statusLines.size() * 15 + metrics.bottom();
+        Font titleFont = new Font("Consolas", Font.BOLD, 16);
+        Font bodyFont = new Font("Consolas", Font.PLAIN, 12);
+        Canvas metricsCanvas = new Canvas();
+        int titleH = Math.max(metricsCanvas.getFontMetrics(titleFont).getHeight(),
+                metricsCanvas.getFontMetrics(new Font("Consolas", Font.BOLD, 14)).getHeight());
+        int bodyH = metricsCanvas.getFontMetrics(bodyFont).getHeight();
+        return metrics.top() + UI_PAD_SMALL + titleH + UI_ROW_GAP + UI_ROW_GAP
+                + statusLines.size() * bodyH + metrics.bottom() + UI_PAD_SMALL;
     }
 
     private static List<String> buildObjectiveTitleLines(FontMetrics titleFm, String objectiveTitle, int contentW,
@@ -6050,9 +6262,9 @@ public class Renderer {
                 stationStatus, overlayStatus, contextHint, w, detail, ctx);
 
         drawHudPanelFrame(g2, x, y, w, h, "SHIP STATUS", factionHudColor(player.faction, 210));
-        Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, x, y, w, h);
+        Rectangle inner = framedSafeContentRect(ThemeArt.HUD_STANDARD_PANEL, x, y, w, h);
 
-        int chipY = inner.y;
+        int chipY = inner.y + 12;
         int chipX = inner.x;
         int chipMaxX = inner.x + inner.width;
         for (int i = 0; i < chips.texts.size(); i++) {
@@ -6066,15 +6278,16 @@ public class Renderer {
             chipX += chipW + 8;
         }
 
-        int textY = chipY + 20;
+        int textY = chipY + 18 + UI_ROW_GAP;
 
         g2.setFont(bodyFont);
+        FontMetrics bodyDrawFm = g2.getFontMetrics();
         for (String line : noteLines) {
             if (line == null || line.isBlank()) continue;
             boolean emphasis = line.startsWith("Tip:") || line.startsWith("Tactical note:") || line.startsWith("Alert:");
             g2.setColor(emphasis ? new Color(255, 226, 154, 224) : new Color(198, 218, 238, 195));
-            g2.drawString(line, inner.x, textY);
-            textY += 15;
+            g2.drawString(line, inner.x, textY + bodyDrawFm.getAscent());
+            textY += bodyDrawFm.getHeight();
         }
 
         g2.setFont(oldFont);
@@ -6098,7 +6311,8 @@ public class Renderer {
         HudChipSet chips = buildShipSystemChips(player, autoLock, detail);
         int chipRows = computeHudChipRows(chips.texts, chipFm, w);
         ThemeArt.FrameMetrics metrics = ThemeArt.metrics(ThemeArt.HUD_STANDARD_PANEL, w, 180);
-        return metrics.top() + chipRows * 24 + 18 + noteLines.size() * 15 + metrics.bottom();
+        return metrics.top() + UI_PAD_SMALL + chipRows * 24 + UI_ROW_GAP
+                + noteLines.size() * bodyFm.getHeight() + metrics.bottom() + UI_PAD_SMALL;
     }
 
     private static List<String> buildShipSystemNoteLines(Player player, Ship lockedTarget,
@@ -6454,6 +6668,58 @@ public class Renderer {
         return new Rectangle(innerX, innerY, innerW, innerH);
     }
 
+    private static Rectangle framedSafeContentRect(String slot, int x, int y, int w, int h) {
+        Rectangle inner = themedContentRect(slot, x, y, w, h);
+        boolean special = ThemeArt.HUD_SPECIAL_FRAME.equals(slot);
+        return insetRect(inner,
+                special ? UI_PAD_SMALL : UI_PAD_SMALL,
+                special ? UI_PAD_LARGE : UI_PAD_SMALL,
+                special ? UI_PAD_SMALL : UI_PAD_SMALL,
+                special ? UI_PAD_LARGE : UI_PAD);
+    }
+
+    private static Rectangle expandPopupFrameRect(Rectangle base, int viewW, int viewH) {
+        if (base == null) return new Rectangle();
+        int maxW = Math.max(1, viewW - POPUP_FRAME_MARGIN * 2);
+        int maxH = Math.max(1, viewH - POPUP_FRAME_MARGIN * 2);
+        int targetW = Math.min(maxW, Math.max(base.width, (int) Math.round(base.width * POPUP_FRAME_SCALE)));
+        int targetH = Math.min(maxH, Math.max(base.height, (int) Math.round(base.height * POPUP_FRAME_SCALE)));
+        int centerX = base.x + base.width / 2;
+        int centerY = base.y + base.height / 2;
+        int maxX = Math.max(POPUP_FRAME_MARGIN, viewW - targetW - POPUP_FRAME_MARGIN);
+        int maxY = Math.max(POPUP_FRAME_MARGIN, viewH - targetH - POPUP_FRAME_MARGIN);
+        int x = MathUtil.clamp(centerX - targetW / 2, POPUP_FRAME_MARGIN, maxX);
+        int y = MathUtil.clamp(centerY - targetH / 2, POPUP_FRAME_MARGIN, maxY);
+        return new Rectangle(x, y, targetW, targetH);
+    }
+
+    private static Rectangle insetRect(Rectangle r, int left, int top, int right, int bottom) {
+        if (r == null) return new Rectangle();
+        int x = r.x + Math.max(0, left);
+        int y = r.y + Math.max(0, top);
+        int w = Math.max(1, r.width - Math.max(0, left) - Math.max(0, right));
+        int h = Math.max(1, r.height - Math.max(0, top) - Math.max(0, bottom));
+        return new Rectangle(x, y, w, h);
+    }
+
+    private static int textBlockHeight(FontMetrics fm, List<String> lines) {
+        if (fm == null || lines == null || lines.isEmpty()) return 0;
+        return lines.size() * fm.getHeight();
+    }
+
+    private static int drawTextLines(Graphics2D g2, List<String> lines, int x, int y, int maxWidth) {
+        if (g2 == null || lines == null || lines.isEmpty()) return y;
+        FontMetrics fm = g2.getFontMetrics();
+        int baseline = y + fm.getAscent();
+        for (String line : lines) {
+            if (line != null && !line.isBlank()) {
+                g2.drawString(fitShopText(fm, line, maxWidth), x, baseline);
+            }
+            baseline += fm.getHeight();
+        }
+        return y + textBlockHeight(fm, lines);
+    }
+
     private static int themedContentWidth(String slot, int w, int h) {
         ThemeArt.FrameMetrics metrics = ThemeArt.metrics(slot, w, h);
         return Math.max(1, w - metrics.left() - metrics.right());
@@ -6733,49 +6999,74 @@ public class Renderer {
         int h = Math.min(720, Math.max(520, viewH - 36));
         int x = Math.max(8, (viewW - w) / 2);
         int y = Math.max(8, (viewH - h) / 2);
-        return new Rectangle(x, y, w, h);
+        return expandPopupFrameRect(new Rectangle(x, y, w, h), viewW, viewH);
     }
 
     private static Rectangle commsContentRect(int viewW, int viewH) {
         Rectangle panel = commsPanelRect(viewW, viewH);
-        return themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
+        return framedSafeContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
     }
 
     public static Rectangle commsPanelCloseRect(int viewW, int viewH) {
-        Rectangle inner = commsContentRect(viewW, viewH);
-        return new Rectangle(inner.x + inner.width - 82, inner.y + inner.height - 24, 82, 22);
+        return commsLayout(viewW, viewH).closeRect;
     }
 
     public static Rectangle commsFilterTabRect(int viewW, int viewH, int index) {
-        Rectangle inner = commsContentRect(viewW, viewH);
-        int pad = 196;
+        CommsLayout layout = commsLayout(viewW, viewH);
         int gap = 9;
         int count = UiState.CommsFilter.values().length;
-        int usable = Math.max(260, inner.width - pad);
+        int usable = Math.max(260, layout.content.width);
         int w = Math.max(68, (usable - gap * (count - 1)) / count);
-        return new Rectangle(inner.x + pad + Math.max(0, index) * (w + gap), inner.y - 4, w, 26);
+        return new Rectangle(layout.content.x + Math.max(0, index) * (w + gap), layout.tabsY, w, UI_TAB_HEIGHT);
     }
 
     public static Rectangle commsContactRowRect(int viewW, int viewH, int index) {
-        Rectangle inner = commsContentRect(viewW, viewH);
-        int x = inner.x;
-        int y = inner.y + 62 + Math.max(0, index) * 50;
-        int w = Math.max(260, (inner.width - 18) / 2);
-        return new Rectangle(x, y, w, 42);
+        CommsLayout layout = commsLayout(viewW, viewH);
+        int y = layout.contactRows.y + Math.max(0, index) * layout.contactRowPitch;
+        return new Rectangle(layout.contactRows.x, y, layout.contactRows.width, layout.contactRowHeight);
+    }
+
+    public static int commsVisibleContactRows(int viewW, int viewH) {
+        CommsLayout layout = commsLayout(viewW, viewH);
+        return Math.max(0, layout.contactRows.height / layout.contactRowPitch);
     }
 
     public static Rectangle commsActionButtonRect(int viewW, int viewH, int index) {
-        Rectangle inner = commsContentRect(viewW, viewH);
-        int leftW = Math.max(260, (inner.width - 18) / 2);
-        int x = inner.x + leftW + 18;
-        int rightW = inner.x + inner.width - x;
+        CommsLayout layout = commsLayout(viewW, viewH);
+        int x = layout.right.x;
+        int rightW = layout.right.width;
         int columns = rightW >= 360 ? 2 : 1;
         int gap = columns > 1 ? 8 : 0;
         int col = Math.max(0, index) % columns;
         int row = Math.max(0, index) / columns;
         int w = (rightW - gap * (columns - 1)) / columns;
-        int y = inner.y + 202 + row * 32;
+        int y = layout.actionRowsY + row * 32;
         return new Rectangle(x + col * (w + gap), y, w, 26);
+    }
+
+    private static CommsLayout commsLayout(int viewW, int viewH) {
+        Rectangle panel = commsPanelRect(viewW, viewH);
+        Rectangle content = commsContentRect(viewW, viewH);
+        int y = content.y;
+        int titleH = 22;
+        int subtitleH = 16;
+        int tabsY = y + titleH + UI_ROW_GAP + subtitleH + UI_ROW_GAP;
+        int mainTop = tabsY + UI_TAB_HEIGHT + UI_SECTION_GAP;
+        int closeW = 82;
+        Rectangle close = new Rectangle(content.x + content.width - closeW, content.y + content.height - UI_BUTTON_HEIGHT, closeW, 22);
+        Rectangle log = new Rectangle(content.x, close.y - 82 - UI_ROW_GAP, Math.max(220, content.width - closeW - UI_SECTION_GAP), 82);
+        int columnGap = 18;
+        int leftW = Math.max(260, (content.width - columnGap) / 2);
+        int rightX = content.x + leftW + columnGap;
+        Rectangle right = new Rectangle(rightX, mainTop + 22, content.x + content.width - rightX,
+                Math.max(120, log.y - (mainTop + 22) - UI_SECTION_GAP));
+        Rectangle contactRows = new Rectangle(content.x, mainTop + 22, leftW,
+                Math.max(42, log.y - (mainTop + 22) - UI_SECTION_GAP));
+        int detailsH = Math.min(112, Math.max(96, right.height / 3));
+        int actionTitleY = right.y + detailsH + UI_SECTION_GAP;
+        return new CommsLayout(content, tabsY, mainTop, contactRows, right,
+                new Rectangle(right.x, right.y, right.width, detailsH),
+                actionTitleY, actionTitleY + 12 + UI_ROW_GAP, log, close);
     }
 
     public static void drawCommsPanel(Graphics2D g2, GameContext ctx, int viewW, int viewH) {
@@ -6792,26 +7083,29 @@ public class Renderer {
             g2.setColor(new Color(136, 204, 255, 190));
             g2.drawRoundRect(panel.x, panel.y, panel.width, panel.height, 14, 14);
         }
-        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
+        CommsLayout layout = commsLayout(viewW, viewH);
+        Rectangle inner = layout.content;
         g2.setFont(new Font("Consolas", Font.BOLD, 20));
+        FontMetrics titleFm = g2.getFontMetrics();
         g2.setColor(new Color(238, 248, 255, 238));
-        g2.drawString("COMMS / CONTACTS", inner.x, inner.y + 4);
+        g2.drawString("COMMS / CONTACTS", inner.x, inner.y + titleFm.getAscent());
         g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+        FontMetrics subtitleFm = g2.getFontMetrics();
         g2.setColor(new Color(178, 210, 236, 205));
-        g2.drawString("Visible bridge channel for nearby detected ships", inner.x, inner.y + 22);
+        g2.drawString("Visible bridge channel for nearby detected ships",
+                inner.x, inner.y + 22 + UI_ROW_GAP + subtitleFm.getAscent());
 
         UiState.CommsFilter[] filters = UiState.CommsFilter.values();
         for (int i = 0; i < filters.length; i++) {
             Rectangle tab = commsFilterTabRect(viewW, viewH, i);
             boolean selected = ctx.ui.commsFilter == filters[i];
-            drawHudStatusChip(g2, filters[i].label().toUpperCase(Locale.US), tab.x, tab.y + 16, tab.width, tab.height,
+            drawHudStatusChip(g2, filters[i].label().toUpperCase(Locale.US), tab.x, tab.y + 18, tab.width, tab.height,
                     selected ? new Color(137, 214, 255, 230) : new Color(140, 160, 185, 190), selected);
         }
 
-        int leftW = Math.max(260, (inner.width - 18) / 2);
-        int rightX = inner.x + leftW + 18;
-        int rightW = inner.x + inner.width - rightX;
-        int listTitleY = inner.y + 54;
+        int rightX = layout.right.x;
+        int rightW = layout.right.width;
+        int listTitleY = layout.mainTop + 13;
         g2.setFont(new Font("Consolas", Font.BOLD, 13));
         g2.setColor(new Color(224, 239, 255, 230));
         g2.drawString("CONTACT LIST", inner.x, listTitleY);
@@ -6822,9 +7116,11 @@ public class Renderer {
         g2.setFont(new Font("Consolas", Font.PLAIN, 11));
         if (contacts.isEmpty()) {
             g2.setColor(new Color(176, 190, 204, 205));
-            g2.drawString("No detected contacts on this filter.", inner.x + 2, inner.y + 96);
+            g2.drawString("No detected contacts on this filter.", layout.contactRows.x + 2, layout.contactRows.y + 16);
         }
-        int rows = Math.min(7, contacts.size());
+        int rows = Math.min(commsVisibleContactRows(viewW, viewH), contacts.size());
+        Shape oldClip = g2.getClip();
+        g2.clip(layout.contactRows);
         for (int i = 0; i < rows; i++) {
             CommSystem.CommsContactView c = contacts.get(i);
             Rectangle row = commsContactRowRect(viewW, viewH, i);
@@ -6842,23 +7138,28 @@ public class Renderer {
             String detail = c.factionLabel + " | " + c.disposition + " | R " + c.range + " | " + c.commsStatus;
             g2.drawString(fitShopText(g2.getFontMetrics(), detail, row.width - 18), row.x + 9, row.y + 29);
         }
+        g2.setClip(oldClip);
 
         if (selected == null) {
             g2.setFont(new Font("Consolas", Font.PLAIN, 12));
             g2.setColor(new Color(176, 190, 204, 205));
-            g2.drawString("Select a contact to open action buttons.", rightX, inner.y + 96);
+            g2.drawString("Select a contact to open action buttons.", rightX, layout.right.y + 18);
         } else {
-            drawCommsContactDetails(g2, selected, rightX, inner.y + 74, rightW);
+            drawCommsContactDetails(g2, selected, layout.details.x, layout.details.y, rightW);
             List<CommSystem.CommsActionView> actions = CommSystem.actionsFor(ctx, selected.shipId);
             g2.setFont(new Font("Consolas", Font.BOLD, 12));
             g2.setColor(new Color(224, 239, 255, 230));
-            g2.drawString("AVAILABLE ACTIONS", rightX, inner.y + 192);
+            g2.drawString("AVAILABLE ACTIONS", rightX, layout.actionTitleY);
+            Shape actionClip = g2.getClip();
+            g2.clip(new Rectangle(layout.right.x, layout.actionRowsY, layout.right.width,
+                    Math.max(1, layout.log.y - layout.actionRowsY - UI_ROW_GAP)));
             for (int i = 0; i < actions.size(); i++) {
                 drawCommsAction(g2, actions.get(i), commsActionButtonRect(viewW, viewH, i));
             }
+            g2.setClip(actionClip);
         }
 
-        drawCommsLog(g2, ctx, inner.x, inner.y + inner.height - 88, Math.max(220, inner.width - 96), 76);
+        drawCommsLog(g2, ctx, layout.log.x, layout.log.y, layout.log.width, layout.log.height);
         Rectangle close = commsPanelCloseRect(viewW, viewH);
         drawHudStatusChip(g2, "CLOSE", close.x, close.y + 14, close.width, 20, new Color(180, 205, 230, 220), false);
 
@@ -7709,33 +8010,42 @@ public class Renderer {
         Shape oldClip = gx.getClip();
         gx.clip(inner);
 
+        int cursorY = inner.y;
         gx.setFont(new Font("Consolas", Font.BOLD, 18));
+        FontMetrics titleFm = gx.getFontMetrics();
         gx.setColor(new Color(245, 248, 255, 230));
-        gx.drawString(campaignShop ? "FLEET COMMISSIONING" : "SHOP / LOADOUT", inner.x, inner.y);
+        gx.drawString(campaignShop ? "FLEET COMMISSIONING" : "SHOP / LOADOUT", inner.x, cursorY + titleFm.getAscent());
+        cursorY += titleFm.getHeight() + UI_ROW_GAP;
+
         gx.setFont(new Font("Consolas", Font.PLAIN, 12));
+        FontMetrics instructionFm = gx.getFontMetrics();
         gx.setColor(new Color(192, 210, 232, 180));
-        gx.drawString(fitShopText(gx.getFontMetrics(), campaignShop
+        gx.drawString(fitShopText(instructionFm, campaignShop
                         ? "Flagship upgrades on the left. Persistent fleet commissions on the right. TAB/ESC closes."
                         : "Upgrade the active hull on the left and browse ship classes on the right. TAB/ESC closes.",
                 inner.width),
-                inner.x, inner.y + 20);
+                inner.x, cursorY + instructionFm.getAscent());
+        cursorY += instructionFm.getHeight() + UI_ROW_GAP;
 
-        drawShopMetricPill(gx, inner.x, inner.y + 36, 170, "CREDITS", "$" + credits, new Color(120, 214, 170));
-        drawShopMetricPill(gx, inner.x + 180, inner.y + 36, 150,
+        int metricY = cursorY;
+        drawShopMetricPill(gx, inner.x, metricY, 170, "CREDITS", "$" + credits, new Color(120, 214, 170));
+        drawShopMetricPill(gx, inner.x + 180, metricY, 150,
                 campaignShop ? "ORE" : "HANGAR",
                 campaignShop ? String.valueOf(CampaignSystem.currentCampaignOre(ctx)) : ("TIER " + hangarTier),
                 new Color(158, 196, 255));
-        drawShopMetricPill(gx, inner.x + 340, inner.y + 36, 250,
+        drawShopMetricPill(gx, inner.x + 340, metricY, 250,
                 campaignShop ? "FLAGSHIP" : "CURRENT HULL",
                 shopRoleTitle(player.role),
                 new Color(255, 206, 122));
-        drawShopMetricPill(gx, inner.x + 600, inner.y + 36, 170,
+        drawShopMetricPill(gx, inner.x + 600, metricY, 170,
                 campaignShop ? "FLEET MIX" : "SUPERWEAPON",
                 campaignShop ? campaignFleetCount(ctx) : superweaponStatusReadout(player),
                 new Color(156, 224, 255));
+        cursorY += 46 + UI_ROW_GAP;
 
         if (campaignShop) {
             drawFleetCapUpgradeButtons(gx, ctx, panel);
+            cursorY += 44 + UI_SECTION_GAP;
         }
 
         Rectangle upgradesArea = getShopUpgradeArea(panel);
@@ -7764,17 +8074,17 @@ public class Renderer {
                         ? "Tabs: [1-4] hull bands   [Left/Right] page   Hover cards for full requirements."
                         : "Tabs: [1-4] hull bands   [Left/Right] page   Hover cards for full requirements.",
                 inner.width),
-                inner.x, inner.y + inner.height - 8);
+                inner.x, shopFooterTop(panel) + gx.getFontMetrics().getAscent());
         gx.setClip(oldClip);
         gx.dispose();
     }
 
     private static void drawFleetCapUpgradeButtons(Graphics2D g2, GameContext ctx, Rectangle panel) {
         if (g2 == null || panel == null || ctx == null) return;
-        Rectangle content = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
+        Rectangle content = framedSafeContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
         g2.setFont(new Font("Consolas", Font.BOLD, 11));
         g2.setColor(new Color(204, 220, 238, 190));
-        int y = content.y + 74;
+        int y = shopBodyTop(panel) - 44 - UI_SECTION_GAP;
         g2.drawString("FLEET DOCTRINE", content.x, y);
         Rectangle rect = new Rectangle(content.x, y + 8, Math.min(790, Math.max(520, content.width - 360)), 32);
         g2.setColor(new Color(16, 22, 34, 216));
@@ -7859,7 +8169,7 @@ public class Renderer {
                 gx.setColor(new Color(118, 180, 255, 42));
                 gx.drawRoundRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, 22, 22);
             }
-            Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
+            Rectangle inner = framedSafeContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
 
             drawFleetOverlayModeTabs(gx, panel, true);
             Shape oldClip = gx.getClip();
@@ -7867,16 +8177,20 @@ public class Renderer {
 
             // Title
             gx.setFont(new Font("Consolas", Font.BOLD, 18));
+            FontMetrics titleFm = gx.getFontMetrics();
             gx.setColor(new Color(245, 248, 255, 230));
-            gx.drawString("FLEET REFIT", inner.x, inner.y);
-            gx.setFont(new Font("Consolas", Font.PLAIN, 12));
-            gx.setColor(new Color(192, 210, 232, 180));
-            gx.drawString(fitShopText(gx.getFontMetrics(),
-                    "Select a hull, then swap a slot between GUN/MSL and set missile roles. TAB/ESC closes.",
-                    inner.width), inner.x, inner.y + 20);
+            gx.drawString("FLEET REFIT", inner.x, inner.y + titleFm.getAscent());
+
+            RefitHullFilter activeFilter = (ui.fleetRefitFilter == null) ? RefitHullFilter.ALL : ui.fleetRefitFilter;
+            for (RefitHullFilter filter : RefitHullFilter.values()) {
+                Rectangle tab = getFleetRefitFilterTabRect(panel, filter);
+                drawFleetOverlayModeTab(gx, tab, filter.label(), filter == activeFilter, new Color(118, 214, 255));
+            }
 
             Rectangle shipList = getFleetEditorShipListRect(panel);
             Rectangle editor = getFleetEditorEditorRect(panel, shipList);
+            Rectangle preview = getFleetEditorPreviewRect(editor);
+            Rectangle loadout = getFleetEditorLoadoutRect(editor);
 
             // Ship list (left)
             gx.setColor(new Color(20, 28, 42, 160));
@@ -7885,164 +8199,283 @@ public class Renderer {
             gx.drawRect(shipList.x, shipList.y, shipList.width, shipList.height);
             gx.setFont(new Font("Consolas", Font.BOLD, 11));
             gx.setColor(new Color(192, 210, 232, 200));
-            gx.drawString("FLEET HULLS", shipList.x + 8, shipList.y + 14);
+            gx.drawString("FLEET", shipList.x + 8, shipList.y + 16);
 
-            List<Ship> ships = fleetEditorShips(ctx);
-            int headerH = 22;
-            int rowH = 18;
-            int startY = shipList.y + headerH + 4;
-            int maxRows = Math.max(0, (shipList.height - headerH - 10) / rowH);
-            gx.setFont(new Font("Consolas", Font.PLAIN, 10));
-            for (int i = 0; i < ships.size() && i < maxRows; i++) {
-                Ship s = ships.get(i);
+            List<Ship> ships = fleetEditorShips(ctx, activeFilter);
+            Ship selectedShip = selectedFleetEditorShip(ctx, ui);
+            int visibleShips = fleetRefitShipVisibleRows(shipList);
+            ui.fleetRefitShipScroll = MathUtil.clamp(ui.fleetRefitShipScroll, 0, Math.max(0, ships.size() - visibleShips));
+            int rowH = 58;
+            for (int i = 0; i < visibleShips && i + ui.fleetRefitShipScroll < ships.size(); i++) {
+                Ship s = ships.get(i + ui.fleetRefitShipScroll);
                 if (s == null) continue;
-                int ry = startY + i * rowH;
-                boolean selected = ui.fleetSelectedShipId == s.id;
-                if (selected) {
-                    gx.setColor(new Color(118, 180, 255, 64));
-                    gx.fillRect(shipList.x + 2, ry - rowH + 4, shipList.width - 4, rowH);
-                }
+                int ry = shipList.y + 30 + i * rowH;
+                Rectangle row = new Rectangle(shipList.x + 6, ry, shipList.width - 12, rowH - 8);
+                boolean selected = selectedShip != null && selectedShip.id == s.id;
+                gx.setColor(selected ? new Color(118, 180, 255, 78) : new Color(12, 18, 30, 122));
+                gx.fillRoundRect(row.x, row.y, row.width, row.height, 12, 12);
+                gx.setColor(selected ? new Color(210, 232, 255, 150) : new Color(118, 180, 255, 42));
+                gx.drawRoundRect(row.x, row.y, row.width, row.height, 12, 12);
+                drawCanonicalHullSprite(gx, s.role, s.faction, new Rectangle(row.x + 6, row.y + 5, 46, row.height - 10),
+                        selected ? 1.0f : 0.82f, new Color(118, 180, 255));
+                String shipName = (s.name == null || s.name.isBlank()) ? shopRoleTitle(s.role) : s.name.toUpperCase(Locale.US);
                 gx.setColor(selected ? new Color(255, 255, 255, 232) : new Color(180, 200, 220, 208));
-                String prefix = (ctx.player != null && s == ctx.player) ? "FLAGSHIP" : "HULL";
-                String label = prefix + ": " + ((s.name == null || s.name.isBlank()) ? s.role.name() : s.name)
-                        + "  [" + s.role.name() + "]";
-                gx.drawString(fitShopText(gx.getFontMetrics(), label, shipList.width - 16), shipList.x + 8, ry);
+                gx.setFont(new Font("Consolas", Font.BOLD, 10));
+                gx.drawString(fitShopText(gx.getFontMetrics(), shipName, row.width - 64), row.x + 58, row.y + 20);
+                gx.setFont(new Font("Consolas", Font.PLAIN, 9));
+                gx.setColor(new Color(180, 200, 220, 170));
+                gx.drawString(fitShopText(gx.getFontMetrics(), shopRoleTitle(s.role), row.width - 64), row.x + 58, row.y + 36);
+            }
+            if (ships.size() > visibleShips) {
+                gx.setFont(new Font("Consolas", Font.PLAIN, 9));
+                gx.setColor(new Color(176, 196, 218, 136));
+                gx.drawString((ui.fleetRefitShipScroll + 1) + "-" + Math.min(ships.size(), ui.fleetRefitShipScroll + visibleShips)
+                        + " / " + ships.size(), shipList.x + shipList.width - 64, shipList.y + 16);
             }
 
-            // Editor panel (right)
-            gx.setColor(new Color(20, 28, 42, 160));
-            gx.fillRect(editor.x, editor.y, editor.width, editor.height);
-            gx.setColor(new Color(255, 206, 122, 78));
-            gx.drawRect(editor.x, editor.y, editor.width, editor.height);
-
-            Ship selectedShip = null;
-            if (ui.fleetSelectedShipId > 0) {
-                for (Ship s : ships) {
-                    if (s != null && s.id == ui.fleetSelectedShipId) {
-                        selectedShip = s;
-                        break;
-                    }
-                }
-            }
-            if (selectedShip == null && !ships.isEmpty()) selectedShip = ships.get(0);
-
-            int pad = 10;
-            int hx = editor.x + pad;
-            int hy = editor.y + 18;
-            gx.setFont(new Font("Consolas", Font.BOLD, 11));
-            gx.setColor(new Color(255, 206, 122, 210));
-            gx.drawString("LOADOUT", hx, editor.y + 14);
-
-            gx.setFont(new Font("Consolas", Font.PLAIN, 10));
-            gx.setColor(new Color(200, 220, 240, 220));
             if (selectedShip == null) {
-                gx.drawString("No fleet hull selected.", hx, hy);
+                gx.setFont(new Font("Consolas", Font.BOLD, 13));
+                gx.setColor(new Color(200, 220, 240, 190));
+                gx.drawString("NO FLEET HULLS IN THIS FILTER", preview.x + 16, preview.y + 28);
                 return;
             }
 
-            String shipName = (selectedShip.name == null || selectedShip.name.isBlank()) ? selectedShip.role.name() : selectedShip.name;
-            gx.drawString(fitShopText(gx.getFontMetrics(), "SHIP: " + shipName, editor.width - pad * 2), hx, hy);
-            hy += 14;
-            gx.drawString(fitShopText(gx.getFontMetrics(),
-                    "HULL: " + selectedShip.role.name() + "    HP " + selectedShip.hp + "/" + selectedShip.hpMax,
-                    editor.width - pad * 2), hx, hy);
-
-            int editorHeaderH = 72;
-            int controlsH = 92;
-            int turretRowH = 18;
-            Rectangle turretList = new Rectangle(
-                    editor.x + 6,
-                    editor.y + editorHeaderH,
-                    editor.width - 12,
-                    Math.max(80, editor.height - editorHeaderH - controlsH - 8));
-            Rectangle controls = new Rectangle(
-                    editor.x + 6,
-                    turretList.y + turretList.height + 8,
-                    editor.width - 12,
-                    Math.max(60, editor.y + editor.height - (turretList.y + turretList.height + 8)));
-
-            // Turret list
-            gx.setColor(new Color(12, 16, 26, 160));
-            gx.fillRect(turretList.x, turretList.y, turretList.width, turretList.height);
-            gx.setColor(new Color(255, 206, 122, 68));
-            gx.drawRect(turretList.x, turretList.y, turretList.width, turretList.height);
-            gx.setFont(new Font("Consolas", Font.BOLD, 10));
-            gx.setColor(new Color(255, 206, 122, 200));
-            gx.drawString("SLOTS", turretList.x + 8, turretList.y + 14);
-
-            gx.setFont(new Font("Consolas", Font.PLAIN, 9));
-            int listY0 = turretList.y + 28;
-            int maxTurrets = Math.max(0, (turretList.height - 34) / turretRowH);
-            for (int i = 0; i < selectedShip.turrets.size() && i < maxTurrets; i++) {
-                Turret t = selectedShip.turrets.get(i);
-                if (t == null) continue;
-                int rowY = listY0 + i * turretRowH;
-                boolean turretSelected = (ui.fleetSelectedTurretIndex == i);
-                if (turretSelected) {
-                    gx.setColor(new Color(255, 206, 122, 64));
-                    gx.fillRect(turretList.x + 2, rowY - 12, turretList.width - 4, turretRowH);
-                }
-                gx.setColor(turretSelected ? new Color(255, 240, 200, 235) : new Color(180, 200, 220, 205));
-                String kind = (t.kind == Turret.Kind.MISSILE) ? "MSL" : "GUN";
-                String role = (t.kind == Turret.Kind.MISSILE && t.missileRole != null) ? (" " + t.missileRole.name()) : "";
-                String row = String.format(Locale.US, "[%02d] %s%s   DMG %d   CYC %.2fs",
-                        i, kind, role, t.damage, t.cooldown);
-                gx.drawString(fitShopText(gx.getFontMetrics(), row, turretList.width - 16), turretList.x + 8, rowY);
-            }
-
-            // Controls
-            gx.setColor(new Color(12, 16, 26, 160));
-            gx.fillRect(controls.x, controls.y, controls.width, controls.height);
-            gx.setColor(new Color(118, 180, 255, 58));
-            gx.drawRect(controls.x, controls.y, controls.width, controls.height);
-
-            int ti = ui.fleetSelectedTurretIndex;
-            Turret selectedTurret = (ti >= 0 && ti < selectedShip.turrets.size()) ? selectedShip.turrets.get(ti) : null;
-            gx.setFont(new Font("Consolas", Font.BOLD, 10));
-            gx.setColor(new Color(192, 210, 232, 200));
-            gx.drawString((selectedTurret == null) ? "Select a slot to edit." : ("EDIT SLOT [" + ti + "]"),
-                    controls.x + 8, controls.y + 16);
-
-            if (selectedTurret != null) {
-                Rectangle swap = new Rectangle(controls.x + 8, controls.y + 24, 136, 24);
-                boolean toMissile = selectedTurret.kind == Turret.Kind.GUN;
-                drawFleetOverlayModeTab(gx, swap, toMissile ? "SWAP TO MSL" : "SWAP TO GUN", true, new Color(158, 196, 255));
-
-                if (selectedTurret.kind == Turret.Kind.MISSILE) {
-                    int bx = controls.x + 158;
-                    int by = controls.y + 24;
-                    int bw = 110;
-                    int bh = 24;
-                    int gap = 8;
-                    Turret.MissileRole[] roles = new Turret.MissileRole[]{
-                            Turret.MissileRole.INTERCEPT,
-                            Turret.MissileRole.ANTI_LIGHT,
-                            Turret.MissileRole.ANTI_MEDIUM,
-                            Turret.MissileRole.ANTI_HEAVY
-                    };
-                    for (int i = 0; i < roles.length; i++) {
-                        Turret.MissileRole role = roles[i];
-                        boolean active = (selectedTurret.missileRole == role);
-                        Rectangle b = new Rectangle(bx + i * (bw + gap), by, bw, bh);
-                        drawFleetOverlayModeTab(gx, b, role.name(), active, new Color(255, 206, 122));
-                    }
-                    gx.setFont(new Font("Consolas", Font.PLAIN, 9));
-                    gx.setColor(new Color(180, 200, 220, 170));
-                    gx.drawString(fitShopText(gx.getFontMetrics(),
-                            "INTERCEPT = fast, low yield   ANTI_HEAVY = high yield torpedo (blue)",
-                            controls.width - 16), controls.x + 8, controls.y + 62);
-                }
-            }
-
-            gx.setFont(new Font("Consolas", Font.PLAIN, 10));
-            gx.setColor(new Color(180, 200, 220, 160));
-            gx.drawString(fitShopText(gx.getFontMetrics(),
-                    "Click hulls and slots. Changes persist via campaign checkpoint serialization.",
-                    inner.width), inner.x, inner.y + inner.height - 8);
+            drawFleetPreviewPanel(gx, preview, selectedShip, ui);
+            drawFleetLoadoutPanel(gx, loadout, selectedShip, ui);
             gx.setClip(oldClip);
         } finally {
             gx.dispose();
         }
+    }
+
+    private static void drawFleetPreviewPanel(Graphics2D g2, Rectangle preview, Ship selectedShip, UiState ui) {
+        g2.setColor(new Color(20, 28, 42, 150));
+        g2.fillRect(preview.x, preview.y, preview.width, preview.height);
+        g2.setColor(new Color(118, 180, 255, 68));
+        g2.drawRect(preview.x, preview.y, preview.width, preview.height);
+        String shipName = (selectedShip.name == null || selectedShip.name.isBlank())
+                ? shopRoleTitle(selectedShip.role)
+                : selectedShip.name.toUpperCase(Locale.US);
+        g2.setFont(new Font("Consolas", Font.BOLD, 15));
+        g2.setColor(new Color(245, 248, 255, 232));
+        g2.drawString(fitShopText(g2.getFontMetrics(), shipName, preview.width - 28), preview.x + 14, preview.y + 24);
+        g2.setFont(new Font("Consolas", Font.BOLD, 11));
+        g2.setColor(new Color(176, 208, 236, 180));
+        g2.drawString(fitShopText(g2.getFontMetrics(), shopRoleTitle(selectedShip.role), preview.width - 28),
+                preview.x + 14, preview.y + 42);
+
+        Rectangle sprite = new Rectangle(preview.x + 24, preview.y + 58, preview.width - 48,
+                Math.max(120, preview.height - 122));
+        drawCanonicalHullSprite(g2, selectedShip.role, selectedShip.faction, sprite, 1.0f, new Color(118, 180, 255));
+        drawFleetHardpointMarkers(g2, selectedShip, ui, sprite);
+
+        g2.setFont(new Font("Consolas", Font.BOLD, 11));
+        g2.setColor(new Color(204, 222, 238, 202));
+        String hp = "HULL " + selectedShip.hp + " / " + selectedShip.hpMax;
+        if (selectedShip.shieldActive && selectedShip.shieldMax > 0.0) {
+            hp += "    SHIELD " + (int) Math.round(selectedShip.shield) + " / " + (int) Math.round(selectedShip.shieldMax);
+        }
+        g2.drawString(fitShopText(g2.getFontMetrics(), hp, preview.width - 28), preview.x + 14, preview.y + preview.height - 18);
+    }
+
+    private static void drawFleetHardpointMarkers(Graphics2D g2, Ship ship, UiState ui, Rectangle sprite) {
+        if (ship == null || ship.turrets == null || sprite == null || ship.radius <= 0.0) return;
+        int selected = (ui == null) ? -1 : ui.fleetSelectedTurretIndex;
+        double span = Math.max(1.0, ship.radius * 2.0 * ShipHullSilhouette.skinRenderScale());
+        double markerScale = Math.min(sprite.width, sprite.height) / span;
+        for (int i = 0; i < ship.turrets.size(); i++) {
+            Turret turret = ship.turrets.get(i);
+            if (turret == null) continue;
+            int x = (int) Math.round(sprite.getCenterX() + turret.localX * markerScale);
+            int y = (int) Math.round(sprite.getCenterY() + turret.localY * markerScale);
+            String label = (turret.kind == Turret.Kind.MISSILE ? "M" : "G") + (i + 1);
+            boolean active = i == selected;
+            int r = active ? 13 : 11;
+            g2.setColor(active ? new Color(255, 210, 122, 218) : new Color(68, 136, 190, 194));
+            g2.fillOval(x - r, y - r, r * 2, r * 2);
+            g2.setColor(active ? new Color(255, 248, 226, 232) : new Color(214, 236, 255, 210));
+            g2.drawOval(x - r, y - r, r * 2, r * 2);
+            g2.setFont(new Font("Consolas", Font.BOLD, active ? 9 : 8));
+            FontMetrics fm = g2.getFontMetrics();
+            g2.drawString(label, x - fm.stringWidth(label) / 2, y + (fm.getAscent() - fm.getDescent()) / 2 - 1);
+        }
+    }
+
+    private static void drawFleetLoadoutPanel(Graphics2D gx, Rectangle loadout, Ship selectedShip, UiState ui) {
+        gx.setColor(new Color(20, 28, 42, 160));
+        gx.fillRect(loadout.x, loadout.y, loadout.width, loadout.height);
+        gx.setColor(new Color(255, 206, 122, 78));
+        gx.drawRect(loadout.x, loadout.y, loadout.width, loadout.height);
+        gx.setFont(new Font("Consolas", Font.BOLD, 11));
+        gx.setColor(new Color(255, 206, 122, 210));
+        gx.drawString("LOADOUT", loadout.x + 10, loadout.y + 18);
+
+        int guns = countTurrets(selectedShip, Turret.Kind.GUN);
+        int missiles = countTurrets(selectedShip, Turret.Kind.MISSILE);
+        int defense = (selectedShip.hasCIWS ? 1 : 0) + ((selectedShip.shieldActive && selectedShip.shieldMax > 0.0) ? 1 : 0);
+        String[] names = {"GUNS", "MISSILES", "DEFENSE"};
+        int[] counts = {guns, missiles, defense};
+        int activeGroup = MathUtil.clamp(ui.fleetRefitLoadoutGroup, 0, 2);
+        for (int i = 0; i < names.length; i++) {
+            Rectangle group = getFleetLoadoutGroupRect(loadout, i);
+            boolean active = activeGroup == i;
+            gx.setColor(active ? new Color(255, 206, 122, 86) : new Color(12, 18, 30, 136));
+            gx.fillRoundRect(group.x, group.y, group.width, group.height, 10, 10);
+            gx.setColor(active ? new Color(255, 230, 166, 150) : new Color(118, 180, 255, 52));
+            gx.drawRoundRect(group.x, group.y, group.width, group.height, 10, 10);
+            gx.setFont(new Font("Consolas", Font.BOLD, 10));
+            gx.setColor(active ? new Color(255, 246, 224, 230) : new Color(186, 206, 226, 190));
+            gx.drawString(names[i], group.x + 10, group.y + 17);
+            String count = String.valueOf(counts[i]);
+            FontMetrics fm = gx.getFontMetrics();
+            gx.drawString(count, group.x + group.width - 12 - fm.stringWidth(count), group.y + 17);
+        }
+
+        Rectangle turretList = getFleetRefitSlotListRect(loadout);
+        gx.setColor(new Color(12, 16, 26, 152));
+        gx.fillRect(turretList.x, turretList.y, turretList.width, turretList.height);
+        gx.setColor(new Color(255, 206, 122, 58));
+        gx.drawRect(turretList.x, turretList.y, turretList.width, turretList.height);
+        gx.setFont(new Font("Consolas", Font.BOLD, 10));
+        gx.setColor(new Color(255, 206, 122, 190));
+        gx.drawString(names[activeGroup], turretList.x + 8, turretList.y + 16);
+
+        List<Integer> indexes = selectedTurretIndexesForGroup(selectedShip, activeGroup);
+        int visibleSlots = fleetRefitSlotVisibleRows(turretList);
+        ui.fleetRefitSlotScroll = MathUtil.clamp(ui.fleetRefitSlotScroll, 0, Math.max(0, indexes.size() - visibleSlots));
+        if (indexes.isEmpty()) {
+            gx.setFont(new Font("Consolas", Font.PLAIN, 10));
+            gx.setColor(new Color(180, 200, 220, 170));
+            String empty = activeGroup == 2
+                    ? defenseSummary(selectedShip)
+                    : "No " + names[activeGroup].toLowerCase(Locale.US) + " mounts on this hull.";
+            gx.drawString(fitShopText(gx.getFontMetrics(), empty, turretList.width - 18),
+                    turretList.x + 8, turretList.y + 42);
+        }
+        for (int i = 0; i < visibleSlots && i + ui.fleetRefitSlotScroll < indexes.size(); i++) {
+            int turretIndex = indexes.get(i + ui.fleetRefitSlotScroll);
+            Turret turret = selectedShip.turrets.get(turretIndex);
+            Rectangle row = new Rectangle(turretList.x + 6, turretList.y + 26 + i * 46, turretList.width - 12, 38);
+            boolean selected = ui.fleetSelectedTurretIndex == turretIndex;
+            gx.setColor(selected ? new Color(255, 206, 122, 70) : new Color(18, 24, 36, 132));
+            gx.fillRoundRect(row.x, row.y, row.width, row.height, 10, 10);
+            gx.setColor(new Color(255, 206, 122, 200));
+            gx.drawRoundRect(row.x, row.y, row.width, row.height, 10, 10);
+            gx.setFont(new Font("Consolas", Font.BOLD, 10));
+            gx.setColor(selected ? new Color(255, 242, 212, 235) : new Color(205, 222, 238, 210));
+            gx.drawString(turretSlotLabel(turret, turretIndex), row.x + 8, row.y + 14);
+            gx.setFont(new Font("Consolas", Font.PLAIN, 9));
+            gx.setColor(new Color(178, 198, 218, 178));
+            gx.drawString(fitShopText(gx.getFontMetrics(), turretDisplayName(turret), row.width - 16),
+                    row.x + 8, row.y + 29);
+        }
+
+        drawFleetEquipmentEditor(gx, getFleetEquipmentEditorRect(loadout), selectedShip, ui);
+    }
+
+    private static void drawFleetEquipmentEditor(Graphics2D gx, Rectangle editor, Ship ship, UiState ui) {
+        gx.setColor(new Color(12, 16, 26, 160));
+        gx.fillRect(editor.x, editor.y, editor.width, editor.height);
+        gx.setColor(new Color(118, 180, 255, 58));
+        gx.drawRect(editor.x, editor.y, editor.width, editor.height);
+        int ti = (ui == null) ? -1 : ui.fleetSelectedTurretIndex;
+        Turret turret = (ship != null && ti >= 0 && ti < ship.turrets.size()) ? ship.turrets.get(ti) : null;
+
+        gx.setFont(new Font("Consolas", Font.BOLD, 11));
+        gx.setColor(new Color(210, 226, 244, 205));
+        gx.drawString(turret == null ? "SELECTED SLOT" : turretSlotLabel(turret, ti).toUpperCase(Locale.US),
+                editor.x + 8, editor.y + 16);
+        if (turret == null) {
+            gx.setFont(new Font("Consolas", Font.PLAIN, 10));
+            gx.setColor(new Color(178, 198, 218, 166));
+            gx.drawString("Choose a weapon slot above.", editor.x + 8, editor.y + 38);
+            return;
+        }
+
+        gx.setFont(new Font("Consolas", Font.BOLD, 12));
+        gx.setColor(new Color(245, 248, 255, 226));
+        gx.drawString(fitShopText(gx.getFontMetrics(), turretDisplayName(turret), editor.width - 18),
+                editor.x + 8, editor.y + 36);
+        gx.setFont(new Font("Consolas", Font.PLAIN, 10));
+        gx.setColor(new Color(190, 210, 230, 184));
+        gx.drawString("Damage " + turret.damage + "    Reload " + String.format(Locale.US, "%.2f", turret.cooldown) + " sec",
+                editor.x + 8, editor.y + 54);
+        if (turret.kind == Turret.Kind.MISSILE) {
+            gx.drawString("Role " + missileRoleName(turret.missileRole), editor.x + 8, editor.y + 70);
+        } else {
+            gx.drawString("Role Direct fire", editor.x + 8, editor.y + 70);
+        }
+
+        Rectangle swap = getFleetSwapButtonRect(editor);
+        drawFleetOverlayModeTab(gx, swap, turret.kind == Turret.Kind.GUN ? "INSTALL RACK" : "INSTALL GUN",
+                true, new Color(158, 196, 255));
+
+        if (turret.kind == Turret.Kind.MISSILE) {
+            Turret.MissileRole[] roles = new Turret.MissileRole[]{
+                    Turret.MissileRole.INTERCEPT,
+                    Turret.MissileRole.ANTI_LIGHT,
+                    Turret.MissileRole.ANTI_MEDIUM,
+                    Turret.MissileRole.ANTI_HEAVY
+            };
+            for (int i = 0; i < roles.length; i++) {
+                Rectangle b = getFleetMissileRoleButtonRect(editor, i);
+                drawFleetOverlayModeTab(gx, b, missileRoleShortName(roles[i]),
+                        turret.missileRole == roles[i], new Color(255, 206, 122));
+            }
+        }
+    }
+
+    private static int countTurrets(Ship ship, Turret.Kind kind) {
+        if (ship == null || ship.turrets == null || kind == null) return 0;
+        int count = 0;
+        for (Turret turret : ship.turrets) {
+            if (turret != null && turret.kind == kind) count++;
+        }
+        return count;
+    }
+
+    private static String defenseSummary(Ship ship) {
+        if (ship == null) return "No defense systems.";
+        String ciws = ship.hasCIWS ? "CIWS online" : "No CIWS package";
+        String shield = (ship.shieldActive && ship.shieldMax > 0.0)
+                ? ("shield " + (int) Math.round(ship.shield) + "/" + (int) Math.round(ship.shieldMax))
+                : "no shield array";
+        return ciws + "  |  " + shield;
+    }
+
+    private static String turretSlotLabel(Turret turret, int index) {
+        String prefix = (turret != null && turret.kind == Turret.Kind.MISSILE) ? "Missile Slot " : "Turret ";
+        return prefix + (index + 1);
+    }
+
+    private static String turretDisplayName(Turret turret) {
+        if (turret == null) return "Empty";
+        if (turret.kind == Turret.Kind.MISSILE) {
+            return missileRoleName(turret.missileRole) + " Missile Rack";
+        }
+        if (turret.cooldown <= 0.20 && turret.damage <= 3) return "Rapid Beam Cannon";
+        if (turret.damage >= 8) return "Heavy Beam Cannon";
+        return "Beam Cannon";
+    }
+
+    private static String missileRoleName(Turret.MissileRole role) {
+        if (role == null) role = Turret.MissileRole.ANTI_MEDIUM;
+        return switch (role) {
+            case INTERCEPT -> "Interceptor";
+            case ANTI_LIGHT -> "Anti-Light";
+            case ANTI_MEDIUM -> "Anti-Medium";
+            case ANTI_HEAVY -> "Anti-Heavy";
+        };
+    }
+
+    private static String missileRoleShortName(Turret.MissileRole role) {
+        if (role == null) return "MED";
+        return switch (role) {
+            case INTERCEPT -> "INT";
+            case ANTI_LIGHT -> "LIGHT";
+            case ANTI_MEDIUM -> "MED";
+            case ANTI_HEAVY -> "HEAVY";
+        };
     }
 
     private static void drawShopMetricPill(Graphics2D g2, int x, int y, int w, String label, String value, Color accent) {
@@ -8073,12 +8506,14 @@ public class Renderer {
 
     private static void drawShopSectionLabel(Graphics2D g2, int x, int y, int width, String title, String subtitle) {
         g2.setFont(new Font("Consolas", Font.BOLD, 14));
+        FontMetrics titleFm = g2.getFontMetrics();
         g2.setColor(new Color(245, 247, 255, 226));
-        g2.drawString(title, x, y + 2);
+        int baseline = y + titleFm.getAscent();
+        g2.drawString(title, x, baseline);
         g2.setFont(new Font("Consolas", Font.PLAIN, 11));
         g2.setColor(new Color(186, 206, 226, 162));
         int subtitleX = x + Math.min(102, Math.max(76, width / 4));
-        g2.drawString(fitShopText(g2.getFontMetrics(), subtitle, Math.max(40, x + width - subtitleX)), subtitleX, y + 2);
+        g2.drawString(fitShopText(g2.getFontMetrics(), subtitle, Math.max(40, x + width - subtitleX)), subtitleX, baseline);
     }
 
     private static void drawShopUpgradeCard(Graphics2D g2, Rectangle card, Player player, int credits,
@@ -8224,6 +8659,93 @@ public class Renderer {
         drawShopActionButton(g2, getShopCardButtonRect(card), buttonLabel, enabled, accent, accentStrong);
     }
 
+    private static void drawCanonicalHullSprite(Graphics2D g2, ShipRole role, Faction faction,
+                                                Rectangle bounds, float alpha, Color accent) {
+        if (g2 == null || bounds == null || bounds.width <= 0 || bounds.height <= 0) return;
+        BufferedImage thumbnail = cachedShipPreviewThumbnail(role, faction, bounds.width, bounds.height);
+        Graphics2D gx = (Graphics2D) g2.create();
+        try {
+            gx.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            gx.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            gx.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.max(0.0f, Math.min(1.0f, alpha))));
+            if (thumbnail != null) {
+                gx.drawImage(thumbnail, bounds.x, bounds.y, null);
+                return;
+            }
+
+            Color base = (accent == null) ? new Color(126, 186, 255) : accent;
+            Polygon hull = ShipHullSilhouette.hullPolygon(role, 100.0, faction);
+            if (hull == null || hull.npoints < 3) return;
+            Rectangle hb = hull.getBounds();
+            double scale = Math.min(bounds.width / (double) Math.max(1, hb.width),
+                    bounds.height / (double) Math.max(1, hb.height)) * 0.82;
+            AffineTransform old = gx.getTransform();
+            gx.translate(bounds.getCenterX(), bounds.getCenterY());
+            gx.scale(scale, scale);
+            gx.translate(-hb.getCenterX(), -hb.getCenterY());
+            gx.setColor(withAlpha(base, 86));
+            gx.fillPolygon(hull);
+            gx.setStroke(new BasicStroke(2.0f));
+            gx.setColor(withAlpha(mixColor(base, Color.WHITE, 0.44), 205));
+            gx.drawPolygon(hull);
+            gx.setTransform(old);
+        } finally {
+            gx.dispose();
+        }
+    }
+
+    private static BufferedImage cachedShipPreviewThumbnail(ShipRole role, Faction faction, int width, int height) {
+        if (width <= 0 || height <= 0) return null;
+        ShipRole resolvedRole = (role == null) ? ShipRole.FRIGATE : role;
+        Faction resolvedFaction = (faction == null) ? Faction.ALLY : faction;
+        String key = resolvedRole + "|" + resolvedFaction + "|" + width + "x" + height;
+        BufferedImage cached = SHIP_PREVIEW_THUMBNAIL_CACHE.get(key);
+        if (cached != null) return cached;
+
+        BufferedImage gameplaySprite = ShipRenderer.gameplayHullSprite(resolvedRole, resolvedFaction);
+        if (gameplaySprite == null) return null;
+
+        Rectangle src = alphaContentBounds(gameplaySprite);
+        double scale = Math.min(width / (double) Math.max(1, src.width),
+                height / (double) Math.max(1, src.height)) * 0.94;
+        int drawW = Math.max(1, (int) Math.round(src.width * scale));
+        int drawH = Math.max(1, (int) Math.round(src.height * scale));
+        int dx = (width - drawW) / 2;
+        int dy = (height - drawH) / 2;
+
+        BufferedImage thumbnail = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D tg = thumbnail.createGraphics();
+        try {
+            tg.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            tg.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            tg.drawImage(gameplaySprite, dx, dy, dx + drawW, dy + drawH,
+                    src.x, src.y, src.x + src.width, src.y + src.height, null);
+        } finally {
+            tg.dispose();
+        }
+        SHIP_PREVIEW_THUMBNAIL_CACHE.put(key, thumbnail);
+        return thumbnail;
+    }
+
+    private static Rectangle alphaContentBounds(BufferedImage image) {
+        if (image == null) return new Rectangle(0, 0, 1, 1);
+        int minX = image.getWidth();
+        int minY = image.getHeight();
+        int maxX = -1;
+        int maxY = -1;
+        for (int y = 0; y < image.getHeight(); y++) {
+            for (int x = 0; x < image.getWidth(); x++) {
+                if (((image.getRGB(x, y) >>> 24) & 0xff) <= 8) continue;
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (x > maxX) maxX = x;
+                if (y > maxY) maxY = y;
+            }
+        }
+        if (maxX < minX || maxY < minY) return new Rectangle(0, 0, image.getWidth(), image.getHeight());
+        return new Rectangle(minX, minY, Math.max(1, maxX - minX + 1), Math.max(1, maxY - minY + 1));
+    }
+
     private static void drawShopHullCard(Graphics2D g2, Rectangle card, ShopHullOffer offer,
                                          int credits, int hangarTier, Player player, GameContext ctx) {
         boolean campaignShop = CampaignSystem.usesPersistentFleetShop(ctx);
@@ -8249,18 +8771,12 @@ public class Renderer {
         Color accent = current ? new Color(255, 214, 126) : new Color(126, 186, 255);
 
         drawShopCardFrame(g2, card, accent, current);
-        g2.setFont(new Font("Consolas", Font.BOLD, 11));
-        g2.setColor(new Color(244, 248, 255, 220));
-        FontMetrics titleMetrics = g2.getFontMetrics();
-        String title = fitShopText(titleMetrics, shopRoleTitle(offer.role), card.width - 20);
-        g2.drawString(title, card.x + 10, card.y + 18);
-        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
-        g2.setColor(new Color(196, 210, 226, 180));
-        FontMetrics bodyMetrics = g2.getFontMetrics();
-        g2.drawString(fitShopText(bodyMetrics, offer.tagLine, card.width - 20), card.x + 10, card.y + 35);
-        g2.drawString(fitShopText(bodyMetrics, offer.detail, card.width - 20), card.x + 10, card.y + 52);
+        Rectangle button = getShopCardButtonRect(card);
+        Rectangle sprite = new Rectangle(card.x + 18, card.y + 12, card.width - 36,
+                Math.max(72, button.y - card.y - 58));
+        drawCanonicalHullSprite(g2, offer.role, Faction.ALLY, sprite, enabled || current ? 1.0f : 0.58f, accent);
 
-        String line2 = current
+        String stateLine = current
                 ? (campaignShop ? "Flagship hull currently commanded" : "Currently equipped")
                 : (!tierOk ? "Needs shipyard T" + displayTier
                 : (campaignShop && !sectorOk)
@@ -8275,11 +8791,31 @@ public class Renderer {
                 : (campaignShop && !eliteCommandOk)
                 ? ("Elite grid " + eliteUsed + "/" + eliteCapacity + " committed")
                 : (campaignShop ? ("Ready to commission   Live " + fleetBand.label() + " hulls: " + bandCount) : "Ready for swap"));
-        String costLine = campaignShop
-                ? ("Tier " + displayTier + "   Cost $" + offer.cost + " + " + oreCost + " ore")
-                : ("Tier " + offer.requiredTier + "   Cost $" + offer.cost);
-        g2.drawString(fitShopText(bodyMetrics, costLine, card.width - 20), card.x + 10, card.y + 69);
-        g2.drawString(fitShopText(bodyMetrics, line2, card.width - 20), card.x + 10, card.y + 86);
+
+        g2.setFont(new Font("Consolas", Font.BOLD, 15));
+        FontMetrics titleMetrics = g2.getFontMetrics();
+        String title = fitShopText(titleMetrics, shopRoleTitle(offer.role), card.width - 24);
+        int tx = card.x + (card.width - titleMetrics.stringWidth(title)) / 2;
+        int titleY = Math.max(sprite.y + 42, button.y - 36);
+        g2.setColor(new Color(244, 248, 255, enabled || current ? 232 : 160));
+        g2.drawString(title, tx, titleY);
+
+        g2.setFont(new Font("Consolas", Font.BOLD, 10));
+        FontMetrics stateMetrics = g2.getFontMetrics();
+        String conciseState = current ? "CURRENT"
+                : enabled ? "READY"
+                : !tierOk ? "SHIPYARD T" + displayTier + " REQUIRED"
+                : (campaignShop && !sectorOk) ? "SECTOR " + minSector + " REQUIRED"
+                : (campaignShop && !mobileStationOk) ? "MOBILE STATION REQUIRED"
+                : (campaignShop && eliteCost > 0 && eliteCapacity <= 0) ? "ELITE COMMAND REQUIRED"
+                : (campaignShop && !eliteCommandOk) ? "ELITE GRID FULL"
+                : !affordable ? "CREDITS SHORT"
+                : !oreAffordable ? "ORE SHORT"
+                : stateLine;
+        conciseState = fitShopText(stateMetrics, conciseState, card.width - 24);
+        int sx = card.x + (card.width - stateMetrics.stringWidth(conciseState)) / 2;
+        g2.setColor(enabled || current ? new Color(190, 214, 236, 184) : new Color(255, 190, 138, 190));
+        g2.drawString(conciseState, sx, button.y - 12);
 
         String buttonLabel;
         if (current) buttonLabel = "CURRENT";
@@ -8288,12 +8824,18 @@ public class Renderer {
         else if (campaignShop && !mobileStationOk) buttonLabel = "NEED STATION";
         else if (campaignShop && eliteCost > 0 && eliteCapacity <= 0) buttonLabel = "NEED ELITE";
         else if (campaignShop && !eliteCommandOk) buttonLabel = "ELITE FULL";
-        else if (!affordable) buttonLabel = "NEED $" + offer.cost;
-        else if (!oreAffordable) buttonLabel = "NEED " + oreCost + " ORE";
-        else if (campaignShop) buttonLabel = (offer.cost <= 0) ? "BUY FREE" : ("BUY $" + offer.cost);
+        else if (campaignShop && (!affordable || !oreAffordable)) {
+            buttonLabel = "NEED " + campaignShipCostLabel(offer.cost, oreCost);
+        } else if (!affordable) buttonLabel = "NEED $" + offer.cost;
+        else if (campaignShop) buttonLabel = "BUY " + campaignShipCostLabel(offer.cost, oreCost);
         else if (offer.cost <= 0) buttonLabel = "SWAP FREE";
-        else buttonLabel = "SWAP $" + offer.cost;
-        drawShopActionButton(g2, getShopCardButtonRect(card), buttonLabel, enabled, accent, current);
+        else buttonLabel = "SWAP " + shopRoleTitle(offer.role);
+        drawShopActionButton(g2, button, fitShopText(g2.getFontMetrics(), buttonLabel, button.width - 12),
+                enabled, accent, current);
+    }
+
+    private static String campaignShipCostLabel(int credits, int ore) {
+        return "$" + Math.max(0, credits) + " + " + Math.max(0, ore) + " ORE";
     }
 
     private static String campaignFleetCount(GameContext ctx) {
@@ -8365,33 +8907,39 @@ public class Renderer {
         if (g2 == null || player == null) return;
 
         Rectangle clip = g2.getClipBounds();
-        int w = Math.min(1040, Math.max(640, clip.width - 32));
-        int h = Math.min(660, Math.max(540, clip.height - 32));
-        int x = (clip.width - w) / 2;
-        int y = Math.max(8, (clip.height - h) / 2);
+        Rectangle panel = powerManagementPanelRect(clip.width, clip.height);
+        int x = panel.x;
+        int y = panel.y;
+        int w = panel.width;
+        int h = panel.height;
 
         drawHudPanelFrame(g2, x, y, w, h, "POWER MANAGEMENT", new Color(255, 214, 150, 225), ThemeArt.HUD_SPECIAL_FRAME);
-        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
+        Rectangle inner = framedSafeContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
         Shape oldClip = g2.getClip();
         g2.clip(inner);
 
+        int cursorY = inner.y;
         g2.setFont(new Font("Consolas", Font.BOLD, 18));
+        FontMetrics titleFm = g2.getFontMetrics();
         g2.setColor(new Color(255, 240, 180, 230));
-        g2.drawString("POWER MANAGEMENT", inner.x, inner.y);
+        g2.drawString("POWER MANAGEMENT", inner.x, cursorY + titleFm.getAscent());
+        cursorY += titleFm.getHeight() + UI_ROW_GAP;
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+        FontMetrics helpFm = g2.getFontMetrics();
         g2.setColor(new Color(255, 255, 255, 170));
         g2.drawString(fitShopText(g2.getFontMetrics(),
                 "O/ESC close   1-6 buses   <-/-> or [/] adjust   F1-F4 presets",
-                inner.width), inner.x, inner.y + 18);
+                inner.width), inner.x, cursorY + helpFm.getAscent());
+        cursorY += helpFm.getHeight();
         g2.drawString(fitShopText(g2.getFontMetrics(),
                 "7 overload   8 overload bus   9 repair priority   0 emergency thrust",
-                inner.width), inner.x, inner.y + 34);
+                inner.width), inner.x, cursorY + helpFm.getAscent());
 
         String[] labels = {"PROPULSION", "SHIELD", "TACTICAL", "SENSOR", "ENGINEERING", "SUPERCHARGE"};
         double[] values = player.powerBusFractions();
 
-        int rowY = inner.y + 66;
+        int rowY = powerBusStartY(inner);
         int barW = Math.min(430, Math.max(330, inner.width - 338));
         int barH = 16;
         for (int i = 0; i < labels.length; i++) {
@@ -8451,7 +8999,8 @@ public class Renderer {
         double shield = player.shieldRegenMultiplier();
         double superCharge = player.superweaponRechargeRateMultiplier();
 
-        int py = rowY + labels.length * 28 + 24;
+        int footerY = inner.y + inner.height - UI_FOOTER_HEIGHT;
+        int py = rowY + labels.length * 28 + UI_SECTION_GAP + 10;
         g2.setFont(new Font("Consolas", Font.BOLD, 13));
         g2.setColor(new Color(255, 255, 255, 210));
         g2.drawString("Combat Effects", inner.x, py);
@@ -8530,7 +9079,7 @@ public class Renderer {
         g2.setColor(new Color(255, 255, 255, 145));
         g2.drawString(fitShopText(g2.getFontMetrics(),
                 "Presets: F1 BALANCED   F2 ATTACK   F3 DEFENSE   F4 PURSUIT",
-                inner.width), inner.x, inner.y + inner.height - 8);
+                inner.width), inner.x, footerY + g2.getFontMetrics().getAscent());
         g2.setClip(oldClip);
     }
 
@@ -8675,28 +9224,35 @@ public class Renderer {
         if (g2 == null || ctx == null || ctx.player == null) return;
 
         Rectangle clip = g2.getClipBounds();
-        int w = Math.min(1160, Math.max(860, clip.width - 32));
-        int h = Math.min(680, Math.max(580, clip.height - 32));
-        int x = (clip.width - w) / 2;
-        int y = Math.max(8, (clip.height - h) / 2);
+        Rectangle panel = crewStationsPanelRect(clip.width, clip.height);
+        int x = panel.x;
+        int y = panel.y;
+        int w = panel.width;
+        int h = panel.height;
 
         drawHudPanelFrame(g2, x, y, w, h, "CREW STATIONS", new Color(255, 214, 150, 225), ThemeArt.HUD_SPECIAL_FRAME);
-        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
+        Rectangle inner = framedSafeContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
 
+        int cursorY = inner.y;
         g2.setColor(new Color(255, 240, 180, 230));
         g2.setFont(new Font("Consolas", Font.BOLD, 18));
-        g2.drawString("CREW STATIONS", inner.x, inner.y);
+        FontMetrics titleFm = g2.getFontMetrics();
+        g2.drawString("CREW STATIONS", inner.x, cursorY + titleFm.getAscent());
+        cursorY += titleFm.getHeight() + UI_ROW_GAP;
 
         g2.setColor(new Color(255, 255, 255, 170));
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+        FontMetrics helpFm = g2.getFontMetrics();
         g2.drawString(fitShopText(g2.getFontMetrics(),
                 "H/ESC close   F1-F5 stations   A toggle AI   <-/-> cycle station",
-                inner.width), inner.x, inner.y + 18);
+                inner.width), inner.x, cursorY + helpFm.getAscent());
 
         int portraitPaneX = inner.x;
-        int portraitPaneY = inner.y + 36;
+        int tabY = crewTabsY(inner);
+        int portraitPaneY = tabY + UI_TAB_HEIGHT + UI_SECTION_GAP;
         int portraitPaneW = 232;
-        int portraitPaneH = inner.height - 46;
+        int footerTop = inner.y + inner.height - UI_FOOTER_HEIGHT;
+        int portraitPaneH = Math.max(180, footerTop - portraitPaneY - UI_ROW_GAP);
 
         g2.setColor(new Color(255, 255, 255, 28));
         g2.fillRoundRect(portraitPaneX, portraitPaneY, portraitPaneW, portraitPaneH, 12, 12);
@@ -8737,7 +9293,6 @@ public class Renderer {
         int textRight = inner.x + inner.width;
 
         int tabX = panelX + 8;
-        int tabY = inner.y + 36;
         int tabGap = 8;
         int stationCount = GameContext.CrewStation.values().length;
         int tw = Math.max(104, (panelW - 16 - tabGap * (stationCount - 1)) / stationCount);
@@ -8765,10 +9320,11 @@ public class Renderer {
         }
 
         int readoutX = panelX + 12;
-        int ly = inner.y + 88;
+        int ly = portraitPaneY + 20;
 
         Shape oldClip = g2.getClip();
-        g2.setClip(new Rectangle(readoutX - 4, inner.y + 52, Math.max(20, textRight - readoutX), Math.max(40, inner.height - 76)));
+        g2.setClip(new Rectangle(readoutX - 4, portraitPaneY, Math.max(20, textRight - readoutX),
+                Math.max(40, footerTop - portraitPaneY - UI_ROW_GAP)));
 
         g2.setColor(new Color(255, 255, 255, 210));
         g2.setFont(new Font("Consolas", Font.BOLD, 14));
@@ -8894,7 +9450,7 @@ public class Renderer {
         g2.setColor(new Color(255, 255, 255, 145));
         g2.drawString(fitShopText(g2.getFontMetrics(),
                 "Hover a station tab for the full role brief.",
-                Math.max(40, textRight - readoutX)), readoutX, inner.y + inner.height - 8);
+                Math.max(40, textRight - readoutX)), readoutX, footerTop + g2.getFontMetrics().getAscent());
     }
 
     private static final class XrayStackLayout {
@@ -13951,6 +14507,10 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             g2.fillRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 8, 8);
             g2.setColor(withAlpha(accent, 214));
             g2.drawRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 8, 8);
+            if (labelLayout.starCount() > 0) {
+                drawStrategicFleetLevelStars(g2, labelLayout.starCount(), bounds.x + bounds.width / 2,
+                        bounds.y + 7, accent, markerAlpha);
+            }
             g2.drawString(labelLayout.text(), tx, ty);
         }
 
@@ -13959,11 +14519,66 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setFont(oldFont);
     }
 
+    static int strategicFleetMarkerStarCountForTest(CampaignSystem.CampaignSupportMarker marker) {
+        if (marker == null || !isFleetSupportMarkerType(marker.type)) return 0;
+        return MathUtil.clamp(marker.fleetLevel, 0, 5);
+    }
+
+    private static void drawStrategicFleetLevelStars(Graphics2D g2,
+                                                     int count,
+                                                     int centerX,
+                                                     int y,
+                                                     Color accent,
+                                                     float markerAlpha) {
+        if (g2 == null || count <= 0) return;
+        Composite oldComposite = g2.getComposite();
+        Stroke oldStroke = g2.getStroke();
+        int gap = 7;
+        double outer = 3.2;
+        double inner = 1.45;
+        int startX = centerX - (count - 1) * gap / 2;
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, MathUtil.clamp(markerAlpha * 0.92f, 0.0f, 1.0f)));
+        g2.setStroke(new BasicStroke(0.8f));
+        for (int i = 0; i < count; i++) {
+            int sx = startX + i * gap;
+            Path2D star = strategicFleetStarShape(sx, y, outer, inner);
+            g2.setColor(withAlpha(new Color(255, 226, 144), 226));
+            g2.fill(star);
+            g2.setColor(withAlpha(accent == null ? Color.WHITE : accent, 210));
+            g2.draw(star);
+        }
+        g2.setComposite(oldComposite);
+        g2.setStroke(oldStroke);
+    }
+
+    private static Path2D strategicFleetStarShape(double cx, double cy, double outer, double inner) {
+        Path2D path = new Path2D.Double();
+        for (int i = 0; i < 10; i++) {
+            double radius = (i & 1) == 0 ? outer : inner;
+            double angle = -Math.PI / 2.0 + i * Math.PI / 5.0;
+            double x = cx + Math.cos(angle) * radius;
+            double y = cy + Math.sin(angle) * radius;
+            if (i == 0) path.moveTo(x, y);
+            else path.lineTo(x, y);
+        }
+        path.closePath();
+        return path;
+    }
+
+    private static boolean isFleetSupportMarkerType(CampaignSystem.SupportMarkerType type) {
+        if (type == null) return false;
+        return switch (type) {
+            case FORCE_BASE_DEFENSE, FORCE_PATROL, FORCE_CONVOY, FORCE_MINING, FORCE_SEARCH, FORCE_STRIKE -> true;
+            default -> false;
+        };
+    }
+
     record StrategicSupportLabelLayout(CampaignSystem.CampaignSupportMarker marker,
                                        String text,
                                        Rectangle bounds,
                                        int textX,
-                                       int textY) {
+                                       int textY,
+                                       int starCount) {
     }
 
     static List<StrategicSupportLabelLayout> strategicSupportMarkerLabelLayoutsForTest(Graphics2D g2,
@@ -14017,12 +14632,21 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 shortLabel = shortLabel.substring(0, Math.max(3, shortLabel.length() - 3)).trim() + "...";
             }
             int tw = fm.stringWidth(shortLabel);
+            int starCount = strategicFleetMarkerStarCountForTest(marker);
+            int starWidth = starCount > 0 ? (starCount - 1) * 7 + 8 : 0;
+            int contentWidth = Math.max(tw, starWidth);
             int tx = Math.max(mapRect.x + 6, Math.min(mapRect.x + mapRect.width - tw - 6, px - tw / 2));
             int ty = strategicSupportLabelY(mapRect, marker, py) + 1;
-            Rectangle bounds = new Rectangle(tx - 4, ty - 11, tw + 8, 15);
+            int bx = Math.max(mapRect.x + 4,
+                    Math.min(mapRect.x + mapRect.width - contentWidth - 8, px - contentWidth / 2 - 4));
+            Rectangle bounds = new Rectangle(bx, ty - 11 - (starCount > 0 ? 12 : 0),
+                    contentWidth + 8, 15 + (starCount > 0 ? 12 : 0));
             bounds = placeStrategicSupportLabel(bounds, occupied, mapRect);
             occupied.add(bounds);
-            layouts.put(marker, new StrategicSupportLabelLayout(marker, shortLabel, bounds, bounds.x + 4, bounds.y + 11));
+            int labelTextX = bounds.x + (bounds.width - tw) / 2;
+            int labelTextY = bounds.y + bounds.height - 4;
+            layouts.put(marker, new StrategicSupportLabelLayout(marker, shortLabel, bounds,
+                    labelTextX, labelTextY, starCount));
         }
         g2.setFont(oldFont);
         return layouts;
@@ -15592,6 +16216,57 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             return buildVisual(role, null, r);
         }
 
+        private static BufferedImage gameplayHullSprite(ShipRole role, Faction faction) {
+            ShipRole resolvedRole = (role == null) ? ShipRole.FRIGATE : role;
+            Faction resolvedFaction = (faction == null) ? Faction.ALLY : faction;
+            ShipSkinSet skinSet = ShipSkinLibrary.getSkinSet(resolvedRole, resolvedFaction);
+            if (skinSet == null || !skinSet.hasAnyLayer()) return null;
+
+            double roleRadius = Math.max(8.0, RoleStats.get(resolvedRole).radius);
+            int radius = (int) Math.round(roleRadius);
+            ShipVisual visual = buildVisual(resolvedRole, resolvedFaction, radius);
+            if (visual == null || visual.station || resolvedRole == ShipRole.BASE) return null;
+            Area hullArea = visual.hullArea;
+            Rectangle2D bounds = (hullArea == null)
+                    ? new Rectangle2D.Double(-roleRadius, -roleRadius, roleRadius * 2.0, roleRadius * 2.0)
+                    : hullArea.getBounds2D();
+            int span = Math.max(1, (int) Math.round(roleRadius * 2.0 * ShipHullSilhouette.skinRenderScale()));
+            Color hull = factionHullColor(resolvedFaction);
+            Color trim = factionTrimColor(resolvedFaction);
+            String key = "preview|" + resolvedRole + "|" + resolvedFaction + "|" + radius + "|" + span
+                    + "|" + hull.getRGB() + "|" + trim.getRGB();
+            BufferedImage cached = HULL_SPRITE_CACHE.get(key);
+            if (cached != null) return cached;
+
+            BufferedImage image = new BufferedImage(span, span, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D cg = image.createGraphics();
+            try {
+                cg.translate(span / 2.0, span / 2.0);
+                boolean allowHealthyMultipart = skinSet.albedo == null;
+                if (!drawMultipartDamageStage(cg, resolvedRole, resolvedFaction, 1.0, span, span, allowHealthyMultipart)) {
+                    drawSkinLayer(cg, skinSet.albedo, -span / 2, -span / 2, span, span, 0.98f);
+                }
+
+                Shape oldClip = cg.getClip();
+                if (hullArea != null) {
+                    cg.setClip(hullArea);
+                }
+                drawSkinLayer(cg, skinSet.panel, -span / 2, -span / 2, span, span, 0.46f);
+                drawSkinLayer(cg, skinSet.ao, -span / 2, -span / 2, span, span, 0.50f);
+                if (skinSet.emissive != null) {
+                    drawSkinLayer(cg, skinSet.emissive, -span / 2, -span / 2, span, span, 0.50f);
+                    drawSkinLayer(cg, skinSet.emissive, -span / 2, -span / 2, span, span, 0.17f);
+                }
+                applyFactionSkinLighting(cg, bounds, resolvedFaction, hull, trim);
+                cg.setClip(oldClip);
+            } finally {
+                cg.dispose();
+            }
+
+            HULL_SPRITE_CACHE.put(key, image);
+            return image;
+        }
+
         private static ShipVisual buildVisual(ShipRole role, Faction faction, int r) {
             ShipVisual v = new ShipVisual();
             if (role == null) role = ShipRole.FRIGATE;
@@ -16065,12 +16740,18 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             double hpFrac = (ship == null || ship.hpMax <= 0)
                     ? 1.0
                     : MathUtil.clamp(ship.hp / (double) ship.hpMax, 0.0, 1.0);
+            ShipRole role = (ship == null) ? ShipRole.FRIGATE : ship.role;
+            Faction faction = (ship == null) ? Faction.ALLY : ship.faction;
+            return drawMultipartDamageStage(g, role, faction, hpFrac, sw, sh, allowHealthyMultipart);
+        }
 
+        private static boolean drawMultipartDamageStage(Graphics2D g, ShipRole role, Faction faction, double hpFrac,
+                                                        int sw, int sh, boolean allowHealthyMultipart) {
             if (hpFrac > 2.0 / 3.0 && !allowHealthyMultipart) {
                 return false;
             }
 
-            ShipPartLibrary.PartSet normal = ShipPartLibrary.getSet(ship.role, ship.faction, ShipPartLibrary.Variant.NORMAL);
+            ShipPartLibrary.PartSet normal = ShipPartLibrary.getSet(role, faction, ShipPartLibrary.Variant.NORMAL);
             if (!normal.hasParts()) return false;
 
             if (hpFrac > 2.0 / 3.0) {
@@ -16078,7 +16759,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 return true;
             }
 
-            ShipPartLibrary.PartSet damaged = ShipPartLibrary.getSet(ship.role, ship.faction, ShipPartLibrary.Variant.DAMAGED);
+            ShipPartLibrary.PartSet damaged = ShipPartLibrary.getSet(role, faction, ShipPartLibrary.Variant.DAMAGED);
             if (hpFrac > 1.0 / 3.0 && damaged.variant == ShipPartLibrary.Variant.DAMAGED) {
                 float t = (float) MathUtil.clamp((2.0 / 3.0 - hpFrac) / (1.0 / 3.0), 0.0, 1.0);
                 drawSkinParts(g, normal.parts, sw, sh, 1.0f - t);
@@ -16086,7 +16767,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 return true;
             }
 
-            ShipPartLibrary.PartSet critical = ShipPartLibrary.getSet(ship.role, ship.faction, ShipPartLibrary.Variant.CRITICAL);
+            ShipPartLibrary.PartSet critical = ShipPartLibrary.getSet(role, faction, ShipPartLibrary.Variant.CRITICAL);
             if (hpFrac <= 1.0 / 3.0 && critical.variant == ShipPartLibrary.Variant.CRITICAL) {
                 drawSkinParts(g, critical.parts, sw, sh, 1.0f);
                 return true;
@@ -16418,6 +17099,36 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         boolean hasAnyLayer() {
             return albedo != null || panel != null || ao != null || emissive != null || damage != null;
+        }
+    }
+
+    private static final class CommsLayout {
+        final Rectangle content;
+        final int tabsY;
+        final int mainTop;
+        final Rectangle contactRows;
+        final Rectangle right;
+        final Rectangle details;
+        final int actionTitleY;
+        final int actionRowsY;
+        final Rectangle log;
+        final Rectangle closeRect;
+        final int contactRowHeight = 42;
+        final int contactRowPitch = 50;
+
+        CommsLayout(Rectangle content, int tabsY, int mainTop, Rectangle contactRows,
+                    Rectangle right, Rectangle details, int actionTitleY, int actionRowsY,
+                    Rectangle log, Rectangle closeRect) {
+            this.content = content;
+            this.tabsY = tabsY;
+            this.mainTop = mainTop;
+            this.contactRows = contactRows;
+            this.right = right;
+            this.details = details;
+            this.actionTitleY = actionTitleY;
+            this.actionRowsY = actionRowsY;
+            this.log = log;
+            this.closeRect = closeRect;
         }
     }
 

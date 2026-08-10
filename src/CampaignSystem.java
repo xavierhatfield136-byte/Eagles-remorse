@@ -67,6 +67,11 @@ public final class CampaignSystem extends CampaignSystemModels {
     private static final int CAMPAIGN_SENSOR_BATTLE_MAX_HOSTILE_JOINERS = 7;
     private static final int CAMPAIGN_SENSOR_BATTLE_MAX_FRIENDLY_JOINERS = 1;
     private static final int CAMPAIGN_SENSOR_BATTLE_MAX_SHIPS_PER_JOINER = 3;
+    private static final int CAMPAIGN_RED_FORCE_CONTACT_MAX_SHIPS = 24;
+    private static final int CAMPAIGN_RED_GRAND_FLEET_MIN_SHIPS = 40;
+    private static final int CAMPAIGN_RED_TITAN_TASK_FORCE_MIN_SHIPS = 18;
+    private static final int CAMPAIGN_LARGE_PLAYER_FLEET_SUPPORT_THRESHOLD = 30;
+    private static final int CAMPAIGN_LARGE_PLAYER_FLEET_SUPPORT_SHIPS_PER_FACTION = 3;
     private static final double CAMPAIGN_SENSOR_BATTLE_PHYSICAL_JOIN_RANGE = 1_150.0;
     private static final double CAMPAIGN_SENSOR_BATTLE_FRIENDLY_JOIN_RANGE = 650.0;
     private static final double CAMPAIGN_OPENING_ENCOUNTER_GRACE_SEC = 180.0;
@@ -5822,7 +5827,8 @@ public final class CampaignSystem extends CampaignSystemModels {
             String routeBlocker = "";
             if (hasCourse) routeBlocker = routeSustainabilityBlocker(ctx, st, selected, freeTarget);
             CampaignLocation recoveryRoute = nearestRecoveryRouteLocation(st);
-            boolean needsRecoveryRoute = recoveryRoute != null && campaignFleetStrainPercent(ctx) >= 70.0;
+            boolean needsRecoveryRoute = recoveryRoute != null
+                    && (campaignFleetStrainPercent(ctx) >= 70.0 || !routeBlocker.isBlank());
             out.add(action("PLOT_COURSE",
                     freeTarget ? "PLOT COURSE HERE" : "PLOT COURSE",
                     freeTarget ? "Free-space destination selected and ready for engagement." : "Use the current selection as the next route lock.",
@@ -10008,8 +10014,8 @@ public final class CampaignSystem extends CampaignSystemModels {
 
     private static double openSpaceFleetClashLaneSpacing(GameContext ctx) {
         MissionLayout layout = missionLayout(ctx);
-        double worldLimit = (ctx == null) ? 900.0 : Math.max(520.0, ctx.WORLD_W * 0.18);
-        return MathUtil.clamp(layout.subzoneWidth * 0.55, 620.0, Math.min(980.0, worldLimit));
+        double worldLimit = (ctx == null) ? 1800.0 : Math.max(1040.0, ctx.WORLD_W * 0.36);
+        return MathUtil.clamp(layout.subzoneWidth * 1.10, 1240.0, Math.min(1960.0, worldLimit));
     }
 
     private static double openSpaceFleetClashCenterX(GameContext ctx, CampaignState st) {
@@ -12392,6 +12398,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         double markerX = intel != null && intel.exactPosition() ? intel.knownX : forceMarkerX(force);
         double markerY = intel != null && intel.exactPosition() ? intel.knownY : forceMarkerY(force);
         SupportMarkerType type = campaignForceMarkerType(force);
+        int fleetLevel = campaignForceFleetProfile(ctx, st, force).level.level;
         if (!physicalFleet && !DevTools.isDebugOverlay()) {
             if (force.faction != Faction.ENEMY) return null;
             String label = rosterState == CampaignForceRosterSystem.ForceRosterState.SCRIPTED_NON_PHYSICAL
@@ -12401,16 +12408,17 @@ public final class CampaignSystem extends CampaignSystemModels {
                     + "  |  concrete ships " + roster.concreteShipCount()
                     + "  |  source " + (intel == null ? "last known" : intel.source.name().replace('_', ' '));
             return new CampaignSupportMarker(SupportMarkerType.INTEL, label, subtitle, force.faction, markerX, markerY,
-                    Math.max(90.0, force.uncertaintyRadius), 34, false, force.id);
+                    Math.max(90.0, force.uncertaintyRadius), 34, false, force.id, 0);
         }
         if (!DevTools.isDebugOverlay() && force.faction == Faction.ENEMY && intel != null) {
             String label = intel.confidence >= 0.80 ? force.name : "Live Hostile Contact";
             String subtitle = "EXACT LIVE CONTACT  |  source " + intel.source.name().replace('_', ' ')
                     + "  |  confidence " + (int) Math.round(intel.confidence * 100.0) + "%"
                     + "  |  pos X " + (int) Math.round(markerX) + " Y " + (int) Math.round(markerY)
-                    + "  |  " + campaignForceRoleSignature(force);
+                    + "  |  " + campaignForceRoleSignature(force)
+                    + "  |  " + campaignForceFleetClassReadout(ctx, st, force);
             return new CampaignSupportMarker(type, label, subtitle, force.faction, markerX, markerY,
-                    Math.max(86.0, intel.uncertaintyRadius), 62, true, force.id);
+                    Math.max(86.0, intel.uncertaintyRadius), 62, true, force.id, fleetLevel);
         }
         if (!DevTools.isDebugOverlay() && force.contactState == CampaignForceContactState.STALE) return null;
         String contact = campaignForceContactLabel(force);
@@ -12420,6 +12428,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                 : "  |  approx area";
         String subtitle = contact
                 + "  |  " + roleSignature
+                + "  |  " + campaignForceFleetClassReadout(ctx, st, force)
                 + "  |  conf " + (int) Math.round(MathUtil.clamp(force.contactConfidence, 0.0, 1.0) * 100.0) + "%"
                 + positionReadout
                 + "  |  " + campaignForceDirectionLabel(force)
@@ -12454,7 +12463,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (force.kind == CampaignForceKind.BASE_DEFENSE) priority += 4;
         if (force.contactState == CampaignForceContactState.STALE) priority -= 8;
         return new CampaignSupportMarker(type, campaignForceMapDisplayName(force), subtitle, force.faction, markerX, markerY,
-                Math.max(86.0, force.uncertaintyRadius), Math.max(16, priority), true, force.id);
+                Math.max(86.0, force.uncertaintyRadius), Math.max(16, priority), true, force.id, fleetLevel);
     }
 
     private static String campaignForceOriginLabel(CampaignState st, CampaignForce force) {
@@ -13976,7 +13985,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         ctx.campaign = st;
         configureCampaignSession(ctx, st);
         seedBaselineCampaignForceOwnership(ctx, st);
-        CampaignCheckpointStore.Checkpoint checkpoint = ctx.config.resumeCampaign ? CampaignCheckpointStore.load() : null;
+        CampaignCheckpointStore.Checkpoint checkpoint = ctx.config.resumeCampaign ? loadConfiguredCampaignCheckpoint(ctx) : null;
         if (checkpoint != null && checkpoint.isUsable() && CampaignCheckpointMapper.apply(ctx, st, checkpoint)) {
             if (checkpoint.migrationApplied) {
                 boolean verified = CampaignCheckpointStore.verifyAndCommitMigration(checkpoint);
@@ -13996,7 +14005,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                 enterFleetHub(ctx, st);
                 FogOfWarSystem.update(ctx);
             } else {
-                if (isStrategicOvermapMode(st)) {
+                if (isStrategicOvermapMode(st) || shouldResumeCheckpointOnStrategicOvermap(checkpoint, st)) {
                     st.sector = Math.max(1, checkpoint.nextSector);
                     st.act = actForSector(st.sector);
                     activateStrategicOvermapLayer(ctx, st, "CAMPAIGN RESUMED: " + loreFor(checkpoint.nextSector).title);
@@ -14012,7 +14021,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         }
 
         if (!ctx.config.resumeCampaign) {
-            CampaignCheckpointStore.clear();
+            CampaignCheckpointStore.clearPrimary();
         }
         ctx.credits = CAMPAIGN_STARTING_CREDITS;
         setCampaignOre(ctx, st, 0);
@@ -14033,6 +14042,38 @@ public final class CampaignSystem extends CampaignSystemModels {
         } else {
             activateStrategicOvermapLayer(ctx, st, "CAMPAIGN START: ACT I - " + actTitleFor(1));
         }
+    }
+
+    static boolean shouldResumeCheckpointOnStrategicOvermap(CampaignCheckpointStore.Checkpoint checkpoint,
+                                                           CampaignState st) {
+        if (checkpoint == null || st == null) return false;
+        if (checkpoint.galaxyEncounterActive || checkpoint.galaxyAmbientEncounterActive) return false;
+        if (st.galaxyEncounterActive || st.galaxyAmbientEncounterActive) return false;
+        if (st.awaitingFleetHubChoice || st.awaitingEpisodeLaunch) return false;
+        boolean hasLocation = !isBlank(checkpoint.currentGalaxyLocationId)
+                || !isBlank(checkpoint.selectedGalaxyLocationId)
+                || !isBlank(checkpoint.dockedGalaxyLocationId)
+                || !isBlank(st.currentGalaxyLocationId)
+                || !isBlank(st.selectedGalaxyLocationId)
+                || !isBlank(st.dockedGalaxyLocationId);
+        boolean hasTravel = checkpoint.galaxyTravelTraveling
+                || st.galaxyTravel.traveling
+                || Double.isFinite(checkpoint.galaxyTravelTargetX)
+                || Double.isFinite(checkpoint.galaxyTravelTargetY);
+        boolean hasPosition = Double.isFinite(checkpoint.playerGalaxyX)
+                && Double.isFinite(checkpoint.playerGalaxyY)
+                && Math.abs(checkpoint.playerGalaxyX) + Math.abs(checkpoint.playerGalaxyY) > 1.0;
+        boolean hasMapState = !isBlank(checkpoint.galaxyLocationStates)
+                || !isBlank(checkpoint.campaignForces)
+                || !isBlank(checkpoint.galaxySearchGroups);
+        return checkpoint.strategicOvermapMode
+                || hasLocation
+                || hasTravel
+                || hasPosition && hasMapState;
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     public static void initCommandSchoolOverworld(GameContext ctx, Faction playerFaction) {
@@ -14404,6 +14445,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         addGalaxyArea(st, campaignArea(ctx, "aoi-distress-2", "Resistance SOS", 0.42, 0.11,
                 CampaignLocationType.DISTRESS_SIGNAL, 0.66f, "High-risk resistance traffic close to Earth."));
         seedProceduralMinorSites(ctx, st);
+        sanitizeEdgeFleetFortressAnchors(ctx, st);
 
         st.currentGalaxyLocationId = st.galaxyMainPois.get(0).id;
         st.selectedGalaxyLocationId = st.galaxyMainPois.size() > 1 ? st.galaxyMainPois.get(1).id : st.currentGalaxyLocationId;
@@ -14415,6 +14457,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         initializeGalaxySearchGroups(st);
         initializeCampaignTheaterWar(st);
         initializeCampaignFiniteEconomy(st);
+        ensureEarthwardRedWarPresence(ctx, st);
         reconcileForcePoolAssignments(st);
         reconcileBaseEconomyCounters(st);
     }
@@ -14442,22 +14485,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         }
         if (bases.isEmpty()) return;
         if (faction == Faction.ENEMY) {
-            seedMissingRoleBatch(st, faction, bases, ShipRole.DREADNOUGHT, 3, CampaignShipPoolStatus.RESERVE);
-            seedMissingRoleBatch(st, faction, bases, ShipRole.BATTLESHIP, 6, CampaignShipPoolStatus.RESERVE);
-            seedMissingRoleBatch(st, faction, bases, ShipRole.BATTLECRUISER, 10, CampaignShipPoolStatus.RESERVE);
-            seedMissingRoleBatch(st, faction, bases, ShipRole.CRUISER, 12, CampaignShipPoolStatus.RESERVE);
-            seedMissingRoleBatch(st, faction, bases, ShipRole.LIGHT_CRUISER, 18, CampaignShipPoolStatus.RESERVE);
-            seedMissingRoleBatch(st, faction, bases, ShipRole.FRIGATE, 28, CampaignShipPoolStatus.DOCKED);
-            seedMissingRoleBatch(st, faction, bases, ShipRole.PICKET, 46, CampaignShipPoolStatus.DOCKED);
-            seedMissingRoleBatch(st, faction, bases, ShipRole.PATROL, 32, CampaignShipPoolStatus.DOCKED);
-            seedMissingRoleBatch(st, faction, bases, ShipRole.MISSILE_BOAT, 24, CampaignShipPoolStatus.DOCKED);
-            seedMissingRoleBatch(st, faction, bases, ShipRole.CARRIER_SUPPORT_TITAN, 3, CampaignShipPoolStatus.RESERVE);
-            seedMissingRoleBatch(st, faction, bases, ShipRole.INTERDICTION_TITAN, 3, CampaignShipPoolStatus.RESERVE);
-            seedMissingRoleBatch(st, faction, bases, ShipRole.ARTILLERY_TITAN, 2, CampaignShipPoolStatus.RESERVE);
-            seedMissingRoleBatch(st, faction, bases, ShipRole.BULWARK_TITAN, 2, CampaignShipPoolStatus.RESERVE);
-            seedMissingRoleBatch(st, faction, bases, ShipRole.MINER, 24, CampaignShipPoolStatus.DOCKED);
-            seedMissingRoleBatch(st, faction, bases, ShipRole.HAULER, 26, CampaignShipPoolStatus.DOCKED);
-            seedMissingRoleBatch(st, faction, bases, ShipRole.TRANSPORT, 24, CampaignShipPoolStatus.RESERVE);
+            seedRedWarReservePool(st, bases);
         } else if (faction == Faction.TEAM_C) {
             seedMissingRoleBatch(st, faction, bases, ShipRole.BATTLESHIP, 4, CampaignShipPoolStatus.RESERVE);
             seedMissingRoleBatch(st, faction, bases, ShipRole.BATTLECRUISER, 7, CampaignShipPoolStatus.RESERVE);
@@ -14485,6 +14513,32 @@ public final class CampaignSystem extends CampaignSystemModels {
             seedMissingRoleBatch(st, faction, bases, ShipRole.MINER, 16, CampaignShipPoolStatus.DOCKED);
             seedMissingRoleBatch(st, faction, bases, ShipRole.CIWS_CORVETTE, 12, CampaignShipPoolStatus.RESERVE);
         }
+    }
+
+    private static void seedRedWarReservePool(CampaignState st, List<CampaignLocation> bases) {
+        if (st == null || bases == null || bases.isEmpty()) return;
+        Faction faction = Faction.ENEMY;
+        seedMissingRoleBatch(st, faction, bases, ShipRole.SUPERSHIP, 8, CampaignShipPoolStatus.RESERVE);
+        seedMissingRoleBatch(st, faction, bases, ShipRole.DREADNOUGHT, 16, CampaignShipPoolStatus.RESERVE);
+        seedMissingRoleBatch(st, faction, bases, ShipRole.BATTLESHIP, 26, CampaignShipPoolStatus.RESERVE);
+        seedMissingRoleBatch(st, faction, bases, ShipRole.BATTLECRUISER, 34, CampaignShipPoolStatus.RESERVE);
+        seedMissingRoleBatch(st, faction, bases, ShipRole.CRUISER, 44, CampaignShipPoolStatus.RESERVE);
+        seedMissingRoleBatch(st, faction, bases, ShipRole.LIGHT_CRUISER, 56, CampaignShipPoolStatus.RESERVE);
+        seedMissingRoleBatch(st, faction, bases, ShipRole.CARRIER, 10, CampaignShipPoolStatus.RESERVE);
+        seedMissingRoleBatch(st, faction, bases, ShipRole.DRONE_CARRIER, 8, CampaignShipPoolStatus.RESERVE);
+        seedMissingRoleBatch(st, faction, bases, ShipRole.FRIGATE, 86, CampaignShipPoolStatus.DOCKED);
+        seedMissingRoleBatch(st, faction, bases, ShipRole.PICKET, 104, CampaignShipPoolStatus.DOCKED);
+        seedMissingRoleBatch(st, faction, bases, ShipRole.PATROL, 88, CampaignShipPoolStatus.DOCKED);
+        seedMissingRoleBatch(st, faction, bases, ShipRole.MISSILE_BOAT, 72, CampaignShipPoolStatus.DOCKED);
+        seedMissingRoleBatch(st, faction, bases, ShipRole.CIWS_CORVETTE, 64, CampaignShipPoolStatus.DOCKED);
+        seedMissingRoleBatch(st, faction, bases, ShipRole.CARRIER_SUPPORT_TITAN, 8, CampaignShipPoolStatus.RESERVE);
+        seedMissingRoleBatch(st, faction, bases, ShipRole.INTERDICTION_TITAN, 10, CampaignShipPoolStatus.RESERVE);
+        seedMissingRoleBatch(st, faction, bases, ShipRole.ARTILLERY_TITAN, 10, CampaignShipPoolStatus.RESERVE);
+        seedMissingRoleBatch(st, faction, bases, ShipRole.BULWARK_TITAN, 10, CampaignShipPoolStatus.RESERVE);
+        seedMissingRoleBatch(st, faction, bases, ShipRole.HYPERWEAPON_TITAN, 8, CampaignShipPoolStatus.RESERVE);
+        seedMissingRoleBatch(st, faction, bases, ShipRole.MINER, 24, CampaignShipPoolStatus.DOCKED);
+        seedMissingRoleBatch(st, faction, bases, ShipRole.HAULER, 34, CampaignShipPoolStatus.DOCKED);
+        seedMissingRoleBatch(st, faction, bases, ShipRole.TRANSPORT, 36, CampaignShipPoolStatus.RESERVE);
     }
 
     private static void seedMissingRoleBatch(CampaignState st,
@@ -15349,6 +15403,50 @@ public final class CampaignSystem extends CampaignSystemModels {
         return location.id.startsWith("aoi-proc-") && !location.discovered;
     }
 
+    private static void sanitizeEdgeFleetFortressAnchors(GameContext ctx, CampaignState st) {
+        if (st == null) return;
+        double minX = Double.POSITIVE_INFINITY;
+        double maxX = Double.NEGATIVE_INFINITY;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || !Double.isFinite(location.x)) continue;
+            minX = Math.min(minX, location.x);
+            maxX = Math.max(maxX, location.x);
+        }
+        double fallbackMax = ctx == null ? 5000.0 : ctx.WORLD_W;
+        if (!Double.isFinite(minX)) minX = 0.0;
+        if (!Double.isFinite(maxX) || maxX <= minX) maxX = fallbackMax;
+        double span = Math.max(1.0, maxX - minX);
+        double leftEdge = minX + span * 0.13;
+        double rightEdge = maxX - span * 0.13;
+        double inset = Math.max(260.0, span * 0.08);
+
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || location.primaryMission) continue;
+            if (!Double.isFinite(location.x)) continue;
+            boolean edge = location.x <= leftEdge || location.x >= rightEdge;
+            if (!edge) continue;
+            if (location.facilityType == CampaignFacilityType.FORTRESS
+                    || location.facilityType == CampaignFacilityType.BLOCKADE) {
+                location.facilityType = CampaignFacilityType.LISTENING_POST;
+                location.canSpawnFleets = false;
+                location.strategicValue = Math.min(location.strategicValue, 2);
+                location.defenseStrength = Math.min(location.defenseStrength, 34.0);
+            }
+        }
+
+        for (GalaxySearchGroup group : st.galaxySearchGroups) {
+            if (group == null || !Double.isFinite(group.x)) continue;
+            boolean edge = group.x <= leftEdge || group.x >= rightEdge;
+            if (!edge) continue;
+            if (group.anchorLocationId != null && group.anchorLocationId.startsWith("roam-")) {
+                group.x = MathUtil.clamp(group.x, minX + inset, maxX - inset);
+                group.lastKnownX = group.x;
+                group.behavior = GalaxySearchBehavior.SEARCHING;
+                group.stateTimer = Math.max(group.stateTimer, 20.0);
+            }
+        }
+    }
+
     private static HubService[] hubServicesForMainPoi(int sector) {
         return switch (sector) {
             case 1, 5, 9, 16 -> new HubService[]{HubService.REPAIR, HubService.SUPPLY, HubService.STRIKE_REARM, HubService.INTEL, HubService.CONTRACTS};
@@ -15432,8 +15530,9 @@ public final class CampaignSystem extends CampaignSystemModels {
             };
             float threat = doctrineBoundThreat(Math.max(0.24f, poi.threatLevel + 0.08f), region);
             double side = (created % 2 == 0) ? 1.0 : -1.0;
-            double x = GameMath.clamp(poi.x + side * (260.0 + created * 35.0), 0.0, maxX);
-            double y = GameMath.clamp(poi.y - 210.0 - created * 28.0, 0.0, maxY);
+            double edgeInset = Math.max(260.0, maxX * 0.08);
+            double x = GameMath.clamp(poi.x + side * (260.0 + created * 35.0), edgeInset, Math.max(edgeInset, maxX - edgeInset));
+            double y = GameMath.clamp(poi.y - 210.0 - created * 28.0, 160.0, Math.max(160.0, maxY - 160.0));
             GalaxySearchGroup roam = new GalaxySearchGroup(
                     st.nextGalaxySearchGroupId++,
                     "Open-Space " + doctrineDisplayName(doctrine, region),
@@ -17747,6 +17846,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         force.y = ship.y;
         noteCampaignForceKnownPosition(force, ship.x, ship.y, 1.0, Math.max(90.0, ship.radius * 4.0));
         st.shipCampaignForceIds.put(ship.id, force.id);
+        noteShipCampaignProvenance(st, ship, campaignShipProvenanceForForce(st, ship, force));
         st.fallbackOwnedShipIds.remove(ship.id);
     }
 
@@ -17799,8 +17899,10 @@ public final class CampaignSystem extends CampaignSystemModels {
             }
         }
         st.shipCampaignForceIds.keySet().removeIf(id -> !live.contains(id));
+        st.shipCampaignProvenance.keySet().removeIf(id -> !live.contains(id));
         st.shipCampaignSpawnCategories.keySet().removeIf(id -> !live.contains(id));
         st.fallbackOwnedShipIds.removeIf(id -> !live.contains(id));
+        inferMissingShipCampaignProvenance(ctx, st);
     }
 
     private static void assignFallbackRoamRoute(CampaignState st, CampaignForce force, double cx, double cy) {
@@ -18963,6 +19065,163 @@ public final class CampaignSystem extends CampaignSystemModels {
         }
     }
 
+    private static void reinforceRedWarReservePoolForExistingSave(CampaignState st) {
+        if (st == null) return;
+        ArrayList<CampaignLocation> bases = new ArrayList<>();
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || location.destroyed || location.ownerFaction != Faction.ENEMY) continue;
+            if (!facilityCanOwnShips(location)) continue;
+            bases.add(location);
+        }
+        seedRedWarReservePool(st, bases);
+    }
+
+    private static void ensureEarthwardRedWarPresence(GameContext ctx, CampaignState st) {
+        if (st == null) return;
+        redirectFriendlyForcesOutOfEarthCore(ctx, st);
+        ArrayList<CampaignLocation> strongholds = redEarthwardStrongholds(ctx, st);
+        if (strongholds.isEmpty()) return;
+        CampaignLocation earth = campaignMainMissionLocation(st, 24);
+        CampaignLocation luna = campaignMainMissionLocation(st, 22);
+        CampaignLocation typhon = campaignMainMissionLocation(st, 20);
+        CampaignLocation sensor = campaignMainMissionLocation(st, 21);
+        CampaignLocation helios = campaignMainMissionLocation(st, 22);
+        CampaignLocation[] sources = {
+                typhon == null ? strongholds.get(0) : typhon,
+                luna == null ? strongholds.get(0) : luna,
+                sensor == null ? strongholds.get(0) : sensor,
+                helios == null ? strongholds.get(0) : helios,
+                earth == null ? strongholds.get(0) : earth
+        };
+        String[] names = {
+                "Red Earthward Grand Fleet",
+                "Red Luna Titan Reserve",
+                "Red Typhon Dreadnought Sortie",
+                "Red Sensor Net Punishment Fleet",
+                "Red High Orbit Terminal Guard"
+        };
+        CampaignForceKind[] kinds = {
+                CampaignForceKind.TASK_FORCE,
+                CampaignForceKind.TASK_FORCE,
+                CampaignForceKind.TASK_FORCE,
+                CampaignForceKind.STRIKE_DETACHMENT,
+                CampaignForceKind.BASE_DEFENSE
+        };
+        CampaignFleetMission[] missions = {
+                CampaignFleetMission.INTERCEPT,
+                CampaignFleetMission.REINFORCE,
+                CampaignFleetMission.INTERCEPT,
+                CampaignFleetMission.RECON,
+                CampaignFleetMission.PATROL
+        };
+        for (int i = 0; i < names.length; i++) {
+            CampaignLocation source = sources[Math.min(i, sources.length - 1)];
+            if (source == null || source.destroyed || source.ownerFaction != Faction.ENEMY) {
+                source = strongholds.get(i % strongholds.size());
+            }
+            CampaignLocation destination = earth == null ? source : earth;
+            seedNamedChecklistFleet(st, names[i], kinds[i], Faction.ENEMY, source, destination,
+                    "Earthward Red core formation assigned to defend the final approach with full catalog warships",
+                    missions[i], CampaignFleetTemplate.INTERCEPTOR, CampaignForceIntent.GUARDING,
+                    source.x, source.y, i * 0.62);
+            CampaignForce force = campaignForceByName(st, names[i]);
+            if (force == null) continue;
+            force.visibleToPlayer = true;
+            force.contactState = CampaignForceContactState.KNOWN;
+            force.contactConfidence = Math.max(force.contactConfidence, 0.92);
+            force.strength = Math.max(force.strength, i == 0 ? 100.0 : 96.0);
+            force.readiness = Math.max(force.readiness, 88.0);
+            force.supply = Math.max(force.supply, 82.0);
+            force.ammoLevel = Math.max(force.ammoLevel, 88.0);
+            force.fuelLevel = Math.max(force.fuelLevel, 80.0);
+            force.operatingRadius = Math.max(force.operatingRadius, 1800.0);
+            hardenRedCampaignForceForTheater(force);
+        }
+    }
+
+    private static ArrayList<CampaignLocation> redEarthwardStrongholds(GameContext ctx, CampaignState st) {
+        ArrayList<CampaignLocation> out = new ArrayList<>();
+        if (st == null) return out;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || location.destroyed || location.ownerFaction != Faction.ENEMY) continue;
+            if (!facilityCanOwnShips(location) && location.facilityType != CampaignFacilityType.BOSS_STAGING_AREA) continue;
+            boolean earthward = ctx != null
+                    ? regionIdentityAt(ctx, location.x, location.y) == GalaxyRegionIdentity.EARTHWARDED_NORTH
+                    : location.missionIndex >= 19;
+            if (earthward || location.missionIndex >= 19) out.add(location);
+        }
+        out.sort(Comparator
+                .comparingInt((CampaignLocation location) -> -MathUtil.clamp(location.strategicValue, 0, 5))
+                .thenComparingInt(location -> location.missionIndex)
+                .thenComparing(location -> location.id == null ? "" : location.id));
+        return out;
+    }
+
+    private static CampaignLocation campaignMainMissionLocation(CampaignState st, int missionIndex) {
+        if (st == null) return null;
+        for (CampaignLocation location : st.galaxyMainPois) {
+            if (location != null && location.missionIndex == missionIndex) return location;
+        }
+        return null;
+    }
+
+    private static void redirectFriendlyForcesOutOfEarthCore(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null) return;
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed || force.faction == null || force.faction == Faction.ENEMY) continue;
+            if (force.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            if (force.faction == Faction.ALLY || force.faction == Faction.PLAYER) continue;
+            if (regionIdentityAt(ctx, force.x, force.y) != GalaxyRegionIdentity.EARTHWARDED_NORTH) continue;
+            if (isExplicitEarthResistanceForce(force)) continue;
+            CampaignLocation home = firstNonEarthHomeBaseForFaction(ctx, st, force.faction);
+            if (home == null) continue;
+            force.x = home.x;
+            force.y = home.y;
+            force.targetX = home.x;
+            force.targetY = home.y;
+            force.sourceLocationId = home.id;
+            force.homeBaseId = home.id;
+            force.destinationLocationId = home.id;
+            double r = 180.0 + (force.id % 5) * 36.0;
+            setCampaignForceRoute(force,
+                    home.x, home.y,
+                    home.x + r, home.y + 40.0,
+                    home.x - r * 0.55, home.y - 90.0,
+                    home.x + r * 0.35, home.y + 120.0);
+        }
+    }
+
+    private static boolean isExplicitEarthResistanceForce(CampaignForce force) {
+        if (force == null || force.name == null) return false;
+        String name = force.name.toUpperCase(Locale.US);
+        return name.contains("EARTHRISE") || name.contains("RESISTANCE") || name.contains("EARTHFALL");
+    }
+
+    private static boolean isExplicitEarthResistanceLocation(CampaignLocation location) {
+        if (location == null || location.name == null) return false;
+        String name = location.name.toUpperCase(Locale.US);
+        return name.contains("EARTHRISE") || name.contains("RESISTANCE");
+    }
+
+    private static CampaignLocation firstNonEarthHomeBaseForFaction(GameContext ctx, CampaignState st, Faction faction) {
+        if (ctx == null || st == null || faction == null) return null;
+        CampaignLocation best = null;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || location.destroyed) continue;
+            if (!sameStrategicFactionFamily(location.ownerFaction, faction)) continue;
+            if (!facilityCanOwnShips(location) && location.services.isEmpty()) continue;
+            if (regionIdentityAt(ctx, location.x, location.y) == GalaxyRegionIdentity.EARTHWARDED_NORTH) continue;
+            if (best == null || location.strategicValue > best.strategicValue) best = location;
+        }
+        return best;
+    }
+
+    private static boolean sameStrategicFactionFamily(Faction a, Faction b) {
+        if (a == b) return true;
+        if (a == null || b == null) return false;
+        return isYellowFaction(a) && isYellowFaction(b);
+    }
+
     private static void assignCampaignForceHomeBase(CampaignForce force, CampaignLocation source, String fallbackId) {
         if (force == null) return;
         String resolved = (source == null || source.id == null || source.id.isBlank())
@@ -19493,7 +19752,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                         force.intent == CampaignForceIntent.RETREATING));
             }
             if (!manifest.ships.isEmpty()) {
-                return manifest;
+                return redReinforcedEncounterManifest(ctx, st, force, manifest, maxShips);
             }
         }
         if (st != null && !st.campaignShipPool.isEmpty()) {
@@ -19521,7 +19780,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                         force.intent == CampaignForceIntent.RETREATING));
             }
             if (!manifest.ships.isEmpty()) {
-                return manifest;
+                return redReinforcedEncounterManifest(ctx, st, force, manifest, maxShips);
             }
         }
         if (!allowAbstractFallback) return null;
@@ -19592,6 +19851,15 @@ public final class CampaignSystem extends CampaignSystemModels {
                 if (slots >= 3) manifest.ships.add(new EncounterShipManifestEntry(ShipRole.MISSILE_BOAT, "Task Force Spear"));
                 if (strength >= 68.0 && slots >= 4) manifest.ships.add(new EncounterShipManifestEntry(ShipRole.CIWS_CORVETTE, "Task Force Flak"));
                 if (strength >= 84.0 && slots >= 5) manifest.ships.add(new EncounterShipManifestEntry(ShipRole.BATTLECRUISER, "Task Force Heavy"));
+                if (force.faction == Faction.ENEMY && strength >= 92.0) {
+                    if (slots >= 6) manifest.ships.add(new EncounterShipManifestEntry(ShipRole.DREADNOUGHT, "Red Rally Dreadnought"));
+                    if (slots >= 7) manifest.ships.add(new EncounterShipManifestEntry(ShipRole.ARTILLERY_TITAN, "Red Siege Titan"));
+                    if (slots >= 8) manifest.ships.add(new EncounterShipManifestEntry(ShipRole.BATTLESHIP, "Red Capital Guard"));
+                    if (slots >= 9) manifest.ships.add(new EncounterShipManifestEntry(ShipRole.HYPERWEAPON_TITAN, "Red Hyperweapon Reserve"));
+                    if (slots >= 10) manifest.ships.add(new EncounterShipManifestEntry(ShipRole.CRUISER, "Red Line Interceptor"));
+                    if (slots >= 11) manifest.ships.add(new EncounterShipManifestEntry(ShipRole.FRIGATE, "Red Screen Escort"));
+                    if (slots >= 12) manifest.ships.add(new EncounterShipManifestEntry(ShipRole.CIWS_CORVETTE, "Red Flak Guard"));
+                }
             }
             case PATROL_GROUP -> {
                 boolean rescueEscort = manifest.name.toUpperCase(Locale.US).contains("RESCUE ESCORT");
@@ -19615,7 +19883,86 @@ public final class CampaignSystem extends CampaignSystemModels {
         while (manifest.ships.size() > slots) {
             manifest.ships.remove(manifest.ships.size() - 1);
         }
+        return redReinforcedEncounterManifest(ctx, st, force, manifest, maxShips);
+    }
+
+    private static EncounterForceManifest redReinforcedEncounterManifest(GameContext ctx,
+                                                                         CampaignState st,
+                                                                         CampaignForce force,
+                                                                         EncounterForceManifest manifest,
+                                                                         int maxShips) {
+        if (force == null || manifest == null || force.faction != Faction.ENEMY) return manifest;
+        if (maxShips < 8) return manifest;
+        FleetClassifier.FleetProfile profile = campaignForceFleetProfile(ctx, st, force);
+        int target = Math.max(manifest.ships.size(), Math.max(maxShips, redTacticalManifestFloor(force, profile)));
+        target = Math.min(CAMPAIGN_RED_FORCE_CONTACT_MAX_SHIPS, target);
+        if (target <= manifest.ships.size()) return manifest;
+        List<ShipRole> preferred = redTacticalReinforcementRoles(force, profile);
+        int ordinal = 1;
+        for (ShipRole role : preferred) {
+            if (manifest.ships.size() >= target) break;
+            if (role == null) continue;
+            if (redManifestRoleQuotaReached(manifest, role, target)) continue;
+            manifest.ships.add(new EncounterShipManifestEntry(
+                    role,
+                    redTacticalReinforcementName(role, ordinal++),
+                    fleetFormationRole(role, manifest.ships.size(), force.kind),
+                    100.0));
+        }
         return manifest;
+    }
+
+    private static int redTacticalManifestFloor(CampaignForce force, FleetClassifier.FleetProfile profile) {
+        if (force == null) return 0;
+        int level = profile == null || profile.level == null ? 1 : profile.level.level;
+        return switch (force.kind == null ? CampaignForceKind.LOCAL_FORCE : force.kind) {
+            case BASE_DEFENSE -> level >= 5 || force.strength >= 94.0 ? 18 : level >= 4 ? 14 : level >= 3 ? 10 : 8;
+            case TASK_FORCE -> level >= 5 ? CAMPAIGN_RED_GRAND_FLEET_MIN_SHIPS
+                    : level >= 4 ? CAMPAIGN_RED_TITAN_TASK_FORCE_MIN_SHIPS
+                    : level >= 3 ? 14 : 10;
+            case STRIKE_DETACHMENT -> level >= 4 ? 14 : level >= 3 ? 10 : 8;
+            case PATROL_GROUP -> level >= 4 ? 12 : level >= 3 ? 9 : 0;
+            default -> 0;
+        };
+    }
+
+    private static List<ShipRole> redTacticalReinforcementRoles(CampaignForce force, FleetClassifier.FleetProfile profile) {
+        CampaignForceKind kind = force == null || force.kind == null ? CampaignForceKind.LOCAL_FORCE : force.kind;
+        if (kind == CampaignForceKind.BASE_DEFENSE) {
+            return List.of(
+                    ShipRole.STATIC_TURRET, ShipRole.STATIC_TURRET,
+                    ShipRole.BATTLESHIP, ShipRole.DREADNOUGHT, ShipRole.BATTLECRUISER,
+                    ShipRole.CRUISER, ShipRole.LIGHT_CRUISER,
+                    ShipRole.MISSILE_BOAT, ShipRole.CIWS_CORVETTE,
+                    ShipRole.FRIGATE, ShipRole.PICKET, ShipRole.PATROL,
+                    ShipRole.ARTILLERY_TITAN, ShipRole.BULWARK_TITAN);
+        }
+        return List.of(
+                ShipRole.INTERDICTION_TITAN, ShipRole.ARTILLERY_TITAN, ShipRole.HYPERWEAPON_TITAN,
+                ShipRole.BULWARK_TITAN, ShipRole.SUPERSHIP,
+                ShipRole.DREADNOUGHT, ShipRole.BATTLESHIP, ShipRole.BATTLECRUISER,
+                ShipRole.CARRIER, ShipRole.DRONE_CARRIER, ShipRole.CRUISER, ShipRole.LIGHT_CRUISER,
+                ShipRole.MISSILE_BOAT, ShipRole.CIWS_CORVETTE, ShipRole.FRIGATE,
+                ShipRole.PICKET, ShipRole.PATROL, ShipRole.MISSILE_BOAT,
+                ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE, ShipRole.PICKET,
+                ShipRole.CRUISER, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE);
+    }
+
+    private static boolean redManifestRoleQuotaReached(EncounterForceManifest manifest, ShipRole role, int target) {
+        if (manifest == null || role == null) return true;
+        long count = manifest.ships.stream().filter(entry -> entry != null && entry.role == role).count();
+        int quota = switch (role) {
+            case INTERDICTION_TITAN, ARTILLERY_TITAN, HYPERWEAPON_TITAN, BULWARK_TITAN,
+                    SUPERSHIP, CARRIER, DRONE_CARRIER, DREADNOUGHT -> 1;
+            case BATTLESHIP, BATTLECRUISER -> target >= 20 ? 3 : 2;
+            case STATIC_TURRET -> 4;
+            default -> target >= 20 ? 6 : 4;
+        };
+        return count >= quota;
+    }
+
+    private static String redTacticalReinforcementName(ShipRole role, int ordinal) {
+        return "Red " + roleDisplayName(role) + " Reserve " + Math.max(1, ordinal);
     }
 
     private static EncounterForceManifest encounterManifestForForce(CampaignState st, CampaignForce force, int maxShips) {
@@ -19698,8 +20045,11 @@ public final class CampaignSystem extends CampaignSystemModels {
             if (entry == null) continue;
             if (entry.shipRecordId > 0 && tacticalShipForPoolRecord(ctx, st, entry.shipRecordId) != null) continue;
             double[] roleOffset = tacticalFormationOffset(entry.formationRole, i, entry.condition < 72.0);
-            double x = centerX + sideX * roleOffset[0] * spacingX + forwardX * roleOffset[1] * spacingY;
-            double y = centerY + sideY * roleOffset[0] * spacingX + forwardY * roleOffset[1] * spacingY;
+            double spacingScale = tacticalFormationSpacingScale(entry.role);
+            double x = centerX + sideX * roleOffset[0] * spacingX * spacingScale
+                    + forwardX * roleOffset[1] * spacingY * spacingScale;
+            double y = centerY + sideY * roleOffset[0] * spacingX * spacingScale
+                    + forwardY * roleOffset[1] * spacingY * spacingScale;
             Faction tacticalFaction = hostile
                     ? Faction.ENEMY
                     : (manifest.faction == null ? Faction.ALLY : manifest.faction);
@@ -19739,8 +20089,11 @@ public final class CampaignSystem extends CampaignSystemModels {
 
     private static double[] tacticalFormationOffset(FleetFormationRole role, int index, boolean damaged) {
         double rearBias = damaged ? 0.42 : 0.0;
-        double sideJitter = ((index % 3) - 1) * 0.16;
-        return switch (role == null ? FleetFormationRole.SCREEN_LEFT : role) {
+        int row = Math.max(0, index / 6);
+        double sideJitter = ((index % 3) - 1) * 0.20 + (((index / 3) & 1) == 0 ? 0.0 : 0.34);
+        double weave = ((index % 5) - 2) * 0.14;
+        double depth = row * 0.52;
+        double[] base = switch (role == null ? FleetFormationRole.SCREEN_LEFT : role) {
             case FLAGSHIP -> new double[]{sideJitter, 0.0 + rearBias};
             case VANGUARD -> new double[]{sideJitter, 1.30 + rearBias * 0.25};
             case SCOUT_WING -> new double[]{(index % 2 == 0) ? -1.55 : 1.55, 1.52 + rearBias * 0.20};
@@ -19751,6 +20104,21 @@ public final class CampaignSystem extends CampaignSystemModels {
             case SUPPORT_REAR -> new double[]{(index % 2 == 0) ? -0.70 : 0.70, -1.08 - rearBias};
             case TRANSPORT_GROUP -> new double[]{(index % 2 == 0) ? -0.52 : 0.52, -0.92 - rearBias};
             case MINER_GROUP -> new double[]{(index % 2 == 0) ? -0.45 : 0.45, -0.82 - rearBias};
+        };
+        base[0] += weave + (((index / 2) & 1) == 0 ? 0.0 : 0.24);
+        base[1] += base[1] >= 0.0 ? depth : -depth;
+        return base;
+    }
+
+    private static double tacticalFormationSpacingScale(ShipRole role) {
+        if (role == null) return 1.0;
+        if (role.isTitanOrMothership()) return 2.15;
+        return switch (role) {
+            case BATTLESHIP, DREADNOUGHT, SUPERSHIP -> 1.80;
+            case BATTLECRUISER, CRUISER, CARRIER, DRONE_CARRIER, TRANSPORT -> 1.45;
+            case LIGHT_CRUISER, MEDIUM_CRUISER, FRIGATE, MISSILE_BOAT, CIWS_CORVETTE, ARTILLERY_SHIP -> 1.18;
+            case MINER, HAULER -> 1.12;
+            default -> 1.0;
         };
     }
 
@@ -19835,7 +20203,7 @@ public final class CampaignSystem extends CampaignSystemModels {
             double x = hostileIngress[0] - hostileSlot * 170.0;
             double y = hostileIngress[1] + (hostileSlot % 2 == 0 ? -110.0 : 110.0);
             spawned += spawnNamedEncounterManifest(ctx, st, "poi_nearby_hostile_force", force, manifest,
-                    x, y, 120.0, 90.0, true);
+                    x, y, 190.0, 145.0, true);
             usedForceIds.add(force.id);
             hostileSlot++;
             if (hostileSlot >= 5) break;
@@ -19856,7 +20224,7 @@ public final class CampaignSystem extends CampaignSystemModels {
             double x = ingress[0] + friendlySlot * 130.0;
             double y = ingress[1] + (friendlySlot % 2 == 0 ? 70.0 : -90.0);
             spawned += spawnNamedEncounterManifest(ctx, st, "poi_nearby_friendly_force", force, manifest,
-                    x, y, 110.0, 80.0, false);
+                    x, y, 175.0, 135.0, false);
             usedForceIds.add(force.id);
             friendlySlot++;
             if (friendlySlot >= 3) break;
@@ -19878,40 +20246,68 @@ public final class CampaignSystem extends CampaignSystemModels {
             if (!canJoinPlayerSensorBattle(ctx, st, force, primaryOwner, radius2)) continue;
             candidates.add(force);
         }
-        candidates.sort(Comparator
+        boolean largePlayerFleet = playerFleetExceedsCoalitionSupportCap(ctx, st);
+        candidates.sort(largePlayerFleet
+                ? Comparator
+                .comparing((CampaignForce force) -> force.faction == Faction.ENEMY ? 0 : 1)
+                .thenComparingDouble((CampaignForce force) -> -campaignForceFleetProfile(ctx, st, force).combatStrength)
+                .thenComparingDouble(force -> GameMath.dist2(force.x, force.y, st.playerGalaxyX, st.playerGalaxyY))
+                .thenComparingInt(force -> force.id)
+                : Comparator
                 .comparingDouble((CampaignForce force) -> GameMath.dist2(force.x, force.y, st.playerGalaxyX, st.playerGalaxyY))
                 .thenComparingInt(force -> force.id));
 
         TacticalApproachDirection approach = hostileApproach == null ? TacticalApproachDirection.EAST : hostileApproach;
-        double[] hostileIngress = openSpaceFleetClashApproachPoint(ctx, st, 1, approach, 150.0);
-        double[] friendlyIngress = openSpaceFleetClashApproachPoint(ctx, st, -1, oppositeApproachDirection(approach), 165.0);
+        double[] hostileIngress = openSpaceFleetClashApproachPoint(ctx, st, 1, approach, 300.0);
+        double[] friendlyIngress = openSpaceFleetClashApproachPoint(ctx, st, -1, oppositeApproachDirection(approach), 320.0);
         int spawned = 0;
         int hostileSlot = 0;
         int friendlySlot = 0;
+        int greenSupportShips = 0;
+        int yellowSupportShips = 0;
         String resolvedCategory = trimmedOrFallback(category, "sensor_bubble_joiner");
         for (CampaignForce force : candidates) {
             boolean hostile = force.faction == Faction.ENEMY;
             if (hostile) {
                 if (hostileSlot >= CAMPAIGN_SENSOR_BATTLE_MAX_HOSTILE_JOINERS) continue;
-            } else if (friendlySlot >= CAMPAIGN_SENSOR_BATTLE_MAX_FRIENDLY_JOINERS) {
-                continue;
+            } else {
+                if (largePlayerFleet) {
+                    if (!isCoalitionAssistFaction(st, force.faction)) continue;
+                    if (coalitionAssistBudgetRemaining(st, force.faction, greenSupportShips, yellowSupportShips) <= 0) {
+                        continue;
+                    }
+                } else if (friendlySlot >= CAMPAIGN_SENSOR_BATTLE_MAX_FRIENDLY_JOINERS) {
+                    continue;
+                }
             }
 
+            int friendlyShipLimit = largePlayerFleet && !hostile
+                    ? coalitionAssistBudgetRemaining(st, force.faction, greenSupportShips, yellowSupportShips)
+                    : Math.min(2, CAMPAIGN_SENSOR_BATTLE_MAX_SHIPS_PER_JOINER);
             EncounterForceManifest manifest = encounterManifestForForce(ctx, st, force,
                     !hostile
-                            ? Math.min(2, CAMPAIGN_SENSOR_BATTLE_MAX_SHIPS_PER_JOINER)
+                            ? friendlyShipLimit
                             : force.kind == CampaignForceKind.BASE_DEFENSE
                             ? Math.min(2, CAMPAIGN_SENSOR_BATTLE_MAX_SHIPS_PER_JOINER)
                             : CAMPAIGN_SENSOR_BATTLE_MAX_SHIPS_PER_JOINER);
             if (manifest == null || manifest.ships.isEmpty()) continue;
+            if (largePlayerFleet && !hostile) {
+                trimEncounterManifest(manifest, friendlyShipLimit);
+                if (manifest.ships.isEmpty()) continue;
+            }
             int slot = hostile ? hostileSlot++ : friendlySlot++;
             double[] ingress = hostile ? hostileIngress : friendlyIngress;
             double side = (slot % 2 == 0) ? -1.0 : 1.0;
             double spread = 150.0 + (slot / 2) * 145.0;
             double x = ingress[0] + side * spread;
             double y = ingress[1] + (slot % 3 - 1) * 95.0;
-            spawned += spawnNamedEncounterManifest(ctx, st, resolvedCategory, force, manifest,
-                    x, y, 115.0, 88.0, hostile);
+            int added = spawnNamedEncounterManifest(ctx, st, resolvedCategory, force, manifest,
+                    x, y, 180.0, 140.0, hostile);
+            spawned += added;
+            if (!hostile && added > 0) {
+                if (isYellowFaction(force.faction)) yellowSupportShips += added;
+                else greenSupportShips += added;
+            }
             force.intent = hostile ? CampaignForceIntent.INTERCEPTING : CampaignForceIntent.ESCORTING;
             force.state = CampaignFleetState.ENGAGING;
         }
@@ -19944,6 +20340,32 @@ public final class CampaignSystem extends CampaignSystemModels {
                 : CAMPAIGN_SENSOR_BATTLE_FRIENDLY_JOIN_RANGE;
         double effectiveRadius2 = Math.min(radius2, physicalRange * physicalRange);
         return GameMath.dist2(force.x, force.y, st.playerGalaxyX, st.playerGalaxyY) <= effectiveRadius2;
+    }
+
+    private static void trimEncounterManifest(EncounterForceManifest manifest, int maxShips) {
+        if (manifest == null || manifest.ships == null) return;
+        int limit = Math.max(0, maxShips);
+        while (manifest.ships.size() > limit) {
+            manifest.ships.remove(manifest.ships.size() - 1);
+        }
+    }
+
+    private static boolean playerFleetExceedsCoalitionSupportCap(GameContext ctx, CampaignState st) {
+        return campaignPlayerFleetProfile(ctx, st).shipCount > CAMPAIGN_LARGE_PLAYER_FLEET_SUPPORT_THRESHOLD;
+    }
+
+    private static boolean isCoalitionAssistFaction(CampaignState st, Faction faction) {
+        return faction == Faction.TEAM_C
+                || faction == greenSupportFaction(st)
+                || isYellowFaction(faction);
+    }
+
+    private static int coalitionAssistBudgetRemaining(CampaignState st,
+                                                      Faction faction,
+                                                      int greenSupportShips,
+                                                      int yellowSupportShips) {
+        int used = isYellowFaction(faction) ? yellowSupportShips : greenSupportShips;
+        return Math.max(0, CAMPAIGN_LARGE_PLAYER_FLEET_SUPPORT_SHIPS_PER_FACTION - used);
     }
 
     private static String ambientLocalSiteEscortForceName(CampaignLocation location) {
@@ -20033,6 +20455,7 @@ public final class CampaignSystem extends CampaignSystemModels {
             if (st.shipCampaignForceIds.containsKey(ship.id)) continue;
             st.shipCampaignSpawnCategories.putIfAbsent(ship.id, "campaign_init_seed");
             CampaignForceKind kind = campaignForceKindForUnassignedShip(ctx, ship);
+            noteShipCampaignProvenance(st, ship, campaignShipProvenanceForKind(st, ship, kind, ship.faction));
             String origin = (ship == ctx.player)
                     ? "Blue command flagship"
                     : defaultCampaignForceOrigin(ctx, st, ship.faction);
@@ -20054,7 +20477,132 @@ public final class CampaignSystem extends CampaignSystemModels {
         return (category == null || category.isBlank()) ? "unknown_callsite" : category;
     }
 
+    static CampaignShipProvenance shipCampaignProvenance(GameContext ctx, CampaignState st, Ship ship) {
+        if (st == null || ship == null || ship.id <= 0) return CampaignShipProvenance.UNKNOWN;
+        CampaignShipProvenance explicit = st.shipCampaignProvenance.get(ship.id);
+        if (explicit != null && explicit != CampaignShipProvenance.UNKNOWN) return explicit;
+        CampaignShipProvenance inferred = inferShipCampaignProvenance(ctx, st, ship);
+        if (inferred != CampaignShipProvenance.UNKNOWN) {
+            st.shipCampaignProvenance.put(ship.id, inferred);
+        }
+        return inferred;
+    }
+
+    private static void noteShipCampaignProvenance(CampaignState st, Ship ship, CampaignShipProvenance provenance) {
+        if (st == null || ship == null || ship.id <= 0 || provenance == null
+                || provenance == CampaignShipProvenance.UNKNOWN) return;
+        CampaignShipProvenance existing = st.shipCampaignProvenance.get(ship.id);
+        if (existing == null
+                || existing == CampaignShipProvenance.UNKNOWN
+                || provenance == CampaignShipProvenance.PLAYER_ROSTER
+                || provenance == CampaignShipProvenance.TACTICAL_ONLY_SCRIPTED) {
+            st.shipCampaignProvenance.put(ship.id, provenance);
+        }
+    }
+
+    private static CampaignShipProvenance campaignShipProvenanceForForce(CampaignState st,
+                                                                         Ship ship,
+                                                                         CampaignForce force) {
+        if (ship == null) return CampaignShipProvenance.UNKNOWN;
+        CampaignShipProvenance category = campaignShipProvenanceForCategory(shipSpawnCategory(st, ship.id), ship.role, ship.faction);
+        if (category != CampaignShipProvenance.UNKNOWN) return category;
+        if (force == null) return campaignShipProvenanceForKind(st, ship, campaignForceKindForUnassignedShip(null, ship), ship.faction);
+        return campaignShipProvenanceForKind(st, ship, force.kind, force.faction == null ? ship.faction : force.faction);
+    }
+
+    private static CampaignShipProvenance campaignShipProvenanceForKind(CampaignState st,
+                                                                        Ship ship,
+                                                                        CampaignForceKind kind,
+                                                                        Faction faction) {
+        if (kind == CampaignForceKind.PLAYER_FLEET) return CampaignShipProvenance.PLAYER_ROSTER;
+        if (ship != null && FleetClassifier.isCivilianDefault(ship.role)) return CampaignShipProvenance.CIVILIAN;
+        if (kind == CampaignForceKind.MINING_GROUP
+                || kind == CampaignForceKind.CONVOY
+                || kind == CampaignForceKind.TRADE_GROUP
+                || kind == CampaignForceKind.INSTALLATION_TRAFFIC) {
+            return CampaignShipProvenance.CIVILIAN;
+        }
+        if (faction == Faction.ENEMY || faction == Faction.DARK_YELLOW) {
+            return CampaignShipProvenance.ENEMY_CAMPAIGN_FLEET;
+        }
+        if (faction == Faction.PLAYER || faction == Faction.ALLY) {
+            return CampaignShipProvenance.ALLIED_CAMPAIGN_FLEET;
+        }
+        if (faction == Faction.TEAM_C
+                || faction == Faction.BRIGHT_YELLOW
+                || faction == Faction.TEAM_D) {
+            return CampaignShipProvenance.ALLIED_CAMPAIGN_FLEET;
+        }
+        return CampaignShipProvenance.CAMPAIGN_FORCE;
+    }
+
+    private static CampaignShipProvenance campaignShipProvenanceForCategory(String rawCategory,
+                                                                            ShipRole role,
+                                                                            Faction faction) {
+        String category = rawCategory == null ? "" : rawCategory.trim().toLowerCase(Locale.US);
+        if (category.equals("intro_tactical_only") || category.startsWith("tactical_only")) {
+            return CampaignShipProvenance.TACTICAL_ONLY_SCRIPTED;
+        }
+        if (category.contains("coalition") || category.contains("temporary_support")) {
+            return CampaignShipProvenance.TEMPORARY_COALITION_SUPPORT;
+        }
+        if (category.contains("escort")) {
+            return CampaignShipProvenance.MISSION_ESCORT;
+        }
+        if (category.contains("convoy") || FleetClassifier.isCivilianDefault(role)) {
+            return CampaignShipProvenance.CIVILIAN;
+        }
+        if ((faction == Faction.ENEMY || faction == Faction.DARK_YELLOW)
+                && !category.isBlank()
+                && !"unknown_callsite".equals(category)) {
+            return CampaignShipProvenance.ENEMY_CAMPAIGN_FLEET;
+        }
+        return CampaignShipProvenance.UNKNOWN;
+    }
+
+    private static CampaignShipProvenance inferShipCampaignProvenance(GameContext ctx, CampaignState st, Ship ship) {
+        if (st == null || ship == null) return CampaignShipProvenance.UNKNOWN;
+        if (ship == ctxPlayer(ctx) || isPersistentFleetShip(st, ship)) return CampaignShipProvenance.PLAYER_ROSTER;
+        CampaignShipProvenance category = campaignShipProvenanceForCategory(shipSpawnCategory(st, ship.id), ship.role, ship.faction);
+        if (category != CampaignShipProvenance.UNKNOWN) return category;
+        int forceId = st.shipCampaignForceIds.getOrDefault(ship.id, 0);
+        CampaignForce force = campaignForceById(st, forceId);
+        if (force != null) return campaignShipProvenanceForKind(st, ship, force.kind, force.faction == null ? ship.faction : force.faction);
+        return campaignShipProvenanceForKind(st, ship, campaignForceKindForUnassignedShip(ctx, ship), ship.faction);
+    }
+
+    private static Player ctxPlayer(GameContext ctx) {
+        return ctx == null ? null : ctx.player;
+    }
+
+    private static boolean isPersistentFleetShip(CampaignState st, Ship ship) {
+        if (st == null || ship == null) return false;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || entry.destroyed) continue;
+            if (entry.activeShipId > 0 && entry.activeShipId == ship.id) return true;
+            if (entry.name != null && ship.name != null && entry.name.equalsIgnoreCase(ship.name)) return true;
+        }
+        return false;
+    }
+
+    static void inferMissingShipCampaignProvenance(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || ctx.ships == null) return;
+        HashSet<Integer> live = new HashSet<>();
+        for (Ship ship : new ArrayList<>(ctx.ships)) {
+            if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
+            live.add(ship.id);
+            CampaignShipProvenance explicit = st.shipCampaignProvenance.get(ship.id);
+            if (explicit == null || explicit == CampaignShipProvenance.UNKNOWN) {
+                CampaignShipProvenance inferred = inferShipCampaignProvenance(ctx, st, ship);
+                if (inferred != CampaignShipProvenance.UNKNOWN) st.shipCampaignProvenance.put(ship.id, inferred);
+            }
+        }
+        st.shipCampaignProvenance.keySet().removeIf(id -> !live.contains(id));
+    }
+
     private static boolean isTacticalOnlyCampaignSpawnCategory(CampaignState st, int shipId) {
+        CampaignShipProvenance provenance = st == null ? null : st.shipCampaignProvenance.get(shipId);
+        if (provenance == CampaignShipProvenance.TACTICAL_ONLY_SCRIPTED) return true;
         String category = shipSpawnCategory(st, shipId).trim().toLowerCase(Locale.US);
         return category.equals("intro_tactical_only")
                 || category.startsWith("tactical_only");
@@ -20339,6 +20887,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (st.galaxyMainPois.isEmpty()) {
             initializeGalaxyCampaignMap(ctx, st);
         }
+        sanitizeEdgeFleetFortressAnchors(ctx, st);
 
         if (ctx.player == null || !ctx.player.alive || ctx.player.hp <= 0) {
             failRun(ctx, flagshipFailureText(st), "Campaign command ship destroyed");
@@ -20377,7 +20926,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                 if (next > st.totalSectors) {
                     ctx.gameOver = true;
                     ctx.state = GameState.GAME_OVER;
-                    CampaignCheckpointStore.clear();
+                    CampaignCheckpointStore.clearPrimary();
                     finalizeCampaignOutcome(ctx, st);
                     persistRunResult(ctx, true);
                     return;
@@ -20409,6 +20958,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         detectCampaignTacticalLosses(ctx, st);
         syncPersistentFleetCasualties(ctx, st);
         recoverBlueRejoinsNearFlagship(ctx, st);
+        sanitizeCoalitionCivilianPlayerAnchors(ctx, st);
         detectHostileKills(ctx);
         updateStrategicStrikeObjects(ctx, st, dt);
         updateStrategicTaskForces(ctx, st, dt);
@@ -23183,10 +23733,6 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (ctx == null || st == null || !st.enabled || ctx.player == null) return false;
         if (st.commandSchoolTraining) return false;
         if (ctx.gameOver || ctx.state == GameState.GAME_OVER) return false;
-        if (ctx.experience.ironCommand) {
-            EventSystem.showBanner(ctx, "IRON COMMAND: CHECKPOINTS ONLY SAVE AT SECTOR TRANSITIONS", 2.0);
-            return false;
-        }
 
         // When exiting via F10 (whether in mission or fleet hub), save the current checkpoint
         // This preserves ore, cargo, and ship inventory state
@@ -23195,6 +23741,15 @@ public final class CampaignSystem extends CampaignSystemModels {
                 : Math.max(1, st.sector);
         if (resumeSector > st.totalSectors) return false;
         return saveCheckpoint(ctx, st, resumeSector);
+    }
+
+    private static CampaignCheckpointStore.Checkpoint loadConfiguredCampaignCheckpoint(GameContext ctx) {
+        if (ctx == null || ctx.config == null) return CampaignCheckpointStore.load();
+        String slotId = ctx.config.campaignSlotId;
+        if (slotId == null || slotId.isBlank() || "primary".equalsIgnoreCase(slotId.trim())) {
+            return CampaignCheckpointStore.load();
+        }
+        return CampaignCheckpointStore.loadSlot(slotId);
     }
 
     public static boolean hasCinematicFocus(GameContext ctx) {
@@ -23465,6 +24020,13 @@ public final class CampaignSystem extends CampaignSystemModels {
         return ship.alive && !ship.dying && ship.hp > 0;
     }
 
+    public static boolean isFleetRefitEditableCandidate(GameContext ctx, Ship ship) {
+        if (ship == null || ship.faction == null) return false;
+        if (!ship.alive || ship.dying || ship.hp <= 0) return false;
+        if (!isCampaignActive(ctx)) return true;
+        return ship.faction.teamId() == Faction.ALLY.teamId();
+    }
+
     private static void arrangeFleetHubFormation(GameContext ctx, CampaignState st) {
         if (ctx == null || st == null || ctx.player == null) return;
 
@@ -23545,6 +24107,23 @@ public final class CampaignSystem extends CampaignSystemModels {
             }
             snapshotPersistentFleetEntry(ctx, st, entry, ship);
         }
+    }
+
+    static boolean syncPersistentFleetEntrySnapshotForShip(GameContext ctx, Ship ship) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || ship == null || st.persistentBlueFleet.isEmpty()) return false;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || entry.destroyed) continue;
+            String entryName = trimmedOrFallback(entry.name, "");
+            String shipName = trimmedOrFallback(ship.name, "");
+            if (entry.activeShipId == ship.id
+                    || (!entryName.isBlank() && entryName.equals(shipName))) {
+                entry.activeShipId = ship.id;
+                snapshotPersistentFleetEntry(ctx, st, entry, ship);
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void snapshotPersistentFleetEntry(GameContext ctx, CampaignState st, PersistentFleetEntry entry, Ship ship) {
@@ -32549,10 +33128,13 @@ public final class CampaignSystem extends CampaignSystemModels {
         double spawnX = GameMath.clamp(fromX + (targetX - fromX) * t - Math.sin(heading) * lateral, 0.0, ctx.WORLD_W);
         double spawnY = GameMath.clamp(fromY + (targetY - fromY) * t + Math.cos(heading) * lateral, 0.0, ctx.WORLD_H);
         CampaignLocation source = nearestHostileRouteSource(st, spawnX, spawnY, fromX, fromY, targetX, targetY);
-        GalaxySearchDoctrine doctrine = route.interceptionRisk >= 68.0
-                ? GalaxySearchDoctrine.HUNTER_KILLER
-                : GalaxySearchDoctrine.INTERDICTION_GROUP;
-        float threat = (float) MathUtil.clamp(0.42 + route.interceptionRisk / 120.0, 0.48, 0.92);
+        FleetClassifier.FleetProfile playerProfile = campaignPlayerFleetProfile(ctx, st);
+        GalaxySearchDoctrine doctrine = strategicResponseDoctrineForPlayerProfile(playerProfile, route.interceptionRisk);
+        int responseTier = strategicResponseTierForPlayerProfile(playerProfile, route.interceptionRisk);
+        float threat = (float) MathUtil.clamp(0.42 + route.interceptionRisk / 120.0
+                + Math.max(0, playerProfile.level.level - 3) * 0.06,
+                0.48,
+                playerProfile.level.level >= 5 ? 1.08 : 0.96);
         GalaxySearchGroup group = new GalaxySearchGroup(
                 st.nextGalaxySearchGroupId++,
                 doctrineDisplayName(doctrine, regionIdentityAt(ctx, spawnX, spawnY)),
@@ -32563,26 +33145,97 @@ public final class CampaignSystem extends CampaignSystemModels {
                 205.0 + threat * 92.0,
                 threat,
                 source == null ? CampaignLocationType.ENEMY_ACTIVITY : source.type,
-                route.interceptionRisk >= 68.0 ? 4 : 3);
+                responseTier);
         group.anchorLocationId = source == null ? "" : source.id;
         group.doctrine = doctrine;
         group.behavior = GalaxySearchBehavior.INTERCEPTING;
         group.visible = true;
-        group.identified = false;
-        group.contactConfidence = GalaxyContactConfidence.CONFIRMED_HOSTILE;
-        group.intelQuality = ContactIntelQuality.TRACKED;
-        group.trackIntegrity = 64.0;
-        group.contactFadeSec = 18.0;
+        group.identified = playerProfile.level.level >= 5;
+        group.contactConfidence = playerProfile.level.level >= 5
+                ? GalaxyContactConfidence.IDENTIFIED_TASK_FORCE
+                : GalaxyContactConfidence.CONFIRMED_HOSTILE;
+        group.intelQuality = playerProfile.level.level >= 5
+                ? ContactIntelQuality.TARGET_QUALITY
+                : ContactIntelQuality.TRACKED;
+        group.trackIntegrity = playerProfile.level.level >= 5 ? 86.0 : 64.0;
+        group.contactFadeSec = playerProfile.level.level >= 5 ? 30.0 : 18.0;
         group.lastKnownX = group.x;
         group.lastKnownY = group.y;
         assignRouteInterdictionTarget(ctx, st, group, 0.34);
         st.galaxySearchGroups.add(group);
-        st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel + 3.5, 0.0, 100.0);
+        int rallied = rallyNearbyRedForcesAgainstPlayerThreat(ctx, st, group, playerProfile);
+        st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel + 3.5 + Math.max(0, playerProfile.level.level - 3) * 2.0, 0.0, 100.0);
         UISystem.addPing(ctx, group.x, group.y, 2.6);
         EventSystem.showBanner(ctx,
-                "ROUTE INTERDICTION SCREEN DETECTED  |  STRIKE WINDOW OPEN",
+                (playerProfile.level.level >= 5
+                        ? "RED 5-STAR RESPONSE DETECTED"
+                        : "ROUTE INTERDICTION SCREEN DETECTED")
+                        + (rallied > 0 ? "  |  REGIONAL FORCES RALLYING" : "  |  STRIKE WINDOW OPEN"),
                 1.6);
         st.lastTransitEncounterDebrief = routeInterdictionReasonLine(route, false);
+    }
+
+    static int strategicResponseTierForPlayerProfile(FleetClassifier.FleetProfile profile, double routeRisk) {
+        int base = routeRisk >= 68.0 ? 4 : 3;
+        FleetLevel level = profile == null ? FleetLevel.LEVEL_1_LIGHT : profile.level;
+        return switch (level) {
+            case LEVEL_5_GRAND_FLEET -> 8;
+            case LEVEL_4_TITAN_TASK_FORCE -> Math.max(base, 6);
+            case LEVEL_3_LARGE_CAPITAL -> Math.max(base, 5);
+            case LEVEL_2_MEDIUM -> base;
+            case LEVEL_1_LIGHT -> Math.max(2, base - 1);
+        };
+    }
+
+    private static GalaxySearchDoctrine strategicResponseDoctrineForPlayerProfile(FleetClassifier.FleetProfile profile,
+                                                                                  double routeRisk) {
+        FleetLevel level = profile == null ? FleetLevel.LEVEL_1_LIGHT : profile.level;
+        if (level == FleetLevel.LEVEL_5_GRAND_FLEET) return GalaxySearchDoctrine.PUNISHMENT_FLEET;
+        if (level == FleetLevel.LEVEL_4_TITAN_TASK_FORCE || routeRisk >= 68.0) return GalaxySearchDoctrine.HUNTER_KILLER;
+        return GalaxySearchDoctrine.INTERDICTION_GROUP;
+    }
+
+    private static int rallyNearbyRedForcesAgainstPlayerThreat(GameContext ctx,
+                                                               CampaignState st,
+                                                               GalaxySearchGroup response,
+                                                               FleetClassifier.FleetProfile playerProfile) {
+        if (ctx == null || st == null || response == null || playerProfile == null) return 0;
+        if (playerProfile.level.level < 4) return 0;
+        syncCampaignSearchGroupsToForces(ctx, st);
+        CampaignForce responseForce = campaignForceForLinkedSearchGroup(st, response);
+        double radius = playerProfile.level.level >= 5 ? 1850.0 : 1220.0;
+        int maxRallies = playerProfile.level.level >= 5 ? 5 : 2;
+        int rallied = 0;
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed || !force.simulationActive || force.faction != Faction.ENEMY) continue;
+            if (force.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            if (force.linkedSearchGroupId == response.id) continue;
+            if (force.kind == CampaignForceKind.CONVOY
+                    || force.kind == CampaignForceKind.MINING_GROUP
+                    || force.kind == CampaignForceKind.TRADE_GROUP
+                    || force.kind == CampaignForceKind.INSTALLATION_TRAFFIC) continue;
+            if (Math.hypot(force.x - response.x, force.y - response.y) > radius) continue;
+            force.mission = CampaignFleetMission.REINFORCE;
+            force.intent = CampaignForceIntent.REGROUPING;
+            force.state = CampaignFleetState.MOVING;
+            force.workState = CampaignForceWorkState.REACTING;
+            force.missionState = CampaignForceMissionState.TRAVELING;
+            force.stopReason = CampaignForceStopReason.STAGING;
+            force.parentForceId = responseForce == null ? 0 : responseForce.id;
+            force.targetForceId = responseForce == null ? 0 : responseForce.id;
+            force.targetX = response.x;
+            force.targetY = response.y;
+            force.strength = Math.max(force.strength, playerProfile.level.level >= 5 ? 86.0 : 72.0);
+            force.readiness = Math.max(force.readiness, playerProfile.level.level >= 5 ? 78.0 : 66.0);
+            setCampaignForceRoute(force, force.x, force.y, response.x, response.y);
+            rallied++;
+            if (rallied >= maxRallies) break;
+        }
+        if (rallied > 0) {
+            pushTheaterEvent(st, "Red command rallied " + rallied + " regional force"
+                    + (rallied == 1 ? "" : "s") + " against " + playerProfile.level.starLabel().toLowerCase(Locale.US));
+        }
+        return rallied;
     }
 
     private static String routeInterdictionReasonLine(GalaxyRouteAssessment route, boolean existingContact) {
@@ -34590,7 +35243,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         st.galaxyAmbientPocketCenterX = centerX;
         st.galaxyAmbientPocketCenterY = centerY;
         st.galaxyAmbientPocketRadius = openSpaceFleetClashLaneSpacing(ctx) * 1.55;
-        double[] arrival = openSpaceFleetClashApproachPoint(ctx, st, -1, alliedApproach, 150.0);
+        double[] arrival = openSpaceFleetClashApproachPoint(ctx, st, -1, alliedApproach, 300.0);
         setLoadedMissionSubzone(ctx, alliedZone);
         ctx.player.x = arrival[0];
         ctx.player.y = arrival[1];
@@ -35043,6 +35696,11 @@ public final class CampaignSystem extends CampaignSystemModels {
                                                      GalaxyRegionIdentity region, double[] routeAnchor,
                                                      double[] stationAnchor, Faction faction) {
         if (ctx == null || st == null || location == null || faction == null || region == null) return;
+        Faction regionalFaction = region == GalaxyRegionIdentity.EARTHWARDED_NORTH
+                && faction != Faction.ENEMY
+                && !isExplicitEarthResistanceLocation(location)
+                ? Faction.ENEMY
+                : faction;
         double routeX = (routeAnchor == null || routeAnchor.length < 2) ? ambientEncounterCenterX(ctx, st) - 220.0 : routeAnchor[0];
         double routeY = (routeAnchor == null || routeAnchor.length < 2) ? ambientEncounterCenterY(ctx, st) : routeAnchor[1];
         double stationX = (stationAnchor == null || stationAnchor.length < 2) ? ambientEncounterCenterX(ctx, st) + 220.0 : stationAnchor[0];
@@ -35050,24 +35708,24 @@ public final class CampaignSystem extends CampaignSystemModels {
         withCampaignSpawnContext(st,
                 "ambient_hub_regional",
                 campaignForceContext(
-                        ambientRegionalHubForceKind(location, region, faction),
-                        faction,
-                        ambientRegionalHubForceName(location, region, faction),
+                        ambientRegionalHubForceKind(location, region, regionalFaction),
+                        regionalFaction,
+                        ambientRegionalHubForceName(location, region, regionalFaction),
                         trimmedOrFallback(location.name, "Friendly installation"),
                         "Regional traffic and local escort force tied to the installation's surrounding lanes"),
                 () -> {
                     switch (region) {
                         case SOUTHERN_SHELTER -> {
-                            spawnCampaignShip(ctx, ShipRole.HAULER, faction, routeX + 70.0, routeY - 40.0, "Shelter Route Tender");
-                            spawnCampaignShip(ctx, ShipRole.CIWS_CORVETTE, faction, stationX + 90.0, stationY + 170.0, "Shelter Flak Boat");
+                            spawnCampaignShip(ctx, ShipRole.HAULER, regionalFaction, routeX + 70.0, routeY - 40.0, "Shelter Route Tender");
+                            spawnCampaignShip(ctx, ShipRole.CIWS_CORVETTE, regionalFaction, stationX + 90.0, stationY + 170.0, "Shelter Flak Boat");
                         }
                         case CONTESTED_BELT -> {
-                            spawnCampaignShip(ctx, ShipRole.PATROL, faction, routeX + 110.0, routeY + 20.0, "Raid Belt Cutter");
-                            spawnCampaignShip(ctx, ShipRole.HAULER, faction, stationX + 60.0, stationY - 170.0, "Broker Drift Tender");
+                            spawnCampaignShip(ctx, ShipRole.PATROL, regionalFaction, routeX + 110.0, routeY + 20.0, "Raid Belt Cutter");
+                            spawnCampaignShip(ctx, ShipRole.HAULER, regionalFaction, stationX + 60.0, stationY - 170.0, "Broker Drift Tender");
                         }
                         case EARTHWARDED_NORTH -> {
-                            spawnCampaignShip(ctx, ShipRole.FRIGATE, faction, stationX - 120.0, stationY + 90.0, "Blackout Guard");
-                            spawnCampaignShip(ctx, ShipRole.PICKET, faction, routeX + 150.0, routeY - 170.0, "Resistance Wake Screen");
+                            spawnCampaignShip(ctx, ShipRole.FRIGATE, regionalFaction, stationX - 120.0, stationY + 90.0, "Red Blackout Guard");
+                            spawnCampaignShip(ctx, ShipRole.PICKET, regionalFaction, routeX + 150.0, routeY - 170.0, "Red Wake Screen");
                         }
                     }
                 });
@@ -35132,8 +35790,8 @@ public final class CampaignSystem extends CampaignSystemModels {
                                     spawnCampaignSalvagePocket(ctx, objectiveX + 40.0, objectiveY + 180.0, 3);
                                 }
                                 case EARTHWARDED_NORTH -> {
-                                    spawnCampaignShip(ctx, ShipRole.FRIGATE, green, objectiveX + 80.0, objectiveY - 180.0, "Resistance Fuel Guard");
-                                    spawnCampaignShip(ctx, ShipRole.PICKET, green, objectiveX - 300.0, objectiveY + 30.0, "Cold Belt Screen");
+                                    spawnCampaignShip(ctx, ShipRole.FRIGATE, Faction.ENEMY, objectiveX + 80.0, objectiveY - 180.0, "Red Fuel Interdiction Guard");
+                                    spawnCampaignShip(ctx, ShipRole.PICKET, Faction.ENEMY, objectiveX - 300.0, objectiveY + 30.0, "Red Cold Belt Screen");
                                 }
                             }
                         }
@@ -35145,8 +35803,8 @@ public final class CampaignSystem extends CampaignSystemModels {
                                     spawnCampaignSalvagePocket(ctx, objectiveX + 220.0, objectiveY + 70.0, 4);
                                 }
                                 case EARTHWARDED_NORTH -> {
-                                    spawnCampaignShip(ctx, ShipRole.FRIGATE, green, objectiveX + 70.0, objectiveY - 150.0, "Burnline Guard");
-                                    spawnCampaignShip(ctx, ShipRole.CIWS_CORVETTE, green, routeX + 110.0, routeY + 130.0, "Intercept Wreck Screen");
+                                    spawnCampaignShip(ctx, ShipRole.FRIGATE, Faction.ENEMY, objectiveX + 70.0, objectiveY - 150.0, "Red Burnline Guard");
+                                    spawnCampaignShip(ctx, ShipRole.CIWS_CORVETTE, Faction.ENEMY, routeX + 110.0, routeY + 130.0, "Red Intercept Wreck Screen");
                                 }
                             }
                         }
@@ -35154,7 +35812,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                             switch (region) {
                                 case SOUTHERN_SHELTER -> spawnCampaignShip(ctx, ShipRole.TRANSPORT, green, routeX - 10.0, routeY - 70.0, "Shelter Cache Skiff");
                                 case CONTESTED_BELT -> spawnCampaignShip(ctx, ShipRole.PATROL, green, objectiveX + 220.0, objectiveY + 100.0, "False-Lane Decoy");
-                                case EARTHWARDED_NORTH -> spawnCampaignShip(ctx, ShipRole.FRIGATE, green, routeX + 40.0, routeY - 50.0, "Resistance Dead-Drop Guard");
+                                case EARTHWARDED_NORTH -> spawnCampaignShip(ctx, ShipRole.FRIGATE, Faction.ENEMY, routeX + 40.0, routeY - 50.0, "Red Dead-Drop Sweep");
                             }
                         }
                         case DISTRESS_SIGNAL -> {
@@ -35162,8 +35820,8 @@ public final class CampaignSystem extends CampaignSystemModels {
                                 case SOUTHERN_SHELTER -> spawnCampaignShip(ctx, ShipRole.HAULER, yellow, routeX - 70.0, routeY - 80.0, "Shelter Relief Tender");
                                 case CONTESTED_BELT -> spawnCampaignShip(ctx, ShipRole.PATROL, yellow, routeX - 30.0, routeY + 110.0, "Runner Rescue Screen");
                                 case EARTHWARDED_NORTH -> {
-                                    spawnCampaignShip(ctx, ShipRole.FRIGATE, yellow, routeX - 40.0, routeY + 100.0, "Resistance Lift Escort");
-                                    spawnCampaignShip(ctx, ShipRole.CIWS_CORVETTE, yellow, routeX + 220.0, routeY + 170.0, "Hunt-Lane Screen");
+                                    spawnCampaignShip(ctx, ShipRole.FRIGATE, Faction.ENEMY, routeX - 40.0, routeY + 100.0, "Red Distress Net Frigate");
+                                    spawnCampaignShip(ctx, ShipRole.CIWS_CORVETTE, Faction.ENEMY, routeX + 220.0, routeY + 170.0, "Red Hunt-Lane Screen");
                                 }
                             }
                         }
@@ -35172,14 +35830,14 @@ public final class CampaignSystem extends CampaignSystemModels {
                                 case SOUTHERN_SHELTER -> spawnCampaignShip(ctx, ShipRole.HAULER, green, routeX - 30.0, routeY - 40.0, "Relay Choir Tender");
                                 case CONTESTED_BELT -> spawnCampaignShip(ctx, ShipRole.PATROL, green, objectiveX + 200.0, objectiveY + 90.0, "Ghost Courier");
                                 case EARTHWARDED_NORTH -> {
-                                    spawnCampaignShip(ctx, ShipRole.FRIGATE, green, routeX - 20.0, routeY + 70.0, "Black Relay Guard");
-                                    spawnCampaignShip(ctx, ShipRole.CIWS_CORVETTE, green, objectiveX + 100.0, objectiveY + 170.0, "Uplink Screen");
+                                    spawnCampaignShip(ctx, ShipRole.FRIGATE, Faction.ENEMY, routeX - 20.0, routeY + 70.0, "Red Black Relay Guard");
+                                    spawnCampaignShip(ctx, ShipRole.CIWS_CORVETTE, Faction.ENEMY, objectiveX + 100.0, objectiveY + 170.0, "Red Uplink Screen");
                                 }
                             }
                         }
                         case REPAIR_SITE -> {
                             if (region == GalaxyRegionIdentity.EARTHWARDED_NORTH) {
-                                spawnCampaignShip(ctx, ShipRole.PATROL, green, routeX - 10.0, routeY - 70.0, "Hard-Dock Escort");
+                                spawnCampaignShip(ctx, ShipRole.PATROL, Faction.ENEMY, routeX - 10.0, routeY - 70.0, "Red Hard-Dock Picket");
                             }
                         }
                         default -> {
@@ -35236,6 +35894,7 @@ public final class CampaignSystem extends CampaignSystemModels {
     }
 
     private static Faction ambientRegionalSiteForceFaction(CampaignLocation location, GalaxyRegionIdentity region, Faction green, Faction yellow) {
+        if (region == GalaxyRegionIdentity.EARTHWARDED_NORTH) return Faction.ENEMY;
         return location != null && location.type == CampaignLocationType.DISTRESS_SIGNAL ? yellow : green;
     }
 
@@ -35352,7 +36011,7 @@ public final class CampaignSystem extends CampaignSystemModels {
     private static int spawnGalaxySearchGroupEncounterForce(GameContext ctx, CampaignState st, GalaxySearchGroup group, TacticalApproachDirection hostileApproach) {
         if (ctx == null || st == null || group == null || ctx.player == null) return 0;
         int hostileZone = missionSubzoneIndex(2, 1);
-        double[] ingress = openSpaceFleetClashApproachPoint(ctx, st, 1, hostileApproach, 150.0);
+        double[] ingress = openSpaceFleetClashApproachPoint(ctx, st, 1, hostileApproach, 300.0);
         CampaignLocation anchor = campaignLocationById(st, group.anchorLocationId);
         String hostileForceName = hostileSearchGroupDisplayName(st, group);
         String hostileOrigin = (anchor != null)
@@ -35381,8 +36040,8 @@ public final class CampaignSystem extends CampaignSystemModels {
                 manifest,
                 ingress[0],
                 ingress[1],
-                130.0,
-                100.0,
+                220.0,
+                170.0,
                 true);
         for (Ship ship : ctx.ships) {
             if (ship != null && ship.faction == Faction.ENEMY && st.shipCampaignForceIds.getOrDefault(ship.id, 0) == owner.id) {
@@ -35411,6 +36070,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         addObjectiveLine(lines, "Mode: Strategic galaxy map only; ships and combat exist only inside encounters");
         addObjectiveLine(lines, "Main Missions: " + st.completedMainMissions + " / 24 complete");
         addObjectiveLine(lines, "Earth Progress: " + (int) Math.round(st.earthProgress * 100.0) + "%");
+        addObjectiveLine(lines, "Fleet Classification: " + campaignPlayerFleetProfile(ctx, st).compactReadout());
         addObjectiveLine(lines, "Current Location: " + ((current == null) ? "Unknown" : current.name));
         if (selected != null) {
             addObjectiveLine(lines, "Selected Destination: " + selected.name);
@@ -36852,8 +37512,9 @@ public final class CampaignSystem extends CampaignSystemModels {
         st.authoredObjectiveHostiles.clear();
         st.authoredObjectiveKills = 0;
         int hostileZone = missionSubzoneIndex(2, 1);
-        double[] ingress = openSpaceFleetClashApproachPoint(ctx, st, 1, hostileApproach, 150.0);
-        EncounterForceManifest manifest = encounterManifestForForce(ctx, st, force, 4);
+        double[] ingress = openSpaceFleetClashApproachPoint(ctx, st, 1, hostileApproach, 300.0);
+        EncounterForceManifest manifest = encounterManifestForForce(ctx, st, force,
+                force.faction == Faction.ENEMY ? CAMPAIGN_RED_FORCE_CONTACT_MAX_SHIPS : 4);
         if (manifest == null || manifest.ships.isEmpty()) {
             markCampaignForceRemoved(force, "empty_overworld_roster");
             leaveCampaignForceScar(st, force);
@@ -36861,7 +37522,7 @@ public final class CampaignSystem extends CampaignSystemModels {
             return;
         }
         int spawned = spawnNamedEncounterManifest(ctx, st, "campaign_force_encounter",
-                force, manifest, ingress[0], ingress[1], 130.0, 100.0, true);
+                force, manifest, ingress[0], ingress[1], 220.0, 170.0, true);
         spawned += spawnSensorBubbleCampaignForceParticipants(ctx, st, force, hostileApproach,
                 "sensor_bubble_campaign_force_joiner");
         st.objectivePhaseLabel = "FORCE CONTACT: break hostile fleet cohesion";
@@ -37215,6 +37876,73 @@ public final class CampaignSystem extends CampaignSystemModels {
         return total * strategicRoleOperationalMultiplier(roleProfile);
     }
 
+    static FleetClassifier.FleetProfile campaignPlayerFleetProfile(GameContext ctx, CampaignState st) {
+        ArrayList<ShipRole> roles = new ArrayList<>();
+        if (ctx != null && ctx.player != null && ctx.player.alive && !ctx.player.dying
+                && ctx.player.hp > 0 && ctx.player.role != null) {
+            roles.add(ctx.player.role);
+        }
+        if (st != null) {
+            for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+                if (entry == null || entry.destroyed || entry.role == null || !isBluePersistentEntry(entry)) continue;
+                roles.add(entry.role);
+            }
+        }
+        return FleetClassifier.classifyRoles(roles);
+    }
+
+    private static FleetClassifier.FleetProfile campaignForceFleetProfile(GameContext ctx,
+                                                                          CampaignState st,
+                                                                          CampaignForce force) {
+        if (force == null) return FleetClassifier.classifyRoles(List.of());
+        if (force.kind == CampaignForceKind.PLAYER_FLEET) return campaignPlayerFleetProfile(ctx, st);
+        ArrayList<ShipRole> roles = new ArrayList<>();
+        if (ctx != null && ctx.ships != null && !force.shipIds.isEmpty()) {
+            for (Ship ship : ctx.ships) {
+                if (ship == null || !force.shipIds.contains(ship.id) || !ship.alive || ship.dying || ship.hp <= 0) continue;
+                if (ship.role != null) roles.add(ship.role);
+            }
+        }
+        if (st != null && !st.campaignShipPool.isEmpty()) {
+            for (CampaignShipPoolRecord record : st.campaignShipPool.values()) {
+                if (record == null || record.forceId != force.id || record.role == null) continue;
+                if (record.status == CampaignShipPoolStatus.DESTROYED
+                        || record.status == CampaignShipPoolStatus.UNDER_CONSTRUCTION) continue;
+                roles.add(record.role);
+            }
+        }
+        if (roles.isEmpty()) {
+            int estimate = estimatedShipCountForForce(force);
+            for (int slot = 0; slot < estimate; slot++) {
+                List<ShipRole> preferred = preferredInventoryRolesForForce(force, slot);
+                roles.add(preferred.isEmpty() ? defaultShipRoleForForce(force) : preferred.get(0));
+            }
+        }
+        return FleetClassifier.classifyRoles(roles);
+    }
+
+    private static String campaignForceFleetClassReadout(GameContext ctx, CampaignState st, CampaignForce force) {
+        FleetClassifier.FleetProfile profile = campaignForceFleetProfile(ctx, st, force);
+        String readout = profile.level.starLabel();
+        if (profile.civilianCount > 0
+                && (force.kind == CampaignForceKind.CONVOY
+                || force.kind == CampaignForceKind.TRADE_GROUP
+                || force.kind == CampaignForceKind.MINING_GROUP
+                || force.kind == CampaignForceKind.INSTALLATION_TRAFFIC)) {
+            readout += "  |  civilian role";
+        }
+        return readout + "  |  ships " + profile.shipCount
+                + "  line " + profile.lineCount
+                + "  capitals " + profile.capitalCount
+                + "  titans " + profile.titanCount;
+    }
+
+    private static boolean isBluePersistentEntry(PersistentFleetEntry entry) {
+        if (entry == null) return false;
+        Faction faction = parseEnum(entry.factionName, Faction.ALLY);
+        return faction == Faction.ALLY || faction == Faction.PLAYER || faction.teamId() == Faction.ALLY.teamId();
+    }
+
     private static double persistentEntryStrength(PersistentFleetEntry entry) {
         if (entry == null || entry.destroyed || entry.role == null) return 0.0;
         ShipRole role = entry.role;
@@ -37269,7 +37997,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         ContactIntelQuality intel = missionOuterThreatIntelQuality(location);
         String intelLabel = contactIntelQualityLabel(intel);
         ArrayList<CampaignSupportMarker> out = new ArrayList<>();
-        Faction markerFaction = locationDisplayMarkerFaction(location);
+        Faction markerFaction = missionOuterThreatMarkerFaction(location);
         if (markerFaction == null) markerFaction = Faction.ENEMY;
         String pressure = remaining >= 0.72
                 ? "Heavy hostile anchorage screen still surrounds this mission site"
@@ -37335,6 +38063,15 @@ public final class CampaignSystem extends CampaignSystemModels {
                     48));
         }
         return out;
+    }
+
+    private static Faction missionOuterThreatMarkerFaction(CampaignLocation location) {
+        if (location == null) return Faction.ENEMY;
+        if (location.ownerFaction == Faction.ENEMY || location.type == CampaignLocationType.ENEMY_ACTIVITY) {
+            return Faction.ENEMY;
+        }
+        Faction displayFaction = locationDisplayMarkerFaction(location);
+        return displayFaction == null ? Faction.ENEMY : displayFaction;
     }
 
     private static CampaignLocation nearestMissionOuterThreatLocation(CampaignState st, double x, double y, double maxDist) {
@@ -42236,7 +42973,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                         name + " Escort Group",
                         "Primary hostile command axis",
                         "Protect the boss hull and force a decisive fleet engagement"),
-                () -> spawnCampaignShip(ctx, role, Faction.ENEMY, ctx.player.x + 760, ctx.player.y - 120, name));
+                () -> spawnCampaignShip(ctx, role, Faction.ENEMY, ctx.player.x + 1320, ctx.player.y - 220, name));
         if (boss == null) return -1;
         boss.name = name;
         boss.hpMax = (int) Math.round(boss.hpMax * hpMul);
@@ -42274,7 +43011,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                         "Earthward final approach",
                         "Hold the final theater objective with the core hostile command group"),
                 () -> spawnCampaignShip(ctx, ShipRole.MOTHERSHIP, Faction.ENEMY,
-                        ctx.player.x + 960, ctx.player.y - 120, "AI MOTHERSHIP EARTHFALL"));
+                        ctx.player.x + 1740, ctx.player.y - 260, "AI MOTHERSHIP EARTHFALL"));
         if (boss == null) return -1;
         boss.hpMax = (int) Math.round(boss.hpMax * 2.2);
         boss.hp = boss.hpMax;
@@ -42294,11 +43031,22 @@ public final class CampaignSystem extends CampaignSystemModels {
                         "Earthward final approach",
                         "Hold the final theater objective with the core hostile command group"),
                 () -> {
-                    spawnCampaignShip(ctx, ShipRole.BULWARK_TITAN, Faction.ENEMY, boss.x + 220, boss.y + 140, "Earthfall Bulwark");
-                    spawnCampaignShip(ctx, ShipRole.HYPERWEAPON_TITAN, Faction.ENEMY, boss.x - 240, boss.y - 150, "Earthfall Lance");
-                    spawnEnemyAtPoint(ctx, ShipRole.BATTLESHIP, boss.x + 170, boss.y + 90);
-                    spawnEnemyAtPoint(ctx, ShipRole.BATTLECRUISER, boss.x - 170, boss.y - 90);
-                    spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, boss.x + 260, boss.y - 180);
+                    Ship station = spawnCampaignShip(ctx, ShipRole.BASE, Faction.ENEMY, boss.x + 520, boss.y + 40, "Earth Orbital Defense Lattice");
+                    if (station != null) {
+                        station.hpMax = (int) Math.round(station.hpMax * 1.85);
+                        station.hp = station.hpMax;
+                        station.shieldMax *= 1.65;
+                        station.shield = station.shieldMax;
+                    }
+                    spawnCampaignShip(ctx, ShipRole.BULWARK_TITAN, Faction.ENEMY, boss.x + 420, boss.y + 260, "Earthfall Bulwark");
+                    spawnCampaignShip(ctx, ShipRole.HYPERWEAPON_TITAN, Faction.ENEMY, boss.x - 430, boss.y - 260, "Earthfall Lance");
+                    spawnCampaignShip(ctx, ShipRole.ARTILLERY_TITAN, Faction.ENEMY, boss.x + 760, boss.y - 220, "Earthfall Siege Titan");
+                    spawnEnemyAtPoint(ctx, ShipRole.DREADNOUGHT, boss.x + 320, boss.y + 130);
+                    spawnEnemyAtPoint(ctx, ShipRole.BATTLESHIP, boss.x - 320, boss.y + 170);
+                    spawnEnemyAtPoint(ctx, ShipRole.BATTLECRUISER, boss.x - 480, boss.y - 120);
+                    spawnEnemyAtPoint(ctx, ShipRole.CRUISER, boss.x + 620, boss.y + 260);
+                    spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, boss.x + 700, boss.y - 360);
+                    spawnEnemyAtPoint(ctx, ShipRole.CIWS_CORVETTE, boss.x - 650, boss.y + 320);
                 });
         return boss.id;
     }
@@ -42694,7 +43442,14 @@ public final class CampaignSystem extends CampaignSystemModels {
             if (coalitionForceAlreadyCommitted(st, support)) continue;
             candidates.add(support);
         }
-        candidates.sort(Comparator
+        boolean largePlayerFleet = playerFleetExceedsCoalitionSupportCap(ctx, st);
+        candidates.sort(largePlayerFleet
+                ? Comparator
+                .comparingDouble((CampaignForce force) -> -campaignForceFleetProfile(ctx, st, force).combatStrength)
+                .thenComparingInt(force -> coalitionSupportIntentPriority(force.intent))
+                .thenComparingDouble(force -> GameMath.dist2(force.x, force.y, st.playerGalaxyX, st.playerGalaxyY))
+                .thenComparingInt(force -> force.id)
+                : Comparator
                 .comparingDouble((CampaignForce force) -> GameMath.dist2(force.x, force.y, st.playerGalaxyX, st.playerGalaxyY))
                 .thenComparingInt(force -> coalitionSupportIntentPriority(force.intent))
                 .thenComparingInt(force -> force.id));
@@ -42819,15 +43574,69 @@ public final class CampaignSystem extends CampaignSystemModels {
                 spawnCoalitionShipIfMissing(ctx, ShipRole.FRIGATE, Faction.BRIGHT_YELLOW, "Yellow Liberation Frigate", 380.0, 230.0);
             }
         }
+        if (playerFleetExceedsCoalitionSupportCap(ctx, st)) {
+            trimNamedCoalitionSupportFollowers(ctx, Faction.TEAM_C, "Green Contract");
+            trimNamedCoalitionSupportFollowers(ctx, Faction.BRIGHT_YELLOW, "Yellow Liberation");
+        }
     }
 
     private static void spawnCoalitionShipIfMissing(GameContext ctx, ShipRole role, Faction faction, String name,
                                                     double offsetX, double offsetY) {
+        CampaignState st = state(ctx);
         for (Ship ship : ctx.ships) {
             if (ship != null && ship.alive && !ship.dying && name.equals(ship.name)) return;
         }
+        if (playerFleetExceedsCoalitionSupportCap(ctx, st)
+                && namedCoalitionSupportFollowerCount(ctx, faction, coalitionSupportNamePrefix(name)) >= CAMPAIGN_LARGE_PLAYER_FLEET_SUPPORT_SHIPS_PER_FACTION) {
+            return;
+        }
         double[] rally = coalitionSupportRallyPoint(ctx, faction, name == null ? role.ordinal() : name.hashCode(), offsetX, offsetY);
         spawnCampaignShip(ctx, role, faction, rally[0], rally[1], name);
+    }
+
+    private static String coalitionSupportNamePrefix(String name) {
+        if (name == null) return "";
+        if (name.startsWith("Green Contract")) return "Green Contract";
+        if (name.startsWith("Yellow Liberation")) return "Yellow Liberation";
+        return name;
+    }
+
+    private static int namedCoalitionSupportFollowerCount(GameContext ctx, Faction faction, String namePrefix) {
+        if (ctx == null || ctx.ships == null) return 0;
+        String prefix = namePrefix == null ? "" : namePrefix.trim();
+        int count = 0;
+        for (Ship ship : ctx.ships) {
+            if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
+            if (ship.faction != faction) continue;
+            if (!prefix.isBlank() && (ship.name == null || !ship.name.startsWith(prefix))) continue;
+            count++;
+        }
+        return count;
+    }
+
+    private static void trimNamedCoalitionSupportFollowers(GameContext ctx, Faction faction, String namePrefix) {
+        if (ctx == null || ctx.ships == null) return;
+        String prefix = namePrefix == null ? "" : namePrefix.trim();
+        ArrayList<Ship> followers = new ArrayList<>();
+        for (Ship ship : ctx.ships) {
+            if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
+            if (ship.faction != faction) continue;
+            if (!prefix.isBlank() && (ship.name == null || !ship.name.startsWith(prefix))) continue;
+            followers.add(ship);
+        }
+        if (followers.size() <= CAMPAIGN_LARGE_PLAYER_FLEET_SUPPORT_SHIPS_PER_FACTION) return;
+        followers.sort(Comparator
+                .comparingDouble((Ship ship) -> -FleetClassifier.roleCombatStrength(ship == null ? null : ship.role))
+                .thenComparingInt(ship -> ship == null ? Integer.MAX_VALUE : ship.id));
+        HashSet<Integer> keep = new HashSet<>();
+        for (int i = 0; i < Math.min(CAMPAIGN_LARGE_PLAYER_FLEET_SUPPORT_SHIPS_PER_FACTION, followers.size()); i++) {
+            keep.add(followers.get(i).id);
+        }
+        ctx.ships.removeIf(ship -> ship != null
+                && ship.faction == faction
+                && ship.name != null
+                && ship.name.startsWith(prefix)
+                && !keep.contains(ship.id));
     }
 
     private static void applySectorModifiers(GameContext ctx, CampaignState st, SectorScript script) {
@@ -43491,7 +44300,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         }
         boolean checkpointSaved = hasNextEpisode && saveCheckpoint(ctx, st, nextSector);
         if (!checkpointSaved && nextSector > st.totalSectors) {
-            CampaignCheckpointStore.clear();
+            CampaignCheckpointStore.clearPrimary();
         }
 
         boolean actBreak = isActBreakAfter(st.sector);
@@ -43845,7 +44654,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                             favorGain = 1;
                             fuelCost = 10;
                             controlDelta = 18.0;
-                            joined = st.galaxyAmbientSupportRequested ? recoverAmbientFriendlyShips(ctx, st, location) : 1;
+                            joined = st.galaxyAmbientSupportRequested ? recoverAmbientFriendlyShips(ctx, st, location) : 0;
                             adjustFleetStrain(st, -4.0);
                             setRelationshipState(st, "VOSS", CampaignRelationshipState.OWED_FAVOR);
                             setLocationRecurringContact(location, "VOSS", "Voss routed a damaged hull onto your tow line and flagged the lane as trusted");
@@ -44129,8 +44938,14 @@ public final class CampaignSystem extends CampaignSystemModels {
 
     private static boolean isPersistentRecruitableShip(Ship ship) {
         if (ship == null || ship.role == null) return false;
-        if (ship.role == ShipRole.BASE || ship.role == ShipRole.STATIC_TURRET || ship.role == ShipRole.MOTHERSHIP) return false;
+        if (!FleetClassifier.isMilitaryJoinableByDefault(ship.role)) return false;
         return !ship.isSmallCraft();
+    }
+
+    private static boolean isBlueOwnedShip(Ship ship) {
+        if (ship == null || ship.faction == null) return false;
+        return ship.faction == Faction.ALLY || ship.faction == Faction.PLAYER
+                || ship.faction.teamId() == Faction.ALLY.teamId();
     }
 
     private static void recoverBlueRejoinsNearFlagship(GameContext ctx, CampaignState st) {
@@ -44144,7 +44959,8 @@ public final class CampaignSystem extends CampaignSystemModels {
         int recovered = 0;
         for (Ship ship : ctx.ships) {
             if (ship == null || ship == ctx.player || !ship.alive || ship.dying || ship.hp <= 0 || ship.faction == null) continue;
-            if (!ship.faction.isFriendlyTo(ctx.player.faction)) continue;
+            if (!isBlueOwnedShip(ship)) continue;
+            if (shipCampaignProvenance(ctx, st, ship) != CampaignShipProvenance.PLAYER_ROSTER) continue;
             if (!isPersistentRecruitableShip(ship)) continue;
             if (Math.hypot(ship.x - ctx.player.x, ship.y - ctx.player.y) > rejoinRadius) continue;
             String name = (ship.name == null || ship.name.isBlank())
@@ -44160,6 +44976,20 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (recovered > 0) {
             rebalancePersistentCommandGroups(st);
             syncPersistentFleetEntrySnapshots(ctx, st);
+        }
+    }
+
+    static void sanitizeCoalitionCivilianPlayerAnchors(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || ctx.player == null || ctx.player.faction == null || ctx.ships == null) return;
+        for (Ship ship : ctx.ships) {
+            if (ship == null || ship == ctx.player || ship.minerHomeBase != ctx.player) continue;
+            if (shipCampaignProvenance(ctx, st, ship) == CampaignShipProvenance.PLAYER_ROSTER) continue;
+            if (ship.faction == null || isBlueOwnedShip(ship)) continue;
+            if (!FleetClassifier.isCivilianDefault(ship.role) && ship.faction != Faction.TEAM_C && !isYellowFaction(ship.faction)) {
+                continue;
+            }
+            ship.minerHomeBase = null;
+            ship.escortAnchorId = -1;
         }
     }
 
@@ -44772,7 +45602,6 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (s == null) return false;
         if (!s.alive || s.dying || s.hp <= 0) return false;
         if (s.carrierOwnerId >= 0) return false;
-        if (s.role == ShipRole.BASE) return false;
         return TeamSystem.isHostileToPlayer(ctx, s.faction);
     }
 
@@ -45220,7 +46049,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         ctx.state = GameState.GAME_OVER;
         ctx.gameOverText = text;
         EventSystem.showBanner(ctx, (bannerText == null || bannerText.isBlank()) ? text : bannerText, 3.0);
-        CampaignCheckpointStore.clear();
+        CampaignCheckpointStore.clearPrimary();
         if (st != null) {
             setCampaignOre(ctx, st, 0);
         }
@@ -45255,7 +46084,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (st != null && st.commandSchoolTraining) return;
         CampaignUnlockProfile profile = (ctx == null) ? null : ctx.campaignUnlockProfile;
         if (profile == null) return;
-        CampaignCheckpointStore.clear();
+        CampaignCheckpointStore.clearPrimary();
         profile.markRunStarted();
         CampaignUnlockProfile.save(profile);
     }
@@ -45286,14 +46115,25 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (st != null && st.commandSchoolTraining) return false;
         CampaignCheckpointStore.Checkpoint checkpoint = CampaignCheckpointMapper.capture(ctx, st, nextSector);
         if (checkpoint == null) return false;
+        if (shouldResumeCheckpointOnStrategicOvermap(checkpoint, st)) {
+            checkpoint.strategicOvermapMode = true;
+        }
         recordStructuredCampaignEvent(ctx, st, "campaign.transition.checkpoint_save",
                 "nextSector=" + nextSector
                         + " seed=" + checkpoint.seed
                         + " location=" + safeTelemetryValue(st.currentGalaxyLocationId));
         checkpoint.productionReadinessState = ProductionReadinessLongevitySystem.serialize(st.productionReadiness);
         CampaignCheckpointStore.save(checkpoint);
+        saveConfiguredCampaignSlot(ctx, checkpoint);
         FirstHourOnboardingSystem.noteCheckpointSaved(ctx);
         return true;
+    }
+
+    private static void saveConfiguredCampaignSlot(GameContext ctx, CampaignCheckpointStore.Checkpoint checkpoint) {
+        if (ctx == null || ctx.config == null || checkpoint == null) return;
+        String slotId = ctx.config.campaignSlotId;
+        if (slotId == null || slotId.isBlank() || "primary".equalsIgnoreCase(slotId.trim())) return;
+        CampaignCheckpointStore.saveSlot(slotId, checkpoint);
     }
 
     static CampaignCheckpointStore.Checkpoint legacyCaptureCheckpoint(GameContext ctx, CampaignState st, int nextSector) {
@@ -45397,6 +46237,8 @@ public final class CampaignSystem extends CampaignSystemModels {
         cp.lastChecklistFleetSeedSector = st.lastChecklistFleetSeedSector;
         cp.campaignForces = serializeCampaignForces(st);
         cp.shipCampaignForceIds = serializeShipCampaignForceIds(st);
+        inferMissingShipCampaignProvenance(ctx, st);
+        cp.shipCampaignProvenance = serializeShipCampaignProvenance(st);
         cp.campaignIntelTick = st.campaignIntelTick;
         cp.campaignFleetIntel = serializeCampaignFleetIntel(st);
         cp.campaignOperationIntel = serializeCampaignOperationIntel(st);
@@ -45599,6 +46441,8 @@ public final class CampaignSystem extends CampaignSystemModels {
         restoreStrategicDivisions(st, cp.strategicDivisions);
         restoreCheckpointStringSet(st.defeatedCampaignForceKeys, cp.defeatedCampaignForceKeys);
         restoreCampaignForces(st, cp.campaignForces, cp.shipCampaignForceIds, cp.nextCampaignForceId);
+        restoreShipCampaignProvenance(st, cp.shipCampaignProvenance);
+        inferMissingShipCampaignProvenance(ctx, st);
         st.lastChecklistFleetSeedSector = Math.max(0, cp.lastChecklistFleetSeedSector);
         restoreEnemyPlayerContact(st, cp.enemyPlayerContact);
         restorePendingHostileReinforcements(st, cp.pendingHostileReinforcements, cp.nextPendingHostileReinforcementId);
@@ -45679,6 +46523,8 @@ public final class CampaignSystem extends CampaignSystemModels {
             recomputeCampaignTheaterStates(st);
         }
         hardenExistingRedCampaignForcesForTheater(st);
+        reinforceRedWarReservePoolForExistingSave(st);
+        ensureEarthwardRedWarPresence(ctx, st);
         migrateCompletedEnemyStationsToBlueForwardBases(st);
         ctx.miningBaseMul = Math.max(0.0, cp.miningBaseMul);
         ctx.orePriceBaseMul = Math.max(0.0, cp.orePriceBaseMul);
@@ -45694,6 +46540,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (!st.galaxyTravel.traveling && campaignLocationById(st, st.currentGalaxyLocationId) != null) {
             ensureGalaxyFleetPosition(st, campaignLocationById(st, st.currentGalaxyLocationId));
         }
+        sanitizeEdgeFleetFortressAnchors(ctx, st);
         sanitizeCampaignForceRoutesAfterLoad(st, ctx);
         ensureCampaignForceOwnership(ctx, st);
         updateFactionAttackCommitments(st);
@@ -46435,6 +47282,34 @@ public final class CampaignSystem extends CampaignSystemModels {
         return sb.toString();
     }
 
+    private static String serializeShipCampaignProvenance(CampaignState st) {
+        if (st == null || st.shipCampaignProvenance.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<Integer, CampaignShipProvenance> entry : st.shipCampaignProvenance.entrySet()) {
+            if (entry == null || entry.getKey() == null || entry.getValue() == null
+                    || entry.getKey() <= 0 || entry.getValue() == CampaignShipProvenance.UNKNOWN) continue;
+            if (sb.length() > 0) sb.append(';');
+            sb.append(entry.getKey()).append('|').append(entry.getValue().name());
+        }
+        return sb.toString();
+    }
+
+    private static void restoreShipCampaignProvenance(CampaignState st, String raw) {
+        if (st == null) return;
+        st.shipCampaignProvenance.clear();
+        if (raw == null || raw.isBlank()) return;
+        for (String entry : raw.split(";")) {
+            if (entry == null || entry.isBlank()) continue;
+            String[] parts = entry.split("\\|", -1);
+            if (parts.length < 2) continue;
+            int shipId = Math.max(0, parseInt(parts[0], 0));
+            CampaignShipProvenance provenance = parseEnum(parts[1], CampaignShipProvenance.UNKNOWN);
+            if (shipId > 0 && provenance != CampaignShipProvenance.UNKNOWN) {
+                st.shipCampaignProvenance.put(shipId, provenance);
+            }
+        }
+    }
+
     private static String serializeEnemyPlayerContact(CampaignState st) {
         if (st == null || st.enemyPlayerContact == null) return "";
         PlayerContact c = st.enemyPlayerContact;
@@ -46794,6 +47669,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (st == null) return;
         st.campaignForces.clear();
         st.shipCampaignForceIds.clear();
+        st.shipCampaignProvenance.clear();
         int highestForceId = 0;
         if (forceRaw != null && !forceRaw.isBlank()) {
             String[] entries = forceRaw.split(";");
@@ -47520,38 +48396,107 @@ public final class CampaignSystem extends CampaignSystemModels {
     private static Ship spawnPersistentBlueShipFromFlagship(GameContext ctx, CampaignState st, PersistentFleetEntry entry,
                                                             int liveIndex, boolean titanAnchor) {
         if (ctx == null || st == null || entry == null || ctx.player == null || entry.destroyed) return null;
-        double sx;
-        double sy;
-        if (titanAnchor) {
-            double side = ((liveIndex & 1) == 0) ? -1.0 : 1.0;
-            double row = liveIndex / 2.0;
-            double aft = 300.0 + row * 150.0;
-            double lateral = side * (250.0 + row * 44.0);
-            sx = ctx.player.x - Math.cos(ctx.player.angle) * aft - Math.sin(ctx.player.angle) * lateral;
-            sy = ctx.player.y - Math.sin(ctx.player.angle) * aft + Math.cos(ctx.player.angle) * lateral;
-        } else {
-            double lane = liveIndex % 3;
-            double row = liveIndex / 3.0;
-            double side = lane - 1.0;
-            double aft = 180.0 + row * 92.0;
-            double lateral = side * (130.0 + row * 12.0);
-            sx = ctx.player.x - Math.cos(ctx.player.angle) * aft - Math.sin(ctx.player.angle) * lateral;
-            sy = ctx.player.y - Math.sin(ctx.player.angle) * aft + Math.cos(ctx.player.angle) * lateral;
-        }
-        return spawnPersistentBlueShipAtPose(ctx, entry, sx, sy, ctx.player.angle, ctx.player.vx, ctx.player.vy);
+        double radius = RoleStats.get(entry.role == null ? ShipRole.FRIGATE : entry.role).radius;
+        double[] point = persistentFleetDeploymentPoint(ctx.player.x,
+                ctx.player.y,
+                ctx.player.angle,
+                liveIndex,
+                Math.max(1, livePersistentFleetSlots(st)),
+                radius,
+                titanAnchor,
+                ctx.command == null ? GameContext.FleetFormation.WEDGE : ctx.command.alliedFleetFormation,
+                ctx.command == null ? GameContext.FleetCommand.AUTO : ctx.command.alliedFleetCommand);
+        return spawnPersistentBlueShipAtPose(ctx, entry, point[0], point[1], ctx.player.angle, ctx.player.vx, ctx.player.vy);
     }
 
     private static Ship spawnPersistentBlueShipFromAnchor(GameContext ctx, CampaignState st, PersistentFleetEntry entry,
                                                           Ship anchor, int memberIndex) {
         if (ctx == null || st == null || entry == null || anchor == null || entry.destroyed) return null;
-        double lane = memberIndex % 3;
-        double row = memberIndex / 3.0;
-        double side = lane - 1.0;
-        double aft = Math.max(160.0, anchor.radius + 90.0) + row * 84.0;
-        double lateral = side * (140.0 + row * 14.0);
-        double sx = anchor.x - Math.cos(anchor.angle) * aft - Math.sin(anchor.angle) * lateral;
-        double sy = anchor.y - Math.sin(anchor.angle) * aft + Math.cos(anchor.angle) * lateral;
-        return spawnPersistentBlueShipAtPose(ctx, entry, sx, sy, anchor.angle, anchor.vx, anchor.vy);
+        double radius = RoleStats.get(entry.role == null ? ShipRole.FRIGATE : entry.role).radius;
+        double[] point = persistentFleetDeploymentPoint(anchor.x,
+                anchor.y,
+                anchor.angle,
+                memberIndex,
+                Math.max(1, persistentCommandGroupCapacity(entry)),
+                radius,
+                false,
+                ctx.command == null ? GameContext.FleetFormation.WEDGE : ctx.command.alliedFleetFormation,
+                ctx.command == null ? GameContext.FleetCommand.AUTO : ctx.command.alliedFleetCommand);
+        return spawnPersistentBlueShipAtPose(ctx, entry, point[0], point[1], anchor.angle, anchor.vx, anchor.vy);
+    }
+
+    private static double[] persistentFleetDeploymentPoint(double anchorX,
+                                                           double anchorY,
+                                                           double anchorAngle,
+                                                           int slot,
+                                                           int wingCount,
+                                                           double radius,
+                                                           boolean titanAnchor,
+                                                           GameContext.FleetFormation formation,
+                                                           GameContext.FleetCommand command) {
+        double spacing = Math.max(titanAnchor ? 260.0 : 125.0,
+                (titanAnchor ? 215.0 : 96.0) + Math.max(0.0, radius) * (titanAnchor ? 1.10 : 1.28));
+        double fx = Math.cos(anchorAngle);
+        double fy = Math.sin(anchorAngle);
+        double rx = -fy;
+        double ry = fx;
+        int n = Math.max(0, slot);
+        double offX;
+        double offY;
+        GameContext.FleetFormation f = formation == null ? GameContext.FleetFormation.WEDGE : formation;
+        switch (f) {
+            case LINE -> {
+                int cols = Math.min(titanAnchor ? 5 : 9, Math.max(3, wingCount));
+                if ((cols & 1) == 0) cols += 1;
+                int colIndex = n % cols;
+                int row = n / cols;
+                double col = colIndex - (cols - 1) * 0.5;
+                offX = rx * col * spacing * 0.95 - fx * (row + 1.0) * spacing * 0.55;
+                offY = ry * col * spacing * 0.95 - fy * (row + 1.0) * spacing * 0.55;
+            }
+            case SCREEN -> {
+                int ringSlots = titanAnchor ? 6 : 8;
+                double ang = (n % ringSlots) * (Math.PI * 2.0 / ringSlots);
+                int ringIndex = n / ringSlots;
+                double ring = spacing * (1.18 + ringIndex * 0.72);
+                offX = Math.cos(ang) * ring;
+                offY = Math.sin(ang) * ring;
+            }
+            case ASSAULT, OFFENSIVE -> {
+                int row = (n / 3) + 1;
+                double lane = (n % 3) - 1.0;
+                offX = fx * row * spacing * 0.45 + rx * lane * spacing * 0.82;
+                offY = fy * row * spacing * 0.45 + ry * lane * spacing * 0.82;
+            }
+            case DEFENSIVE -> {
+                int ringSlots = titanAnchor ? 5 : 7;
+                double ang = Math.PI + (n % ringSlots) * (Math.PI * 2.0 / ringSlots);
+                int ringIndex = n / ringSlots;
+                double ring = spacing * (1.05 + ringIndex * 0.68);
+                offX = Math.cos(ang) * ring;
+                offY = Math.sin(ang) * ring;
+            }
+            default -> {
+                int row = (n / 2) + 1;
+                double side = ((n & 1) == 0) ? -1.0 : 1.0;
+                offX = -fx * row * spacing + rx * side * row * spacing * 0.78;
+                offY = -fy * row * spacing + ry * side * row * spacing * 0.78;
+            }
+        }
+        double lead = persistentFleetCommandLeadBias(command) * spacing;
+        return new double[]{anchorX + offX + fx * lead, anchorY + offY + fy * lead};
+    }
+
+    private static double persistentFleetCommandLeadBias(GameContext.FleetCommand command) {
+        if (command == null) return 0.0;
+        return switch (command) {
+            case ATTACK -> 0.42;
+            case FORM_UP -> 0.22;
+            case ESCORT -> 0.08;
+            case DEFEND -> -0.18;
+            case RETREAT, RTB, REPAIR -> -0.32;
+            default -> 0.0;
+        };
     }
 
     private static Ship spawnPersistentBlueShipAtPose(GameContext ctx, PersistentFleetEntry entry,
@@ -47587,6 +48532,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         ship.resetShieldState();
         applyPersistentEntryCondition(entry, ship);
         entry.activeShipId = ship.id;
+        noteShipCampaignProvenance(state(ctx), ship, CampaignShipProvenance.PLAYER_ROSTER);
         return ship;
     }
 
@@ -47813,6 +48759,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         CampaignState st = state(ctx);
         if (st != null && ship != null) {
             st.shipCampaignSpawnCategories.put(ship.id, "intro_tactical_only");
+            noteShipCampaignProvenance(st, ship, CampaignShipProvenance.TACTICAL_ONLY_SCRIPTED);
         }
         primeCampaignEnemyForContact(ctx, ship);
         return ship;

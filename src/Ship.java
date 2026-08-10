@@ -12,6 +12,7 @@ import java.util.Random;
  * - vx/vy are already scaled by dt (per tick), so integration is x += vx; y += vy.
  */
 public abstract class Ship {
+    public static final double UNIVERSAL_SPECIAL_WEAPON_RANGE = 2_000.0;
     private static int NEXT_ID = 1;
 
     static int beginDeterministicIdScope() {
@@ -7058,9 +7059,7 @@ public abstract class Ship {
         int beamLife = Math.max(8, (int) Math.round(beamDurationSec / Math.max(GameContext.DT, 1e-4)));
         double totalDamage = resolveDirectBeamSuperweaponTotalDamage();
         double beamDps = totalDamage / Math.max(GameContext.DT, beamLife * GameContext.DT);
-        double beamLength = greenHyperweaponTitan
-                ? MathUtil.clamp(superweaponSpeed * 1.06, 980.0, 2140.0)
-                : MathUtil.clamp(superweaponSpeed * 0.96, 760.0, 1760.0);
+        double beamLength = UNIVERSAL_SPECIAL_WEAPON_RANGE;
         double beamWidth = greenHyperweaponTitan
                 ? Math.max(22.0, superweaponRadius * 2.65)
                 : Math.max(10.0, superweaponRadius * 1.9);
@@ -7260,7 +7259,7 @@ public abstract class Ship {
     }
 
     private double hyperLanceBeamLength() {
-        return MathUtil.clamp(superweaponSpeed * 0.74, 720.0, 1500.0);
+        return UNIVERSAL_SPECIAL_WEAPON_RANGE;
     }
 
     private static double referencePulseBarrageFullHitDamage() {

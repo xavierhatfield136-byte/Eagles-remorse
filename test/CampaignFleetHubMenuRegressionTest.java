@@ -116,6 +116,42 @@ class CampaignFleetHubMenuRegressionTest {
     }
 
     @Test
+    void f10MenuExitSavesConfiguredCampaignSlotWithoutDeletingOtherSlots() {
+        CampaignCheckpointStore.Checkpoint existing = new CampaignCheckpointStore.Checkpoint();
+        existing.nextSector = 11;
+        existing.campaignOre = 410;
+        existing.cargo = 410;
+        CampaignCheckpointStore.saveSlot("slot-1", existing);
+
+        GameContext ctx = campaignContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000,
+                true, 2222L, false).withCampaignSlot("slot-2"));
+        ctx.campaign.sector = 9;
+        ctx.player.cargo = 222;
+        ctx.credits = 1777;
+
+        assertTrue(CampaignSystem.persistCheckpointForMenuExit(ctx));
+
+        CampaignCheckpointStore.Checkpoint primary = CampaignCheckpointStore.load();
+        CampaignCheckpointStore.Checkpoint slotTwo = CampaignCheckpointStore.loadSlot("slot-2");
+        CampaignCheckpointStore.Checkpoint slotOne = CampaignCheckpointStore.loadSlot("slot-1");
+        assertNotNull(primary);
+        assertNotNull(slotTwo);
+        assertNotNull(slotOne);
+        assertEquals(9, primary.nextSector);
+        assertEquals(9, slotTwo.nextSector);
+        assertEquals(222, slotTwo.campaignOre);
+        assertEquals(1777, slotTwo.credits);
+        assertEquals(11, slotOne.nextSector);
+        assertEquals(410, slotOne.campaignOre);
+
+        GameContext fresh = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000,
+                true, 3333L, false).withCampaignSlot("slot-3"));
+        SpawnSystem.initWorld(fresh);
+        assertNotNull(CampaignCheckpointStore.loadSlot("slot-1"),
+                "starting another slotted campaign must not delete existing save files");
+    }
+
+    @Test
     void checkpointStoreSupportsNamedSlotsAutosaveRotationAndRecovery() throws Exception {
         CampaignCheckpointStore.Checkpoint primary = new CampaignCheckpointStore.Checkpoint();
         primary.nextSector = 3;
