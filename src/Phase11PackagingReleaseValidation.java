@@ -111,7 +111,7 @@ public final class Phase11PackagingReleaseValidation {
         Path packageDir = base.resolve(Path.of("build", "package", windows ? "windows" : "linux")).normalize();
         Path appImage = packageDir.resolve(APP_BUNDLE_NAME);
         Path archive = packageDir.resolve(windows
-                ? APP_BUNDLE_NAME + "-" + version + ".zip"
+                ? APP_BUNDLE_NAME + "-" + version + "-windows-x64-full.zip"
                 : APP_BUNDLE_NAME + "-" + version + "-linux-x64.tar.gz");
 
         if (!Files.isDirectory(appImage)) errors.add("app image missing: " + appImage);
