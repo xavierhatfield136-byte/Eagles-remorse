@@ -4,7 +4,7 @@ import java.util.List;
 public final class TargetingSystem {
     public static final double PLAYER_CURSOR_LOCK_RADIUS = 560.0;
     public static final double PLAYER_TARGET_LOCK_RANGE = 3600.0;
-    private static final double NPC_TARGET_SEARCH_RANGE = 2200.0;
+    private static final double NPC_TARGET_SEARCH_RANGE = 3000.0;
 
     private TargetingSystem(){}
 

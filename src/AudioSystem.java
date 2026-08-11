@@ -603,7 +603,13 @@ public final class AudioSystem {
             triggerSfx(ctx, SfxCue.WEAPON_SECONDARY);
             return;
         }
-        triggerSfx(ctx, SfxCue.WEAPON_SECONDARY, source.x, source.y);
+        String classifiedEvent = primaryWeaponEventId(source, firedProjectiles);
+        RuntimeState st = stateFor(ctx);
+        if (isGreenWeaponLoopEvent(classifiedEvent)) {
+            touchGreenWeaponLoop(ctx, st, nowSec(), classifiedEvent, source, greenLoopHoldSeconds(classifiedEvent));
+            return;
+        }
+        triggerSfxEvent(ctx, st, classifiedEvent, nowSec(), source.x, source.y);
     }
 
     public static void onWeaponWave(GameContext ctx) {

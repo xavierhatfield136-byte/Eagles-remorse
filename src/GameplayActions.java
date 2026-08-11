@@ -208,7 +208,7 @@ public final class GameplayActions {
         if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.ABILITY_ACTIVATION)) return;
         if (!ctx.player.hasSuperweapon) return;
 
-        Projectile shot = ctx.player.tryFireSuperweaponAt(ctx.cursorWorldX, ctx.cursorWorldY, GameContext.DT);
+        Projectile shot = ctx.player.tryFireSuperweaponAt(ctx, ctx.cursorWorldX, ctx.cursorWorldY, GameContext.DT);
         if (shot != null) {
             ctx.projectiles.add(shot);
             EventSystem.showBanner(ctx, "SUPERWEAPON FIRED", 1.0);

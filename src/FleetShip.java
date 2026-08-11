@@ -1471,7 +1471,8 @@ public class FleetShip extends Ship {
                 SuperweaponPattern artilleryPattern = (faction == Faction.ALLY || faction == Faction.PLAYER)
                         ? SuperweaponPattern.DESTABILIZER_PULSE
                         : resolveTitanSuperweaponPattern();
-                configureSuperweapon(artilleryPattern, 2.8, 18.0, 140, 1500.0, 190, 22.0, 24,
+                int artillerySuperweaponDamage = (faction == Faction.ENEMY) ? 164 : 140;
+                configureSuperweapon(artilleryPattern, 2.8, 18.0, artillerySuperweaponDamage, 1500.0, 190, 22.0, 24,
                         0.0, 0.12, 0.30);
             }
 
@@ -1550,6 +1551,9 @@ public class FleetShip extends Ship {
 
                 addHullGunPairDirect(0.22, 0.88, 0.44, 4, 980, 255, true, 10.5, 24);
                 addHullGunPairDirect(0.50, 0.72, 0.62, 2, 900, 215, true, 8.0, 18);
+                if (faction == Faction.ENEMY) {
+                    applyRedHyperweaponKineticBatteryProfile();
+                }
 
                 hasCIWS = true;
                 ciwsQuality = 0.56;
@@ -1557,7 +1561,10 @@ public class FleetShip extends Ship {
                 ciwsCooldown = 0.11;
 
                 SuperweaponPattern hyperweaponPattern = resolveTitanSuperweaponPattern();
-                if (hyperweaponPattern == SuperweaponPattern.KINETIC_SLUG) {
+                if (hyperweaponPattern == SuperweaponPattern.KINETIC_SHOTGUN) {
+                    configureSuperweapon(hyperweaponPattern, 4.0, 24.0, 34, 3600.0, 42, 7.0, 2,
+                            1.25, 0.055, 0.55);
+                } else if (hyperweaponPattern == SuperweaponPattern.KINETIC_SLUG) {
                     configureSuperweapon(hyperweaponPattern, 4.2, 28.0, 104, 1460.0, 210, 22.0, 12,
                             0.0, 0.12, 0.0);
                 } else if (hyperweaponPattern == SuperweaponPattern.DIRECT_BEAM) {
@@ -2085,6 +2092,8 @@ public class FleetShip extends Ship {
         copy.missileSpeed = src.missileSpeed;
         copy.missileTurnRate = src.missileTurnRate;
         copy.missileLife = src.missileLife;
+        copy.missileRole = src.missileRole;
+        copy.enablesDamageGrowth = src.enablesDamageGrowth;
         copy.radius = src.radius;
         copy.barrelLen = src.barrelLen;
         copy.primary = src.primary;
@@ -2394,10 +2403,23 @@ public class FleetShip extends Ship {
 
     private SuperweaponPattern resolveTitanSuperweaponPattern() {
         return switch (faction) {
-            case ENEMY -> SuperweaponPattern.KINETIC_SLUG;
+            case ENEMY -> role == ShipRole.HYPERWEAPON_TITAN
+                    ? SuperweaponPattern.KINETIC_SHOTGUN
+                    : SuperweaponPattern.KINETIC_SLUG;
             case TEAM_C -> SuperweaponPattern.DIRECT_BEAM;
             case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> SuperweaponPattern.MISSILE_BARRAGE;
             default -> SuperweaponPattern.DESTABILIZER_PULSE;
         };
+    }
+
+    private void applyRedHyperweaponKineticBatteryProfile() {
+        for (Turret turret : turrets) {
+            if (turret == null || turret.kind != Turret.Kind.GUN) continue;
+            turret.cooldown = Math.max(0.045, turret.cooldown * 0.30);
+            turret.bulletSpeed = Math.max(2600.0, turret.bulletSpeed * 2.75);
+            turret.bulletLife = Math.max(34, (int) Math.round(turret.bulletLife * 0.54));
+            turret.damage = Math.max(1, (int) Math.round(turret.damage * 0.72));
+            turret.turnRate *= 1.35;
+        }
     }
 }

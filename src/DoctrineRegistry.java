@@ -175,6 +175,160 @@ public final class DoctrineRegistry {
                 }
             }
         }
+
+        applyFactionOffenseEqualization(s);
+    }
+
+    private static void applyFactionOffenseEqualization(Ship s) {
+        if (s == null || s.role == null || s.faction == null || s.turrets == null || s.turrets.isEmpty()) return;
+        double multiplier = factionOffenseEqualizationMultiplier(s.faction, s.role);
+        if (!Double.isFinite(multiplier) || multiplier <= 1.005) return;
+        s.doctrineOffenseDamageMultiplier = Math.max(s.doctrineOffenseDamageMultiplier, multiplier);
+    }
+
+    private static double factionOffenseEqualizationMultiplier(Faction faction, ShipRole role) {
+        if (faction == null || role == null) return 1.0;
+        return switch (faction) {
+            case PLAYER, ALLY -> switch (role) {
+                case PICKET -> 1.2505;
+                case PATROL -> 1.5229;
+                case STEALTH_SHIP -> 1.6301;
+                case BOMBER -> 1.2668;
+                case PD_CRAFT -> 1.3193;
+                case DRONE -> 2.4928;
+                case FRIGATE -> 1.9254;
+                case ARTILLERY_SHIP -> 1.3200;
+                case MISSILE_BOAT -> 2.1232;
+                case CIWS_CORVETTE -> 1.3932;
+                case LIGHT_CRUISER -> 1.1765;
+                case MEDIUM_CRUISER -> 1.3539;
+                case CRUISER -> 2.1751;
+                case BATTLECRUISER -> 1.1185;
+                case BATTLESHIP -> 1.3796;
+                case DREADNOUGHT -> 1.0189;
+                case SUPERSHIP -> 1.1797;
+                case TRANSPORT_TITAN -> 1.3891;
+                case BULWARK_TITAN -> 1.2071;
+                case CARRIER_SUPPORT_TITAN -> 1.5014;
+                case VANGUARD_TITAN -> 1.1512;
+                case INTERDICTION_TITAN -> 1.3897;
+                case COMMAND_INTEL_TITAN -> 1.1281;
+                case BOARDING_RECOVERY_TITAN -> 1.1618;
+                case ARTILLERY_TITAN -> 1.3128;
+                case SHIELD_BASTION_TITAN -> 1.3555;
+                case FLEET_TELEPORTER_TITAN -> 1.2313;
+                case MOBILE_STATION_TITAN -> 1.0693;
+                case HYPERWEAPON_TITAN -> 1.2000;
+                case MOTHERSHIP -> 1.3141;
+                case CARRIER -> 2.2065;
+                case DRONE_CARRIER -> 1.8545;
+                case TRANSPORT -> 2.1060;
+                case MINER -> 2.1060;
+                case HAULER -> 2.2788;
+                default -> 1.0;
+            };
+            case ENEMY -> switch (role) {
+                case PICKET -> 1.1277;
+                case STEALTH_SHIP -> 1.6450;
+                case FIGHTER -> 1.1417;
+                case BOMBER -> 1.3201;
+                case PD_CRAFT -> 1.3224;
+                case DRONE -> 2.2886;
+                case FRIGATE -> 1.4902;
+                case ARTILLERY_SHIP -> 1.2446;
+                case MISSILE_BOAT -> 2.4872;
+                case LIGHT_CRUISER -> 1.3328;
+                case MEDIUM_CRUISER -> 1.2882;
+                case CRUISER -> 2.4214;
+                case BATTLECRUISER -> 1.1300;
+                case BATTLESHIP -> 1.5678;
+                case DREADNOUGHT -> 1.0816;
+                case SUPERSHIP -> 1.2755;
+                case TRANSPORT_TITAN -> 1.4477;
+                case BULWARK_TITAN -> 1.2746;
+                case CARRIER_SUPPORT_TITAN -> 1.7385;
+                case VANGUARD_TITAN -> 1.1057;
+                case INTERDICTION_TITAN -> 1.5945;
+                case COMMAND_INTEL_TITAN -> 1.0194;
+                case BOARDING_RECOVERY_TITAN -> 1.0911;
+                case ARTILLERY_TITAN -> 1.1924;
+                case SHIELD_BASTION_TITAN -> 1.4351;
+                case FLEET_TELEPORTER_TITAN -> 1.3985;
+                case ELITE_SUPERSHIP_COMMAND_TITAN -> 1.2959;
+                case ELITE_REINFORCEMENTS_TITAN -> 1.2931;
+                case MOBILE_STATION_TITAN -> 1.1817;
+                case HYPERWEAPON_TITAN -> 1.1253;
+                case MOTHERSHIP -> 1.3511;
+                case CARRIER -> 2.2769;
+                case DRONE_CARRIER -> 2.1016;
+                case TRANSPORT -> 2.6420;
+                case MINER -> 2.2833;
+                case HAULER -> 1.9806;
+                default -> 1.0;
+            };
+            case TEAM_C -> switch (role) {
+                case PICKET -> 1.0640;
+                case PATROL -> 1.2539;
+                case STEALTH_SHIP -> 1.7347;
+                case FIGHTER -> 1.0056;
+                case DRONE -> 2.5580;
+                case FRIGATE -> 1.6427;
+                case ARTILLERY_SHIP -> 1.0328;
+                case MISSILE_BOAT -> 2.7264;
+                case CIWS_CORVETTE -> 1.1004;
+                case LIGHT_CRUISER -> 1.1685;
+                case MEDIUM_CRUISER -> 1.2357;
+                case CRUISER -> 2.5229;
+                case BATTLECRUISER -> 1.1059;
+                case BATTLESHIP -> 1.4583;
+                case DREADNOUGHT -> 1.0207;
+                case SUPERSHIP -> 1.1626;
+                case TRANSPORT_TITAN -> 1.5471;
+                case CARRIER_SUPPORT_TITAN -> 1.8146;
+                case VANGUARD_TITAN -> 1.2820;
+                case INTERDICTION_TITAN -> 1.5162;
+                case COMMAND_INTEL_TITAN -> 1.1637;
+                case BOARDING_RECOVERY_TITAN -> 1.2071;
+                case ARTILLERY_TITAN -> 1.1833;
+                case SHIELD_BASTION_TITAN -> 1.3684;
+                case FLEET_TELEPORTER_TITAN -> 1.3597;
+                case ELITE_SUPERSHIP_COMMAND_TITAN -> 1.1251;
+                case ELITE_REINFORCEMENTS_TITAN -> 1.1227;
+                case MOBILE_STATION_TITAN -> 1.1320;
+                case MOTHERSHIP -> 1.3129;
+                case CARRIER -> 1.8700;
+                case DRONE_CARRIER -> 1.6066;
+                case TRANSPORT -> 1.6602;
+                case MINER -> 1.6602;
+                case HAULER -> 1.6250;
+                default -> 1.0;
+            };
+            case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> switch (role) {
+                case PICKET -> 2.2564;
+                case PATROL -> 2.0247;
+                case FIGHTER -> 4.4613;
+                case BOMBER -> 1.2459;
+                case PD_CRAFT -> 1.5549;
+                case STEALTH_SHIP -> 1.0305;
+                case ARTILLERY_SHIP -> 1.4966;
+                case MISSILE_BOAT -> 1.0178;
+                case CIWS_CORVETTE -> 1.2410;
+                case FRIGATE -> 1.0267;
+                case BATTLECRUISER -> 1.1926;
+                case BATTLESHIP -> 1.0524;
+                case DREADNOUGHT -> 1.0084;
+                case BULWARK_TITAN -> 1.1585;
+                case ELITE_SUPERSHIP_COMMAND_TITAN -> 1.0722;
+                case ELITE_REINFORCEMENTS_TITAN -> 1.0699;
+                case HYPERWEAPON_TITAN -> 1.0500;
+                case CARRIER -> 1.0504;
+                case DRONE_CARRIER -> 1.0160;
+                case TRANSPORT -> 1.0446;
+                case MINER -> 1.0446;
+                case HAULER -> 1.0256;
+                default -> 1.0;
+            };
+        };
     }
 
     private static void convertPrimaryGunsToLightMissiles(Ship s) {

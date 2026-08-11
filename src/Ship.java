@@ -12,7 +12,7 @@ import java.util.Random;
  * - vx/vy are already scaled by dt (per tick), so integration is x += vx; y += vy.
  */
 public abstract class Ship {
-    public static final double UNIVERSAL_SPECIAL_WEAPON_RANGE = 2_000.0;
+    public static final double UNIVERSAL_SPECIAL_WEAPON_RANGE = 3_000.0;
     private static int NEXT_ID = 1;
 
     static int beginDeterministicIdScope() {
@@ -97,6 +97,7 @@ public abstract class Ship {
     public boolean alive = true;
     public double armorRoomHpMultiplier = 1.0;
     public double shieldStripRoomHpMultiplier = 1.0;
+    public double doctrineOffenseDamageMultiplier = 1.0;
     private final double[] commandStatMultipliers = initCommandStatMultipliers();
 
     // ------------------------------
@@ -216,6 +217,7 @@ public abstract class Ship {
         DESTABILIZER_PULSE, // Team A: balanced pulse blast with mixed damage and disruption
         PULSE_BARRAGE,   // Legacy rapid-fire wave pulses
         KINETIC_SLUG,    // Red team: single heavy kinetic shell
+        KINETIC_SHOTGUN, // Red hyperweapon: rapid cone of high-velocity kinetic fire
         DIRECT_BEAM,     // Green team: strong direct-energy beam
         MISSILE_BARRAGE, // Missile team: repeated heavy missile salvos
         LANCE_CONE       // Hyperweapon: piercing beam followed by a delayed cone burst
@@ -231,6 +233,7 @@ public abstract class Ship {
     private final List<Projectile> pendingSuperweaponShots = new ArrayList<>();
     private double queuedSuperweaponAim = Double.NaN;
     private Ship queuedSuperweaponTarget = null;
+    private final List<Ship> queuedSuperweaponSpreadTargets = new ArrayList<>();
     public int superweaponDamage = 68;
     public double superweaponSpeed = 1500.0;
     public int superweaponLife = 140;
@@ -247,6 +250,7 @@ public abstract class Ship {
     private double superweaponBeamTickTimer = 0.0;
     private double superweaponBeamAim = Double.NaN;
     private Ship superweaponBeamTarget = null;
+    private final List<Ship> superweaponBeamSpreadTargets = new ArrayList<>();
     private double temporaryDisableTimer = 0.0;
     private double stasisFieldTimer = 0.0;
     private double destabilizedTimer = 0.0;
@@ -979,6 +983,7 @@ public abstract class Ship {
                 enqueuePendingSuperweaponShot(fired);
                 queuedSuperweaponAim = Double.NaN;
                 queuedSuperweaponTarget = null;
+                queuedSuperweaponSpreadTargets.clear();
             }
         }
         if (superweaponBeamTimer > 0.0) {
@@ -996,6 +1001,7 @@ public abstract class Ship {
                 superweaponBeamTickTimer = 0.0;
                 superweaponBeamAim = Double.NaN;
                 superweaponBeamTarget = null;
+                superweaponBeamSpreadTargets.clear();
             }
         }
 
@@ -6410,6 +6416,7 @@ public abstract class Ship {
         superweaponBeamTickTimer = 0.0;
         superweaponBeamAim = Double.NaN;
         superweaponBeamTarget = null;
+        superweaponBeamSpreadTargets.clear();
     }
 
     public boolean canFireSuperweapon() {
@@ -6427,18 +6434,26 @@ public abstract class Ship {
     }
 
     public Projectile tryFireSuperweaponAt(double targetX, double targetY, double dt) {
+        return tryFireSuperweaponAt(null, targetX, targetY, dt);
+    }
+
+    public Projectile tryFireSuperweaponAt(GameContext ctx, double targetX, double targetY, double dt) {
         if (!canFireSuperweapon()) return null;
         if (dt <= 0.0) return null;
         double aim = resolveSuperweaponAim(targetX, targetY);
-        return tryFireSuperweaponResolved(aim, null, dt);
+        return tryFireSuperweaponResolved(ctx, aim, null, dt);
     }
 
     public Projectile tryFireSuperweapon(Ship target, double dt) {
-        if (target == null) return tryFireSuperweaponAt(Double.NaN, Double.NaN, dt);
+        return tryFireSuperweapon(null, target, dt);
+    }
+
+    public Projectile tryFireSuperweapon(GameContext ctx, Ship target, double dt) {
+        if (target == null) return tryFireSuperweaponAt(ctx, Double.NaN, Double.NaN, dt);
         if (!canFireSuperweapon()) return null;
         if (dt <= 0.0) return null;
         double aim = resolveSuperweaponAim(target.x, target.y);
-        return tryFireSuperweaponResolved(aim, target, dt);
+        return tryFireSuperweaponResolved(ctx, aim, target, dt);
     }
 
     public boolean isShieldOnline() {
@@ -6632,9 +6647,11 @@ public abstract class Ship {
         return Math.atan2(dy, dx);
     }
 
-    private Projectile tryFireSuperweaponResolved(double aim, Ship target, double dt) {
+    private Projectile tryFireSuperweaponResolved(GameContext ctx, double aim, Ship target, double dt) {
         queuedSuperweaponAim = aim;
         queuedSuperweaponTarget = isValidSuperweaponTarget(target) ? target : null;
+        queuedSuperweaponSpreadTargets.clear();
+        queuedSuperweaponSpreadTargets.addAll(selectKineticShotgunSpreadTargets(ctx, queuedSuperweaponTarget));
 
         double effectiveChargeTime = superweaponChargeTime;
 
@@ -6647,16 +6664,31 @@ public abstract class Ship {
         queuedSuperweaponAim = Double.NaN;
         Ship immediateTarget = queuedSuperweaponTarget;
         queuedSuperweaponTarget = null;
-        return fireSuperweaponShot(dt, aim, immediateTarget);
+        List<Ship> immediateSpreadTargets = new ArrayList<>(queuedSuperweaponSpreadTargets);
+        queuedSuperweaponSpreadTargets.clear();
+        return fireSuperweaponShot(dt, aim, immediateTarget, immediateSpreadTargets);
     }
 
     private Projectile fireSuperweaponShot(double dt, double aim, Ship target) {
+        return fireSuperweaponShot(dt, aim, target, queuedSuperweaponSpreadTargets);
+    }
+
+    private Projectile fireSuperweaponShot(double dt, double aim, Ship target, List<Ship> spreadTargets) {
         angle = aim;
         superweaponTimer = Math.max(1.0, superweaponCooldown);
         onFiredWeapon();
 
         superweaponBeamAim = aim;
         superweaponBeamTarget = isValidSuperweaponTarget(target) ? target : null;
+        superweaponBeamSpreadTargets.clear();
+        if (spreadTargets != null) {
+            for (Ship spreadTarget : spreadTargets) {
+                if (isValidSuperweaponTarget(spreadTarget)) superweaponBeamSpreadTargets.add(spreadTarget);
+            }
+        }
+        if (isRedHyperweaponKineticShotgun() && superweaponBeamSpreadTargets.isEmpty() && superweaponBeamTarget != null) {
+            superweaponBeamSpreadTargets.add(superweaponBeamTarget);
+        }
         switch (superweaponPattern) {
             case DESTABILIZER_PULSE -> {
                 superweaponBeamTimer = 0.0;
@@ -6665,6 +6697,10 @@ public abstract class Ship {
             }
             case PULSE_BARRAGE -> {
                 superweaponBeamTimer = Math.max(0.0, superweaponBeamDuration);
+                superweaponBeamTickTimer = superweaponTickSpacing();
+            }
+            case KINETIC_SHOTGUN -> {
+                superweaponBeamTimer = Math.max(0.55, superweaponBeamDuration);
                 superweaponBeamTickTimer = superweaponTickSpacing();
             }
             case MISSILE_BARRAGE -> {
@@ -6700,6 +6736,7 @@ public abstract class Ship {
     private double superweaponTickSpacing() {
         return switch (superweaponPattern) {
             case MISSILE_BARRAGE -> Math.max(0.14, superweaponBeamTickInterval * 1.8);
+            case KINETIC_SHOTGUN -> Math.max(0.035, superweaponBeamTickInterval);
             case PULSE_BARRAGE -> Math.max(0.03, superweaponBeamTickInterval / SUPERWEAPON_PROJECTILE_RATE_MULT);
             case LANCE_CONE -> Math.max(0.20, superweaponBeamTickInterval);
             default -> Math.max(0.06, superweaponBeamTickInterval);
@@ -6711,6 +6748,7 @@ public abstract class Ship {
         switch (superweaponPattern) {
             case DESTABILIZER_PULSE -> addSuperweaponProjectile(out, createDestabilizerPulse(dt, aim));
             case KINETIC_SLUG -> addSuperweaponProjectile(out, createKineticSuperSlug(dt, aim));
+            case KINETIC_SHOTGUN -> out.addAll(createKineticShotgunVolley(dt, aim, beamTick));
             case DIRECT_BEAM -> addSuperweaponProjectile(out, createDirectBeamSuperweapon(aim));
             case MISSILE_BARRAGE -> out.addAll(createMissileBarrageVolley(dt, aim, target, beamTick));
             case PULSE_BARRAGE -> addSuperweaponProjectile(out, createSuperweaponPulse(dt, aim, beamTick));
@@ -6761,6 +6799,172 @@ public abstract class Ship {
         );
         shot.sourceShipId = id;
         return shot;
+    }
+
+    private List<Projectile> createKineticShotgunVolley(double dt, double aim, boolean beamTick) {
+        if (isRedHyperweaponKineticShotgun() && !superweaponBeamSpreadTargets.isEmpty()) {
+            return createTargetedKineticShotgunVolley(dt, aim, beamTick);
+        }
+        return createUntargetedKineticShotgunVolley(dt, aim, beamTick);
+    }
+
+    private List<Projectile> createUntargetedKineticShotgunVolley(double dt, double aim, boolean beamTick) {
+        int pelletCount = beamTick ? 9 : 17;
+        double spread = Math.toRadians(beamTick ? 34.0 : 48.0);
+        int baseDamage = Math.max(8, (int) Math.round(superweaponDamage * (beamTick ? 0.68 : 0.88)));
+        double baseSpeed = Math.max(2800.0, superweaponSpeed * (beamTick ? 1.06 : 1.12));
+        int life = Math.max(22, (int) Math.round(superweaponLife * (beamTick ? 0.72 : 0.86)));
+        double pelletRadius = Math.max(4.8, superweaponRadius * (beamTick ? 0.78 : 0.90));
+        int maxHits = Math.max(1, Math.min(3, superweaponMaxHits));
+        double muzzle = radius + 18.0;
+        double laneSpacing = Math.max(10.0, pelletRadius * 2.8);
+        List<Projectile> out = new ArrayList<>(pelletCount);
+
+        for (int i = 0; i < pelletCount; i++) {
+            double t = (pelletCount <= 1) ? 0.0 : (i / (double) (pelletCount - 1) - 0.5);
+            double abs = Math.abs(t) * 2.0;
+            double shotAim = MathUtil.normalizeAngle(aim + t * spread);
+            double sx = x + Math.cos(aim) * muzzle + (-Math.sin(aim)) * t * laneSpacing * pelletCount * 0.34;
+            double sy = y + Math.sin(aim) * muzzle + (Math.cos(aim)) * t * laneSpacing * pelletCount * 0.34;
+            int damage = Math.max(4, (int) Math.round(baseDamage * (1.0 - abs * 0.22)));
+            double speed = baseSpeed * (1.0 - abs * 0.08);
+            SuperweaponShot shot = new SuperweaponShot(
+                    sx,
+                    sy,
+                    shotAim,
+                    dt,
+                    speed,
+                    damage,
+                    life,
+                    pelletRadius,
+                    maxHits,
+                    faction
+            );
+            shot.sourceShipId = id;
+            out.add(shot);
+        }
+        return out;
+    }
+
+    private List<Projectile> createTargetedKineticShotgunVolley(double dt, double fallbackAim, boolean beamTick) {
+        int maxTargets = beamTick ? 4 : 6;
+        int pelletsPerLane = beamTick ? 2 : 3;
+        int baseDamage = Math.max(7, (int) Math.round(superweaponDamage * (beamTick ? 0.50 : 0.62)));
+        double baseSpeed = Math.max(3000.0, superweaponSpeed * (beamTick ? 1.08 : 1.15));
+        int life = Math.max(24, (int) Math.round(superweaponLife * (beamTick ? 0.78 : 0.92)));
+        double pelletRadius = Math.max(4.4, superweaponRadius * (beamTick ? 0.70 : 0.82));
+        int maxHits = 1;
+        double muzzle = radius + 18.0;
+        double trailSpacing = Math.max(8.0, pelletRadius * 2.4);
+        List<Projectile> out = new ArrayList<>(maxTargets * pelletsPerLane);
+
+        int lanes = 0;
+        for (Ship target : superweaponBeamSpreadTargets) {
+            if (lanes >= maxTargets) break;
+            if (!isValidSuperweaponTarget(target)) continue;
+            double aim = kineticShotgunAimForTarget(target, baseSpeed, dt, fallbackAim);
+            double sxBase = x + Math.cos(aim) * muzzle;
+            double syBase = y + Math.sin(aim) * muzzle;
+            for (int pellet = 0; pellet < pelletsPerLane; pellet++) {
+                double trail = pellet * trailSpacing;
+                double sx = sxBase - Math.cos(aim) * trail;
+                double sy = syBase - Math.sin(aim) * trail;
+                int damage = Math.max(4, (int) Math.round(baseDamage * (1.0 - pellet * 0.08)));
+                double speed = baseSpeed * (1.0 + pellet * 0.018);
+                SuperweaponShot shot = new SuperweaponShot(
+                        sx,
+                        sy,
+                        aim,
+                        dt,
+                        speed,
+                        damage,
+                        life,
+                        pelletRadius,
+                        maxHits,
+                        faction
+                );
+                shot.sourceShipId = id;
+                out.add(shot);
+            }
+            lanes++;
+        }
+
+        return out.isEmpty() ? createUntargetedKineticShotgunVolley(dt, fallbackAim, beamTick) : out;
+    }
+
+    private double kineticShotgunAimForTarget(Ship target, double projectileSpeed, double dt, double fallbackAim) {
+        if (!isValidSuperweaponTarget(target)) return fallbackAim;
+        double sx = x + Math.cos(fallbackAim) * (radius + 18.0);
+        double sy = y + Math.sin(fallbackAim) * (radius + 18.0);
+        double tx = target.x;
+        double ty = target.y;
+        if (dt > 1e-6) {
+            double[] lead = MathUtil.interceptPoint(sx, sy, target.x, target.y,
+                    target.vx / dt, target.vy / dt, projectileSpeed);
+            tx = lead[0];
+            ty = lead[1];
+        }
+        if (!Double.isFinite(tx) || !Double.isFinite(ty)) return fallbackAim;
+        return Math.atan2(ty - sy, tx - sx);
+    }
+
+    private List<Ship> selectKineticShotgunSpreadTargets(GameContext ctx, Ship primaryTarget) {
+        List<Ship> targets = new ArrayList<>();
+        if (!isRedHyperweaponKineticShotgun()) return targets;
+        double range = Math.max(UNIVERSAL_SPECIAL_WEAPON_RANGE, superweaponSpeed * Math.max(GameContext.DT, 1e-4) * superweaponLife);
+        double range2 = range * range;
+        if (isValidSuperweaponTarget(primaryTarget) && MathUtil.dist2(x, y, primaryTarget.x, primaryTarget.y) <= range2) {
+            targets.add(primaryTarget);
+        }
+        if (ctx != null && ctx.ships != null) {
+            for (Ship candidate : ctx.ships) {
+                if (candidate == this || !isValidSuperweaponTarget(candidate)) continue;
+                if (MathUtil.dist2(x, y, candidate.x, candidate.y) > range2) continue;
+                boolean alreadyAdded = false;
+                for (Ship existing : targets) {
+                    if (existing == candidate) {
+                        alreadyAdded = true;
+                        break;
+                    }
+                }
+                if (!alreadyAdded) targets.add(candidate);
+            }
+        }
+        targets.sort((a, b) -> {
+            int tierCmp = Integer.compare(kineticShotgunTargetTier(b), kineticShotgunTargetTier(a));
+            if (tierCmp != 0) return tierCmp;
+            return Double.compare(MathUtil.dist2(x, y, a.x, a.y), MathUtil.dist2(x, y, b.x, b.y));
+        });
+        int maxTargets = 6;
+        if (targets.size() > maxTargets) {
+            return new ArrayList<>(targets.subList(0, maxTargets));
+        }
+        return targets;
+    }
+
+    private int kineticShotgunTargetTier(Ship target) {
+        if (target == null || target.role == null) return 0;
+        ShipRole targetRole = target.role;
+        if (targetRole.isMothership()) return 100;
+        if (targetRole.isTitan()) return 95;
+        return switch (targetRole) {
+            case SUPERSHIP -> 90;
+            case DREADNOUGHT -> 86;
+            case BATTLESHIP -> 82;
+            case BATTLECRUISER -> 78;
+            case CRUISER, MEDIUM_CRUISER, LIGHT_CRUISER -> 68;
+            case FRIGATE, ARTILLERY_SHIP, MISSILE_BOAT, CIWS_CORVETTE, CARRIER, DRONE_CARRIER, TRANSPORT -> 52;
+            case PICKET, PATROL, STEALTH_SHIP, MINER, HAULER -> 34;
+            case FIGHTER, BOMBER, PD_CRAFT, DRONE -> 12;
+            case BASE, STATIC_TURRET -> 8;
+            default -> 60;
+        };
+    }
+
+    private boolean isRedHyperweaponKineticShotgun() {
+        return role == ShipRole.HYPERWEAPON_TITAN
+                && faction == Faction.ENEMY
+                && superweaponPattern == SuperweaponPattern.KINETIC_SHOTGUN;
     }
 
     public boolean isTemporarilyDisabled() {

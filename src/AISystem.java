@@ -149,8 +149,9 @@ public final class AISystem {
     private static final double ESCORT_WARP_SUPPORT_RANGE = 320.0;
     private static final double FLEET_REJOIN_WARP_RANGE = 1500.0;
     private static final double FLEET_REJOIN_ANCHOR_RANGE = 900.0;
-    private static final double PLAYER_FLEET_PROSECUTION_RANGE = 2500.0;
-    private static final double RED_FLEET_PROSECUTION_RANGE = 2500.0;
+    static final double STANDARD_PROSECUTION_RANGE = 3000.0;
+    private static final double PLAYER_FLEET_PROSECUTION_RANGE = STANDARD_PROSECUTION_RANGE;
+    private static final double RED_FLEET_PROSECUTION_RANGE = STANDARD_PROSECUTION_RANGE;
     private static final int MAX_FLEET_COMM_LOG = 8;
     private static final int RESOURCE_RUSH_TEAM_SHIP_CAP = 18;
     private static final int RESOURCE_RUSH_ESTIMATED_SHIPS_PER_GROUP = 4;
@@ -2989,16 +2990,18 @@ public final class AISystem {
         if (d <= 240.0) return true;
         if (d <= sustainedEngagementRangeForTarget(ctx, seeker, target)) return true;
 
-        if (seeker.hasSuperweapon && d <= 2200.0 * rangeMul) return true;
+        if (seeker.hasSuperweapon && d <= UNIVERSAL_SUPERWEAPON_RANGE * rangeMul) return true;
         for (Turret t : seeker.turrets) {
             if (t == null) continue;
-            double maxRange;
-            if (seeker.role == ShipRole.BASE || seeker.role == ShipRole.STATIC_TURRET) {
-                maxRange = (t.kind == Turret.Kind.MISSILE) ? 1400.0 : 900.0;
-            } else {
-                maxRange = (t.kind == Turret.Kind.MISSILE) ? 900.0 : 520.0;
-            }
-            maxRange *= rangeMul;
+            boolean offensiveMissile = t.kind == Turret.Kind.MISSILE
+                    && (t.missileRole == null || t.missileRole != Turret.MissileRole.INTERCEPT);
+            boolean offensiveGun = t.kind == Turret.Kind.GUN
+                    && !Turret.usesCiwsPelletsAgainst(seeker, t, target);
+            double maxRange = (offensiveGun || offensiveMissile) ? STANDARD_PROSECUTION_RANGE
+                    : ((seeker.role == ShipRole.BASE || seeker.role == ShipRole.STATIC_TURRET)
+                    ? ((t.kind == Turret.Kind.MISSILE) ? 1400.0 : 900.0)
+                    : ((t.kind == Turret.Kind.MISSILE) ? 900.0 : 520.0));
+            if (!offensiveGun && !offensiveMissile) maxRange *= rangeMul;
             if (d <= maxRange * 1.12) return true;
         }
         return false;
@@ -4351,7 +4354,7 @@ public final class AISystem {
                     s.trackSuperweaponAim(swTarget.x, swTarget.y);
                 }
 
-                Projectile shot = allowSuperweapon ? s.tryFireSuperweapon(swTarget, dt) : null;
+                Projectile shot = allowSuperweapon ? s.tryFireSuperweapon(ctx, swTarget, dt) : null;
                 if (shot != null) {
                     ctx.projectiles.add(shot);
                     ScreenShake.kick(3.5);
@@ -4447,7 +4450,11 @@ public final class AISystem {
                     Ship missileTarget = resolveMissileTarget(ctx, s, t, target, missileRange);
                     if (!isAlive(missileTarget)) continue;
                     double missileDist = Math.hypot(missileTarget.x - s.x, missileTarget.y - s.y);
-                    double allowedMissileRange = Math.max(missileRangeForTurret(t, missileRange), sustainedRange);
+                    Turret.MissileRole missileRole = (t.missileRole == null)
+                            ? Turret.MissileRole.ANTI_MEDIUM : t.missileRole;
+                    double allowedMissileRange = (missileRole == Turret.MissileRole.INTERCEPT)
+                            ? missileRangeForTurret(t, missileRange)
+                            : STANDARD_PROSECUTION_RANGE;
                     if (missileDist > allowedMissileRange) continue;
                     if (!t.canFire()) continue;
 
@@ -4539,6 +4546,7 @@ public final class AISystem {
     private static double missileRangeForTurret(Turret turret, double baseMissileRange) {
         if (turret == null) return baseMissileRange;
         Turret.MissileRole role = (turret.missileRole == null) ? Turret.MissileRole.ANTI_MEDIUM : turret.missileRole;
+        if (role != Turret.MissileRole.INTERCEPT) return STANDARD_PROSECUTION_RANGE;
         return switch (role) {
             case ANTI_HEAVY -> Math.max(baseMissileRange, baseMissileRange * 1.44);
             case ANTI_LIGHT -> Math.max(baseMissileRange, baseMissileRange * 3.5);
@@ -4701,23 +4709,13 @@ public final class AISystem {
         double weaponRange = effectiveGunRangeForTarget(host, turret, target, baseGunRange);
         if (host == null || turret == null || target == null) return weaponRange;
         if (Turret.usesCiwsPelletsAgainst(host, turret, target)) return weaponRange;
-        if (host.faction == Faction.TEAM_C) return greenMainGunAuthorityRange(host, target, weaponRange);
-        if (playerFleetProsecutionContactAvailable(ctx, host, target)) {
-            return Math.max(weaponRange, PLAYER_FLEET_PROSECUTION_RANGE);
-        }
-        if (redFleetProsecutionContactAvailable(ctx, host, target)) {
-            return Math.max(weaponRange, RED_FLEET_PROSECUTION_RANGE);
-        }
-        if (!blueCommandContactAvailable(ctx, host, target)) return weaponRange;
-        double commandRange = sustainedEngagementRangeForTarget(ctx, ctx.player, target);
-        return Math.max(weaponRange, commandRange);
+        return Math.max(weaponRange, STANDARD_PROSECUTION_RANGE);
     }
 
     static double greenMainGunAuthorityRange(Ship host, Ship target, double baseGunRange) {
         double range = Math.max(0.0, baseGunRange) * 0.58;
         double floor = (host == null || target == null) ? 260.0 : host.radius + target.radius + 190.0;
-        double cap = (host != null && host.role != null && host.role.isTitanOrMothership()) ? 980.0 : 760.0;
-        return Math.max(floor, Math.min(cap, range));
+        return Math.max(STANDARD_PROSECUTION_RANGE, Math.max(floor, range));
     }
 
     static double effectivePrimaryGunRangeAgainstTarget(Ship host, Ship target, double baseGunRange) {

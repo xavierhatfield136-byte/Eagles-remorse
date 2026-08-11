@@ -8749,6 +8749,14 @@ public class Renderer {
         return new Rectangle(minX, minY, Math.max(1, maxX - minX + 1), Math.max(1, maxY - minY + 1));
     }
 
+    static Faction shopPreviewFactionForPlayer(Player player) {
+        return (player == null || player.faction == null) ? Faction.ALLY : player.faction.hullCatalogFaction();
+    }
+
+    static boolean usesAuthoredTurretSkinsForGameplay() {
+        return false;
+    }
+
     private static void drawShopHullCard(Graphics2D g2, Rectangle card, ShopHullOffer offer,
                                          int credits, int hangarTier, Player player, GameContext ctx) {
         boolean campaignShop = CampaignSystem.usesPersistentFleetShop(ctx);
@@ -8777,7 +8785,8 @@ public class Renderer {
         Rectangle button = getShopCardButtonRect(card);
         Rectangle sprite = new Rectangle(card.x + 18, card.y + 12, card.width - 36,
                 Math.max(72, button.y - card.y - 58));
-        drawCanonicalHullSprite(g2, offer.role, Faction.ALLY, sprite, enabled || current ? 1.0f : 0.58f, accent);
+        drawCanonicalHullSprite(g2, offer.role, shopPreviewFactionForPlayer(player), sprite,
+                enabled || current ? 1.0f : 0.58f, accent);
 
         String stateLine = current
                 ? (campaignShop ? "Flagship hull currently commanded" : "Currently equipped")
@@ -17359,18 +17368,113 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             if (resource == null) {
                 resource = loadBundledImage(Renderer.class, SKIN_RESOURCE_DIR, SKIN_DIR, key.toUpperCase(Locale.ROOT));
             }
-            if (resource != null) return resource;
+            if (resource != null) return sanitizeTurretSkin(resource);
             for (File root : SKIN_ROOTS) {
                 File f = new File(root, key + ".png");
                 try {
-                    if (f.isFile()) return AssetLoadGuard.read(f, "turret");
+                    if (f.isFile()) return sanitizeTurretSkin(AssetLoadGuard.read(f, "turret"));
                 } catch (IOException ignored) {}
                 File upper = new File(root, key.toUpperCase(Locale.ROOT) + ".png");
                 try {
-                    if (upper.isFile()) return AssetLoadGuard.read(upper, "turret");
+                    if (upper.isFile()) return sanitizeTurretSkin(AssetLoadGuard.read(upper, "turret"));
                 } catch (IOException ignored) {}
             }
             return null;
+        }
+
+        private static BufferedImage sanitizeTurretSkin(BufferedImage source) {
+            if (source == null) return null;
+            int width = source.getWidth();
+            int height = source.getHeight();
+            int total = width * height;
+            if (width <= 0 || height <= 0 || total <= 0) return source;
+
+            int[] component = new int[total];
+            int[] queue = new int[total];
+            int bestId = 0;
+            int bestCount = 0;
+            int bestMinX = 0;
+            int bestMinY = 0;
+            int bestMaxX = width - 1;
+            int bestMaxY = height - 1;
+            int nextId = 1;
+
+            for (int start = 0; start < total; start++) {
+                if (component[start] != 0 || !turretSkinPixelVisible(source.getRGB(start % width, start / width))) {
+                    continue;
+                }
+                int id = nextId++;
+                int head = 0;
+                int tail = 0;
+                queue[tail++] = start;
+                component[start] = id;
+                int count = 0;
+                int minX = width;
+                int minY = height;
+                int maxX = -1;
+                int maxY = -1;
+
+                while (head < tail) {
+                    int idx = queue[head++];
+                    int px = idx % width;
+                    int py = idx / width;
+                    count++;
+                    if (px < minX) minX = px;
+                    if (py < minY) minY = py;
+                    if (px > maxX) maxX = px;
+                    if (py > maxY) maxY = py;
+
+                    for (int dy = -1; dy <= 1; dy++) {
+                        int ny = py + dy;
+                        if (ny < 0 || ny >= height) continue;
+                        for (int dx = -1; dx <= 1; dx++) {
+                            if (dx == 0 && dy == 0) continue;
+                            int nx = px + dx;
+                            if (nx < 0 || nx >= width) continue;
+                            int nidx = ny * width + nx;
+                            if (component[nidx] != 0) continue;
+                            if (!turretSkinPixelVisible(source.getRGB(nx, ny))) continue;
+                            component[nidx] = id;
+                            queue[tail++] = nidx;
+                        }
+                    }
+                }
+
+                if (count > bestCount) {
+                    bestId = id;
+                    bestCount = count;
+                    bestMinX = minX;
+                    bestMinY = minY;
+                    bestMaxX = maxX;
+                    bestMaxY = maxY;
+                }
+            }
+
+            if (bestId == 0 || bestCount < 32) return source;
+            int pad = 4;
+            int cropX = Math.max(0, bestMinX - pad);
+            int cropY = Math.max(0, bestMinY - pad);
+            int cropMaxX = Math.min(width - 1, bestMaxX + pad);
+            int cropMaxY = Math.min(height - 1, bestMaxY + pad);
+            int cropW = Math.max(1, cropMaxX - cropX + 1);
+            int cropH = Math.max(1, cropMaxY - cropY + 1);
+
+            BufferedImage cleaned = new BufferedImage(cropW, cropH, BufferedImage.TYPE_INT_ARGB);
+            for (int yy = 0; yy < cropH; yy++) {
+                int sy = cropY + yy;
+                for (int xx = 0; xx < cropW; xx++) {
+                    int sx = cropX + xx;
+                    int idx = sy * width + sx;
+                    if (component[idx] == bestId) {
+                        cleaned.setRGB(xx, yy, source.getRGB(sx, sy));
+                    }
+                }
+            }
+            return cleaned;
+        }
+
+        private static boolean turretSkinPixelVisible(int argb) {
+            return ((argb >>> 24) & 0xff) > 8;
         }
 
         private static String keyForRole(ShipRole role) {
@@ -18662,7 +18766,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             double bodyScale = scale.bodyScale * GLOBAL_TURRET_SCALE;
             double barrelScale = scale.barrelScale * GLOBAL_TURRET_SCALE;
             String styleKey = turretStyleKey(ship, t);
-            BufferedImage turretSkin = TurretSkinLibrary.getTurretSkin(styleKey, ship.role, ship.faction);
+            BufferedImage turretSkin = usesAuthoredTurretSkinsForGameplay()
+                    ? TurretSkinLibrary.getTurretSkin(styleKey, ship.role, ship.faction)
+                    : null;
 
             Graphics2D tg = (Graphics2D) g2.create();
             tg.translate(t.localX, t.localY);
@@ -18689,7 +18795,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         if (ship.hasCIWS) {
             double ciwsScale = turretVisualScale(ship.role, Turret.Kind.GUN).ciwsScale * GLOBAL_TURRET_SCALE;
-            BufferedImage ciwsSkin = TurretSkinLibrary.getTurretSkin("ciws", ship.role, ship.faction);
+            BufferedImage ciwsSkin = usesAuthoredTurretSkinsForGameplay()
+                    ? TurretSkinLibrary.getTurretSkin("ciws", ship.role, ship.faction)
+                    : null;
             if (ciwsSkin != null) drawCiwsSkinSprite(g2, ciwsSkin, ciwsScale);
             else drawCIWSTurret(g2, ciwsScale);
         }

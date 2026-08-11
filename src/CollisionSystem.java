@@ -11,9 +11,7 @@ public class CollisionSystem {
     private static final double DESTABILIZER_PULSE_SHIELD_CORE_BONUS = 0.75;
     private static final double DESTABILIZER_PULSE_DISABLE_FLOOR_SECONDS = 0.55;
     private static final double DESTABILIZER_PULSE_DISABLE_CORE_SECONDS = 2.4;
-    private static final double SUPERWEAPON_RING_DISABLE_SECONDS = 5.0;
     private static final double SUPERWEAPON_RING_SHIELD_DRAIN_FRACTION = 0.25;
-    private static final double RED_STASIS_FIELD_SECONDS = 30.0;
     private static final double RED_STASIS_FIELD_REFRESH_SECONDS = 0.35;
     private static final double RED_STASIS_FIELD_SHIELD_LOCK_SECONDS = 0.85;
 
@@ -103,8 +101,8 @@ public class CollisionSystem {
                     double shieldBefore = s.shield;
                     int hpBefore = s.hp;
                     int effectiveDamage = scaleDamage(ctx, p.getEffectiveDamage());
-                    boolean redRailgunShot = isRedRailgunSuperweapon(shooter, p);
-                    if (redRailgunShot) {
+                    boolean redKineticSuperweaponShot = isRedKineticSuperweaponShot(shooter, p);
+                    if (redKineticSuperweaponShot) {
                         int shieldCrack = Math.max(0, (int) Math.round(effectiveDamage * 0.35));
                         if (shieldCrack > 0) {
                             s.drainShieldByAmount(shieldCrack, p.x, p.y, p.vx, p.vy);
@@ -120,7 +118,7 @@ public class CollisionSystem {
                     );
                     boolean shieldHit = s.shield < shieldBefore - 1e-6;
                     boolean hullHit = s.hp < hpBefore;
-                    if (redRailgunShot && hullHit && s.alive && !s.dying && s.hp > 0) {
+                    if (redKineticSuperweaponShot && hullHit && s.alive && !s.dying && s.hp > 0) {
                         int penetratingDamage = Math.max(10, (int) Math.round(effectiveDamage * 0.72));
                         s.takePenetratingInternalDamage(penetratingDamage, p.x, p.y, p.vx, p.vy);
                     }
@@ -493,8 +491,6 @@ public class CollisionSystem {
                             contactY,
                             dx,
                             dy);
-                    ship.addTemporaryDisable(SUPERWEAPON_RING_DISABLE_SECONDS);
-
                     boolean showImpactVfx = shouldRenderDamageVfx(ctx, ship, impactPoints.shieldX(), impactPoints.shieldY());
                     if (showImpactVfx) {
                         int strength = Math.max(2, (int) Math.round(3.0 + stripped * 0.06));
@@ -917,18 +913,6 @@ public class CollisionSystem {
         boolean affected = false;
         Ship shooter = resolveSourceShip(ctx, ships, slug);
 
-        if (isRedHyperweaponStasisWeapon(shooter)) {
-            Explosion.spawnStasisField(x, y, RED_STASIS_FIELD_SECONDS, slug.sourceShipId, slug.faction, rr);
-            boolean showImpactVfx = shouldRenderDamageVfx(ctx, null, x, y);
-            if (showImpactVfx) {
-                VFX.spawnHullImpact(x, y, 0.0, 0.0, Math.max(4, slug.damage), VFX.ImpactStyle.EXPLOSIVE);
-                Explosion.spawnShieldHit(x, y);
-                ScreenShake.kick(Math.min(8.0, 4.2 + rr * 0.010));
-            }
-            AudioSystem.onExplosion(ctx, x, y);
-            return;
-        }
-
         Iterable<Ship> candidates = ships;
         List<Ship> nearbyShips = new java.util.ArrayList<>();
         if (ctx != null) {
@@ -961,7 +945,6 @@ public class CollisionSystem {
                 s.takeDamage(scaleDamage(ctx, hullDamage), x, y, impactVx, impactVy);
                 logDamageEvent(ctx, "disruptor_blast:" + System.identityHashCode(slug), hullDamage, VFX.ImpactStyle.BEAM, s, x, y);
             }
-            s.applyTemporaryDisable(disruptorDisableSeconds(s));
             slug.markAffected(s);
 
             boolean shieldHit = stripped > 1e-6 || s.shield < shieldBefore - 1e-6;
@@ -998,13 +981,6 @@ public class CollisionSystem {
         }
     }
 
-    private static double disruptorDisableSeconds(Ship ship) {
-        if (ship == null) return 10.0;
-        double size = HullGeometry.broadPhaseRadius(ship);
-        double t = MathUtil.clamp((size - 12.0) / 42.0, 0.0, 1.0);
-        return 10.0 + t * 10.0;
-    }
-
     private static double resolveDisruptorShieldOfflineSeconds(Ship ship) {
         if (ship == null) return 3.0;
         return Math.max(3.0, ship.shieldRebootDelay * 1.2);
@@ -1032,11 +1008,12 @@ public class CollisionSystem {
                 && (shooter.role == ShipRole.SUPERSHIP || shooter.role == ShipRole.HYPERWEAPON_TITAN);
     }
 
-    private static boolean isRedRailgunSuperweapon(Ship shooter, Projectile projectile) {
+    private static boolean isRedKineticSuperweaponShot(Ship shooter, Projectile projectile) {
         return shooter != null
                 && projectile instanceof SuperweaponShot
                 && shooter.faction == Faction.ENEMY
-                && shooter.superweaponPattern == Ship.SuperweaponPattern.KINETIC_SLUG
+                && (shooter.superweaponPattern == Ship.SuperweaponPattern.KINETIC_SLUG
+                        || shooter.superweaponPattern == Ship.SuperweaponPattern.KINETIC_SHOTGUN)
                 && (shooter.role == ShipRole.SUPERSHIP || shooter.role == ShipRole.HYPERWEAPON_TITAN);
     }
 
@@ -1048,12 +1025,6 @@ public class CollisionSystem {
                 && target.role != null
                 && target.role.isTitanOrMothership()
                 && target != directHit;
-    }
-
-    private static boolean isRedHyperweaponStasisWeapon(Ship shooter) {
-        return shooter != null
-                && shooter.role == ShipRole.HYPERWEAPON_TITAN
-                && shooter.faction == Faction.ENEMY;
     }
 
     private static boolean isBlueHyperweaponPulse(Ship shooter) {

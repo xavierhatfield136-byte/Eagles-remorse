@@ -7,6 +7,7 @@ import java.awt.geom.Rectangle2D;
 import java.lang.reflect.Method;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -122,6 +123,27 @@ class RendererHudLayoutTest {
             Rectangle card = (Rectangle) cardMethod.invoke(null, panel, slot);
             assertTrue(hullArea.contains(card), "commissioning card should stay inside the hull bay");
         }
+    }
+
+    @Test
+    void shopHullPreviewUsesCurrentPlayerFactionSkin() {
+        Player player = new Player(ShipRole.FRIGATE, 0.0, 0.0);
+
+        player.faction = Faction.ENEMY;
+        assertEquals(Faction.ENEMY, Renderer.shopPreviewFactionForPlayer(player));
+
+        player.faction = Faction.TEAM_C;
+        assertEquals(Faction.TEAM_C, Renderer.shopPreviewFactionForPlayer(player));
+
+        player.faction = Faction.DARK_YELLOW;
+        assertEquals(Faction.TEAM_D, Renderer.shopPreviewFactionForPlayer(player),
+                "yellow civil-war factions should use the shared yellow hull catalog");
+    }
+
+    @Test
+    void gameplayUsesOriginalProceduralTurretsUntilAuthoredSpritesAreClean() {
+        assertFalse(Renderer.usesAuthoredTurretSkinsForGameplay(),
+                "generated turret concept PNGs should not override the original clean gameplay turret renderers");
     }
 
     @Test

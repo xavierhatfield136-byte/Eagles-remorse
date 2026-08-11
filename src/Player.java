@@ -292,6 +292,7 @@ public class Player extends Ship {
         this.hp = t.hp;
         this.shieldMax = t.shieldMax;
         this.shield = t.shield;
+        this.doctrineOffenseDamageMultiplier = t.doctrineOffenseDamageMultiplier;
         this.shieldRegen = t.shieldRegen;
         this.shieldActive = t.shieldActive;
         this.shieldRebootDelay = t.shieldRebootDelay;

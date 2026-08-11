@@ -35,7 +35,7 @@ class MissileRoleBehaviorTest {
     }
 
     @Test
-    void fastMissilesCanFireAcrossTheirCurrentSector() throws Exception {
+    void offensiveMissilesFireInsideStandardProsecutionRange() throws Exception {
         GameContext ctx = new GameContext(new GameConfig(GameMode.RESOURCE_RUSH, 5000, 5000, true, 1234L, false));
         ctx.enemyWaveTimer = 9999.0;
 
@@ -53,7 +53,7 @@ class MissileRoleBehaviorTest {
         shooter.addTurret(missileTurret);
         ctx.ships.add(shooter);
 
-        Ship distantTarget = new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 4600.0, 2500.0);
+        Ship distantTarget = new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 3300.0, 2500.0);
         ctx.ships.add(distantTarget);
         ctx.entityQuery.rebuild(ctx);
 
@@ -63,10 +63,14 @@ class MissileRoleBehaviorTest {
         int firedCount = (int) fireIfAble.invoke(
                 null, ctx, shooter, distantTarget, GameContext.DT, Math.hypot(distantTarget.x - shooter.x, distantTarget.y - shooter.y));
 
-        assertTrue(firedCount > 0, "expected FAST missiles to fire across the current sector");
-        assertTrue(ctx.projectiles.get(0) instanceof Missile, "expected a missile projectile from the shot");
-        Missile missile = (Missile) ctx.projectiles.get(0);
-        assertSame(distantTarget, missile.target, "FAST missile should lock the visible hostile in the same sector");
+        assertTrue(firedCount > 0, "expected offensive missiles to fire inside the standard prosecution range");
+        Missile missile = ctx.projectiles.stream()
+                .filter(Missile.class::isInstance)
+                .map(Missile.class::cast)
+                .findFirst()
+                .orElse(null);
+        assertNotNull(missile, "expected a missile projectile from the shot");
+        assertSame(distantTarget, missile.target, "missile should lock the visible hostile inside the prosecution envelope");
     }
 
     @Test
@@ -160,7 +164,7 @@ class MissileRoleBehaviorTest {
                 "missileRangeForTurret", GameContext.class, Ship.class, Turret.class, double.class);
         rangeMethod.setAccessible(true);
         double heavyRange = (double) rangeMethod.invoke(null, ctx, shooter, missileTurret, 1300.0);
-        assertTrue(heavyRange >= 1872.0 - 1e-6, "heavy missiles should have double their prior effective range");
+        assertEquals(3000.0, heavyRange, 1e-6, "heavy missiles should use the standard prosecution range");
 
         missileTurret.setReady();
         Ship target = new FleetShip(ShipRole.CRUISER, Faction.ENEMY, 900.0, 0.0);

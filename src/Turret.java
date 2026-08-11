@@ -257,6 +257,7 @@ public class Turret {
             cycleMul *= 0.90;
             damageMul *= 1.18;
         }
+        damageMul *= Math.max(1.0, host.doctrineOffenseDamageMultiplier);
         cycleMul = Math.max(0.20, cycleMul);
         damageMul = Math.max(0.20, damageMul);
         host.consumeStrikeCraftMunition(this);
@@ -438,10 +439,8 @@ public class Turret {
     }
 
     static double greenBeamLength(Ship host, Ship target, double projectileSpeed) {
-        double nominal = Math.max(360.0, projectileSpeed * 0.72);
-        double cap = (host != null && host.role != null && host.role.isTitanOrMothership()) ? 980.0 : 760.0;
         double floor = (host == null || target == null) ? 300.0 : host.radius + target.radius + 190.0;
-        return Math.max(floor, Math.min(cap, nominal));
+        return Math.max(floor, AISystem.STANDARD_PROSECUTION_RANGE);
     }
 
     private boolean isWithinHullWeaponArc(Ship host) {
