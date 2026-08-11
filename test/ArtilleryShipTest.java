@@ -1,6 +1,9 @@
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -35,6 +38,22 @@ class ArtilleryShipTest {
         assertTrue(artillery.hpMax < frigate.hpMax, "artillery ship should trade durability for firepower");
         assertTrue(artillery.desiredSpeed >= frigate.desiredSpeed * 0.75,
                 "artillery ship should still be mobile enough to kite");
+    }
+
+    @Test
+    void redPlayerArtilleryShipCanFireAtCursorAfterHullSwap() {
+        Player player = new Player(ShipRole.FRIGATE, 0.0, 0.0);
+        player.faction = Faction.ENEMY;
+        player.applyHull(ShipRole.ARTILLERY_SHIP, 0.0, 0.0);
+        player.angle = Math.toRadians(90.0);
+        for (Turret turret : player.turrets) {
+            if (turret != null) turret.setReady();
+        }
+
+        List<Projectile> fired = player.firePrimary(900.0, 0.0, GameContext.DT);
+
+        assertFalse(fired.isEmpty(), "red player artillery ship should fire even when the hull nose is not already aligned");
+        assertTrue(fired.get(0) instanceof Bullet, "red player artillery should still fire kinetic cannon rounds");
     }
 
     private static Turret strongestPrimaryGun(Ship ship) {

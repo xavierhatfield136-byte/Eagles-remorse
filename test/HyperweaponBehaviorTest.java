@@ -346,16 +346,29 @@ class HyperweaponBehaviorTest {
     }
 
     @Test
-    void hyperweaponTitanGunMountsStayBalancedAcrossCenterline() {
+    void blueHyperweaponTitanGunMountsUseBalancedVisibleHullRows() {
         FleetShip hyperweapon = new FleetShip(ShipRole.HYPERWEAPON_TITAN, Faction.ALLY, 0.0, 0.0);
 
-        double averageLocalY = hyperweapon.turrets.stream()
+        java.util.List<Turret> guns = hyperweapon.turrets.stream()
                 .filter(turret -> turret != null && turret.kind == Turret.Kind.GUN)
-                .mapToDouble(turret -> turret.localY)
-                .average()
-                .orElse(Double.NaN);
+                .toList();
 
-        assertEquals(0.0, averageLocalY, 0.01);
+        assertEquals(4, guns.size());
+        double minY = guns.stream().mapToDouble(turret -> turret.localY).min().orElse(0.0);
+        double maxY = guns.stream().mapToDouble(turret -> turret.localY).max().orElse(0.0);
+        double meanY = guns.stream().mapToDouble(turret -> turret.localY).average().orElse(0.0);
+        ShipHullSilhouette.VisualBounds bounds = ShipHullSilhouette.visualBounds(
+                hyperweapon.role, hyperweapon.radius, hyperweapon.faction);
+        double visualCenterY = bounds == null ? 0.0 : 0.5 * (bounds.minY + bounds.maxY);
+        assertTrue(minY < visualCenterY - 3.0, "expected port-side hyperweapon mounts");
+        assertTrue(maxY > visualCenterY + 3.0, "expected starboard-side hyperweapon mounts");
+        assertTrue(Math.abs(meanY - visualCenterY) <= hyperweapon.radius * 0.06,
+                "hyperweapon mounts should not lean to one side");
+        for (Turret turret : guns) {
+            assertTrue(ShipHullSilhouette.visualHullContains(
+                            hyperweapon.role, hyperweapon.radius, hyperweapon.faction, turret.localX, turret.localY),
+                    "hyperweapon turret center should sit on visible hull art");
+        }
     }
 
     private static GameContext combatContext() {

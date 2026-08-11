@@ -96,17 +96,22 @@ class OwnerPlaytestPhaseFiveTacticalCleanupAuditTest {
             double maxY = Double.NEGATIVE_INFINITY;
             double minX = Double.POSITIVE_INFINITY;
             double maxX = Double.NEGATIVE_INFINITY;
+            ShipHullSilhouette.VisualBounds visualBounds = ShipHullSilhouette.visualBounds(
+                    hyperweapon.role, hyperweapon.radius, hyperweapon.faction);
+            double visualCenterY = visualBounds == null ? 0.0 : 0.5 * (visualBounds.minY + visualBounds.maxY);
             for (Turret turret : hyperweapon.turrets) {
-                HullGeometry.ImpactSample sample = HullGeometry.sampleImpact(
-                        hyperweapon, hyperweapon.x + turret.localX, hyperweapon.y + turret.localY);
-                assertTrue(sample.onHull, "Blue hyperweapon turret mount drifted off hull");
+                assertTrue(ShipHullSilhouette.visualHullContains(
+                                hyperweapon.role, hyperweapon.radius, hyperweapon.faction,
+                                turret.localX, turret.localY),
+                        "Blue hyperweapon turret center drifted off visible hull");
                 minY = Math.min(minY, turret.localY);
                 maxY = Math.max(maxY, turret.localY);
                 minX = Math.min(minX, turret.localX);
                 maxX = Math.max(maxX, turret.localX);
             }
 
-            assertTrue(maxY > 4.0 && minY < -4.0, "Blue hyperweapon titan must mount both flanks");
+            assertTrue(maxY > visualCenterY + 4.0 && minY < visualCenterY - 4.0,
+                    "Blue hyperweapon titan must mount both flanks around the visible sprite midline");
             assertTrue(maxX - minX >= hyperweapon.radius * 0.60, "Blue hyperweapon titan needs longitudinal spread");
         } finally {
             Ship.disableDeterministicRandom();

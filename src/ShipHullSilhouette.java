@@ -31,6 +31,7 @@ public final class ShipHullSilhouette {
 
     private static final Map<String, Polygon> HULL_CACHE = new BoundedCache<>(512);
     private static final Map<String, BufferedImage> SKIN_CACHE = new BoundedCache<>(192);
+    private static final Map<String, VisualBounds> VISUAL_BOUNDS_CACHE = new BoundedCache<>(512);
     private static final Set<String> SKIN_MISS = new HashSet<>();
     private static final List<File> SKIN_ROOTS = resolveSkinRoots(SKIN_DIR);
     private static boolean cachesPrewarmed = false;
@@ -69,6 +70,134 @@ public final class ShipHullSilhouette {
         Polygon out = (fromSkin != null && fromSkin.npoints >= 3) ? fromSkin : fallback;
         HULL_CACHE.put(key, out);
         return out;
+    }
+
+    public static boolean visualHullTouches(ShipRole role, double radius, Faction faction,
+                                            double localX, double localY, double footprint) {
+        double probe = Math.max(1.5, footprint);
+        return visualHullContains(role, radius, faction, localX, localY)
+                || visualHullContains(role, radius, faction, localX - probe, localY)
+                || visualHullContains(role, radius, faction, localX + probe, localY)
+                || visualHullContains(role, radius, faction, localX, localY - probe)
+                || visualHullContains(role, radius, faction, localX, localY + probe);
+    }
+
+    public static boolean visualHullContains(ShipRole role, double radius, Faction faction,
+                                             double localX, double localY) {
+        BufferedImage skin = loadSkin(role, faction);
+        if (skin == null) {
+            Polygon fallback = hullPolygon(role, radius, faction);
+            return fallback != null && fallback.contains(localX, localY);
+        }
+        int[] pixel = localToSkinPixel(role, radius, faction, skin, localX, localY);
+        if (pixel == null) return false;
+        int alpha = (skin.getRGB(pixel[0], pixel[1]) >>> 24) & 0xFF;
+        return alpha >= ALPHA_THRESHOLD;
+    }
+
+    public static VisualColumn visualHullColumn(ShipRole role, double radius, Faction faction,
+                                                double alongFrac) {
+        VisualBounds bounds = visualBounds(role, radius, faction);
+        if (bounds == null) return null;
+        double x = bounds.minX + MathUtil.clamp(alongFrac, 0.0, 1.0) * Math.max(1.0, bounds.maxX - bounds.minX);
+        VisualColumn column = visualHullColumnAtX(role, radius, faction, x);
+        if (column != null) return column;
+
+        double span = Math.max(8.0, bounds.maxX - bounds.minX);
+        double[] offsets = {2.0, -2.0, 4.0, -4.0, 7.0, -7.0, 11.0, -11.0, span * 0.08, -span * 0.08};
+        for (double offset : offsets) {
+            column = visualHullColumnAtX(role, radius, faction, x + offset);
+            if (column != null) return column;
+        }
+        return null;
+    }
+
+    public static VisualColumn visualHullColumnAtX(ShipRole role, double radius, Faction faction,
+                                                   double localX) {
+        BufferedImage skin = loadSkin(role, faction);
+        if (skin == null) return null;
+        VisualBounds bounds = visualBounds(role, radius, faction);
+        if (bounds == null || localX < bounds.minX || localX > bounds.maxX) return null;
+
+        double span = skinLocalSpan(radius);
+        double nx = (localX + span * 0.5) / span;
+        int px = MathUtil.clamp((int) Math.round(nx * (skin.getWidth() - 1)), 0, skin.getWidth() - 1);
+        int top = -1;
+        int bottom = -1;
+        int count = 0;
+        for (int y = 0; y < skin.getHeight(); y++) {
+            int alpha = (skin.getRGB(px, y) >>> 24) & 0xFF;
+            if (alpha < ALPHA_THRESHOLD) continue;
+            if (top < 0) top = y;
+            bottom = y;
+            count++;
+        }
+        if (top < 0 || bottom <= top || count < MIN_OPAQUE_PER_COLUMN) return null;
+
+        double resolvedX = skinPixelToLocalX(radius, skin, px);
+        double topY = skinPixelToLocalY(radius, skin, top);
+        double bottomY = skinPixelToLocalY(radius, skin, bottom);
+        return new VisualColumn(resolvedX, topY, bottomY);
+    }
+
+    public static VisualBounds visualBounds(ShipRole role, double radius, Faction faction) {
+        BufferedImage skin = loadSkin(role, faction);
+        if (skin == null) return null;
+        ShipRole resolved = (role == null) ? ShipRole.FRIGATE : role;
+        int r = (int) Math.round(Math.max(8.0, radius));
+        String key = resolved.name() + ":" + keyForFaction(faction) + ":" + r;
+        VisualBounds cached = VISUAL_BOUNDS_CACHE.get(key);
+        if (cached != null) return cached;
+
+        int minX = skin.getWidth();
+        int minY = skin.getHeight();
+        int maxX = -1;
+        int maxY = -1;
+        for (int y = 0; y < skin.getHeight(); y++) {
+            for (int x = 0; x < skin.getWidth(); x++) {
+                int alpha = (skin.getRGB(x, y) >>> 24) & 0xFF;
+                if (alpha < ALPHA_THRESHOLD) continue;
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (x > maxX) maxX = x;
+                if (y > maxY) maxY = y;
+            }
+        }
+        if (maxX < minX || maxY < minY) return null;
+
+        VisualBounds bounds = new VisualBounds(
+                skinPixelToLocalX(radius, skin, minX),
+                skinPixelToLocalY(radius, skin, minY),
+                skinPixelToLocalX(radius, skin, maxX),
+                skinPixelToLocalY(radius, skin, maxY));
+        VISUAL_BOUNDS_CACHE.put(key, bounds);
+        return bounds;
+    }
+
+    private static int[] localToSkinPixel(ShipRole role, double radius, Faction faction, BufferedImage skin,
+                                          double localX, double localY) {
+        if (skin == null || skin.getWidth() <= 1 || skin.getHeight() <= 1) return null;
+        double span = skinLocalSpan(radius);
+        double nx = (localX + span * 0.5) / span;
+        double ny = (localY + span * 0.5) / span;
+        if (nx < 0.0 || nx > 1.0 || ny < 0.0 || ny > 1.0) return null;
+        int x = MathUtil.clamp((int) Math.round(nx * (skin.getWidth() - 1)), 0, skin.getWidth() - 1);
+        int y = MathUtil.clamp((int) Math.round(ny * (skin.getHeight() - 1)), 0, skin.getHeight() - 1);
+        return new int[]{x, y};
+    }
+
+    private static double skinPixelToLocalX(double radius, BufferedImage skin, int x) {
+        double span = skinLocalSpan(radius);
+        return -span * 0.5 + (x / (double) Math.max(1, skin.getWidth() - 1)) * span;
+    }
+
+    private static double skinPixelToLocalY(double radius, BufferedImage skin, int y) {
+        double span = skinLocalSpan(radius);
+        return -span * 0.5 + (y / (double) Math.max(1, skin.getHeight() - 1)) * span;
+    }
+
+    private static double skinLocalSpan(double radius) {
+        return Math.max(4.0, Math.max(8.0, radius) * 2.0 * SKIN_SCALE);
     }
 
     private static Polygon buildFromSkin(ShipRole role, int r, Faction faction) {
@@ -297,6 +426,36 @@ public final class ShipHullSilhouette {
         if (seen.contains(key)) return;
         seen.add(key);
         roots.add(dir);
+    }
+
+    public static final class VisualBounds {
+        public final double minX;
+        public final double minY;
+        public final double maxX;
+        public final double maxY;
+
+        private VisualBounds(double minX, double minY, double maxX, double maxY) {
+            this.minX = Math.min(minX, maxX);
+            this.minY = Math.min(minY, maxY);
+            this.maxX = Math.max(minX, maxX);
+            this.maxY = Math.max(minY, maxY);
+        }
+    }
+
+    public static final class VisualColumn {
+        public final double localX;
+        public final double topY;
+        public final double bottomY;
+        public final double thickness;
+        public final double balancedHalfSpan;
+
+        private VisualColumn(double localX, double topY, double bottomY) {
+            this.localX = localX;
+            this.topY = Math.min(topY, bottomY);
+            this.bottomY = Math.max(topY, bottomY);
+            this.thickness = Math.max(0.0, this.bottomY - this.topY);
+            this.balancedHalfSpan = Math.min(Math.abs(this.topY), Math.abs(this.bottomY));
+        }
     }
 
     private static Polygon fallbackPolygon(ShipRole role, int r) {

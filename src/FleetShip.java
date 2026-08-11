@@ -371,7 +371,7 @@ public class FleetShip extends Ship {
                 cloakMinEnergyToEngage = 0.8;
                 cloakSignature = 0.07;
 
-                Turret burstGun = new Turret(Turret.Kind.GUN, 11, 0);
+                Turret burstGun = new Turret(Turret.Kind.GUN, 11, -3);
                 // Battleship-class main battery punch on stealth hull.
                 burstGun.cooldown = 0.34;
                 burstGun.damage = 4;
@@ -383,7 +383,7 @@ public class FleetShip extends Ship {
                 addTurret(burstGun);
 
                 // small missile rack for surprise strikes
-                Turret rack = new Turret(Turret.Kind.MISSILE, 5, 0);
+                Turret rack = new Turret(Turret.Kind.MISSILE, 5, 3);
                 rack.cooldown = 0.95;
                 rack.damage = 5;
                 rack.missileSpeed = 295;
@@ -444,7 +444,7 @@ public class FleetShip extends Ship {
                 desiredSpeed = 215;
                 bountyValue = 55;
 
-                Turret gun = new Turret(Turret.Kind.GUN, 10, 0);
+                Turret gun = new Turret(Turret.Kind.GUN, 10, -2);
                 gun.cooldown = 0.20;
                 gun.damage = 1;
                 gun.bulletSpeed = 820;
@@ -452,7 +452,7 @@ public class FleetShip extends Ship {
                 gun.primary = true;
                 addTurret(gun);
 
-                Turret rack = new Turret(Turret.Kind.MISSILE, 4, 0);
+                Turret rack = new Turret(Turret.Kind.MISSILE, 4, 2);
                 rack.cooldown = 0.90;
                 rack.damage = 1;
                 rack.missileSpeed = 280;
@@ -486,7 +486,7 @@ public class FleetShip extends Ship {
                 desiredSpeed = 170;
                 bountyValue = 105;
 
-                Turret fore = new Turret(Turret.Kind.GUN, 13, 0);
+                Turret fore = new Turret(Turret.Kind.GUN, 13, -3);
                 fore.cooldown = 0.14;
                 fore.damage = 1;
                 fore.bulletSpeed = 820;
@@ -494,7 +494,7 @@ public class FleetShip extends Ship {
                 fore.primary = true;
                 addTurret(fore);
 
-                Turret aft = new Turret(Turret.Kind.GUN, -10, 0);
+                Turret aft = new Turret(Turret.Kind.GUN, -10, 3);
                 aft.cooldown = 0.20;
                 aft.damage = 1;
                 aft.bulletSpeed = 760;
@@ -583,7 +583,7 @@ public class FleetShip extends Ship {
                 desiredSpeed = 150;
                 bountyValue = 90;
 
-                Turret foreGun = new Turret(Turret.Kind.GUN, 14, 0);
+                Turret foreGun = new Turret(Turret.Kind.GUN, 14, -4);
                 foreGun.cooldown = 0.13;
                 foreGun.damage = 1;
                 foreGun.bulletSpeed = 780;
@@ -591,7 +591,7 @@ public class FleetShip extends Ship {
                 foreGun.primary = true;
                 addTurret(foreGun);
 
-                Turret aftGun = new Turret(Turret.Kind.GUN, -10, 0);
+                Turret aftGun = new Turret(Turret.Kind.GUN, -10, 4);
                 aftGun.cooldown = 0.20;
                 aftGun.damage = 1;
                 aftGun.bulletSpeed = 720;
@@ -600,7 +600,7 @@ public class FleetShip extends Ship {
                 aftGun.barrelLen = 12;
                 addTurret(aftGun);
 
-                Turret rack = new Turret(Turret.Kind.MISSILE, 6, 8);
+                Turret rack = new Turret(Turret.Kind.MISSILE, 6, 0);
                 rack.cooldown = 0.98;
                 rack.damage = 3;
                 rack.missileSpeed = 255;
@@ -1270,10 +1270,8 @@ public class FleetShip extends Ship {
                 desiredSpeed = 52;
                 bountyValue = 1600;
 
-                addHullCenterGunTurret(0.72, 0.36, 6, 1080, 320, true, 12, 30);
-                addHullCenterGunTurret(0.56, 0.34, 6, 1060, 312, true, 12, 28);
-                addHullCenterGunTurret(0.42, 0.30, 4, 980, 280, true, 10, 24);
-                addHullCenterGunTurret(0.28, 0.32, 4, 960, 265, true, 9, 22);
+                addHullGunPairDirect(0.72, 0.52, 0.36, 6, 1080, 320, true, 12, 30);
+                addHullGunPairDirect(0.34, 0.44, 0.30, 4, 980, 280, true, 10, 24);
 
                 Turret mb = new Turret(Turret.Kind.MISSILE, 2, 0);
                 mb.cooldown = 1.65;
@@ -1340,9 +1338,9 @@ public class FleetShip extends Ship {
             case TRANSPORT_TITAN -> {
                 name = factionCapitalName("Transport Titan");
 
-                addHullGunPair(0.57, 0.47, 0.28, 3, 900, 230, true, 10, 22);
-                addHullGunPair(0.39, 0.62, 0.36, 2, 820, 195, true, 8.5, 18);
-                addHullMissilePair(0.50, 0.28, 1.55, 7, 300, 185, 360, 11, 18);
+                addHullGunPairDirect(0.66, 0.44, 0.28, 3, 900, 230, true, 10, 22);
+                addHullGunPairDirect(0.34, 0.52, 0.36, 2, 820, 195, true, 8.5, 18);
+                addHullMissilePairDirect(0.50, 0.28, 1.55, 7, 300, 185, 360, 11, 18);
 
                 hasCIWS = true;
                 ciwsQuality = 0.64;
@@ -1355,9 +1353,9 @@ public class FleetShip extends Ship {
             case BULWARK_TITAN -> {
                 name = factionCapitalName("Bulwark Titan");
 
-                addHullGunPair(0.60, 0.56, 0.34, 7, 1080, 335, true, 13, 32);
-                addHullGunPair(0.44, 0.68, 0.30, 5, 980, 290, true, 11, 25);
-                addHullGunPair(0.27, 0.57, 0.36, 4, 920, 250, true, 9.5, 21);
+                addHullGunPairDirect(0.72, 0.46, 0.34, 7, 1080, 335, true, 13, 32);
+                addHullGunPairDirect(0.50, 0.58, 0.30, 5, 980, 290, true, 11, 25);
+                addHullGunPairDirect(0.28, 0.48, 0.36, 4, 920, 250, true, 9.5, 21);
                 addHullCenterMissileTurret(0.46, 1.70, 10, 315, 180, 430, 12, 20);
 
                 hasCIWS = true;
@@ -1371,10 +1369,10 @@ public class FleetShip extends Ship {
             case CARRIER_SUPPORT_TITAN -> {
                 name = factionCapitalName("Carrier Support Titan");
 
-                addHullGunPair(0.54, 0.60, 0.24, 3, 900, 215, true, 9.5, 20);
-                addHullGunPair(0.36, 0.48, 0.28, 2, 860, 195, true, 8.0, 18);
-                addHullMissilePair(0.53, 0.24, 1.35, 6, 300, 195, 320, 10.5, 17);
-                addHullMissilePair(0.34, 0.44, 1.60, 7, 295, 185, 335, 10.5, 17);
+                addHullGunPairDirect(0.66, 0.48, 0.24, 3, 900, 215, true, 9.5, 20);
+                addHullGunPairDirect(0.38, 0.40, 0.28, 2, 860, 195, true, 8.0, 18);
+                addHullMissilePairDirect(0.56, 0.24, 1.35, 6, 300, 195, 320, 10.5, 17);
+                addHullMissilePairDirect(0.28, 0.36, 1.60, 7, 295, 185, 335, 10.5, 17);
 
                 hasCIWS = true;
                 ciwsQuality = 0.70;
@@ -1393,9 +1391,9 @@ public class FleetShip extends Ship {
             case VANGUARD_TITAN -> {
                 name = factionCapitalName("Vanguard Titan");
 
-                addHullGunPair(0.44, 0.72, 0.27, 7, 1120, 340, true, 12, 30);
-                addHullGunPair(0.28, 0.86, 0.24, 5, 1020, 290, true, 10, 24);
-                addHullMissilePair(0.54, 0.58, 1.10, 9, 350, 245, 360, 11, 18);
+                addHullGunPairDirect(0.68, 0.52, 0.27, 7, 1120, 340, true, 12, 30);
+                addHullGunPairDirect(0.36, 0.64, 0.24, 5, 1020, 290, true, 10, 24);
+                addHullMissilePairDirect(0.52, 0.42, 1.10, 9, 350, 245, 360, 11, 18);
                 addHullCenterMissileTurret(0.20, 1.55, 7, 320, 205, 320, 10.0, 17);
 
                 hasCIWS = true;
@@ -1407,9 +1405,9 @@ public class FleetShip extends Ship {
             case INTERDICTION_TITAN -> {
                 name = factionCapitalName("Interdiction Titan");
 
-                addHullGunPair(0.56, 0.46, 0.29, 5, 1000, 295, true, 11, 27);
-                addHullGunPair(0.38, 0.60, 0.32, 4, 940, 250, true, 9.5, 22);
-                addHullMissilePair(0.54, 0.24, 1.15, 7, 320, 255, 360, 10.5, 18);
+                addHullGunPairDirect(0.66, 0.42, 0.29, 5, 1000, 295, true, 11, 27);
+                addHullGunPairDirect(0.38, 0.50, 0.32, 4, 940, 250, true, 9.5, 22);
+                addHullMissilePairDirect(0.56, 0.24, 1.15, 7, 320, 255, 360, 10.5, 18);
                 addHullCenterMissileTurret(0.33, 1.55, 8, 300, 220, 390, 11.5, 18);
 
                 hasCIWS = true;
@@ -1421,9 +1419,9 @@ public class FleetShip extends Ship {
             case COMMAND_INTEL_TITAN -> {
                 name = factionCapitalName("Command / Intel Titan");
 
-                addHullGunPair(0.62, 0.38, 0.27, 4, 980, 280, true, 10.5, 24);
-                addHullGunPair(0.42, 0.42, 0.25, 3, 920, 225, true, 9, 20);
-                addHullMissilePair(0.40, 0.20, 1.45, 7, 305, 205, 355, 10.5, 17);
+                addHullGunPairDirect(0.70, 0.34, 0.27, 4, 980, 280, true, 10.5, 24);
+                addHullGunPairDirect(0.44, 0.36, 0.25, 3, 920, 225, true, 9, 20);
+                addHullMissilePairDirect(0.24, 0.28, 1.45, 7, 305, 205, 355, 10.5, 17);
 
                 hasCIWS = true;
                 ciwsQuality = 0.74;
@@ -1436,9 +1434,9 @@ public class FleetShip extends Ship {
             case BOARDING_RECOVERY_TITAN -> {
                 name = factionCapitalName("Boarding / Recovery Titan");
 
-                addHullGunPair(0.58, 0.44, 0.30, 6, 1020, 300, true, 11.5, 28);
-                addHullGunPair(0.40, 0.58, 0.29, 4, 950, 255, true, 9.5, 22);
-                addHullMissilePair(0.52, 0.22, 1.20, 7, 315, 245, 350, 10.5, 18);
+                addHullGunPairDirect(0.66, 0.40, 0.30, 6, 1020, 300, true, 11.5, 28);
+                addHullGunPairDirect(0.40, 0.50, 0.29, 4, 950, 255, true, 9.5, 22);
+                addHullMissilePairDirect(0.24, 0.30, 1.20, 7, 315, 245, 350, 10.5, 18);
 
                 hasCIWS = true;
                 ciwsQuality = 0.72;
@@ -1457,10 +1455,10 @@ public class FleetShip extends Ship {
             case ARTILLERY_TITAN -> {
                 name = factionCapitalName("Artillery Titan");
 
-                addHullGunPair(0.70, 0.34, 0.38, 8, 1220, 390, true, 13.5, 34);
-                addHullGunPair(0.49, 0.50, 0.34, 5, 1040, 320, true, 10.5, 26);
-                addHullGunPair(0.31, 0.66, 0.42, 5, 980, 340, true, 10.0, 24);
-                addHullMissilePair(0.46, 0.20, 1.65, 8, 310, 190, 400, 11.0, 19);
+                addHullGunPairDirect(0.76, 0.30, 0.38, 8, 1220, 390, true, 13.5, 34);
+                addHullGunPairDirect(0.52, 0.42, 0.34, 5, 1040, 320, true, 10.5, 26);
+                addHullGunPairDirect(0.30, 0.52, 0.42, 5, 980, 340, true, 10.0, 24);
+                addHullMissilePairDirect(0.42, 0.20, 1.65, 8, 310, 190, 400, 11.0, 19);
                 addHullCenterMissileTurret(0.24, 2.00, 10, 295, 165, 430, 11.5, 20);
 
                 hasCIWS = true;
@@ -1479,9 +1477,9 @@ public class FleetShip extends Ship {
             case SHIELD_BASTION_TITAN -> {
                 name = factionCapitalName("Shield Bastion Titan");
 
-                addHullGunPair(0.24, 0.88, 0.31, 5, 1020, 305, true, 11.5, 28);
-                addHullGunPair(0.40, 0.76, 0.34, 4, 940, 260, true, 9.5, 22);
-                addHullMissilePair(0.58, 0.62, 1.50, 7, 300, 205, 360, 10.5, 18);
+                addHullGunPairDirect(0.68, 0.54, 0.31, 5, 1020, 305, true, 11.5, 28);
+                addHullGunPairDirect(0.42, 0.58, 0.34, 4, 940, 260, true, 9.5, 22);
+                addHullMissilePairDirect(0.24, 0.44, 1.50, 7, 300, 205, 360, 10.5, 18);
 
                 hasCIWS = true;
                 ciwsQuality = 0.86;
@@ -1494,9 +1492,9 @@ public class FleetShip extends Ship {
             case FLEET_TELEPORTER_TITAN -> {
                 name = factionCapitalName("Fleet Teleporter Titan");
 
-                addHullGunPair(0.24, 0.84, 0.28, 5, 1010, 300, true, 11, 26);
-                addHullGunPair(0.42, 0.72, 0.30, 4, 940, 250, true, 9.5, 22);
-                addHullMissilePairDirect(0.68, 0.56, 1.20, 8, 335, 260, 355, 11.0, 18);
+                addHullGunPairDirect(0.72, 0.46, 0.28, 5, 1010, 300, true, 11, 26);
+                addHullGunPairDirect(0.48, 0.42, 0.30, 4, 940, 250, true, 9.5, 22);
+                addHullMissilePairDirect(0.25, 0.36, 1.20, 8, 335, 260, 355, 11.0, 18);
 
                 hasCIWS = true;
                 ciwsQuality = 0.70;
@@ -1507,8 +1505,8 @@ public class FleetShip extends Ship {
             case ELITE_SUPERSHIP_COMMAND_TITAN -> {
                 name = factionCapitalName("Elite Supership Command Titan");
 
-                addHullGunPair(0.24, 0.88, 0.33, 7, 1100, 340, true, 12.5, 32);
-                addHullGunPair(0.42, 0.76, 0.31, 5, 990, 285, true, 10.5, 25);
+                addHullGunPairDirect(0.68, 0.54, 0.33, 7, 1100, 340, true, 12.5, 32);
+                addHullGunPairDirect(0.42, 0.56, 0.31, 5, 990, 285, true, 10.5, 25);
                 addHullCenterMissileTurret(0.58, 1.55, 10, 320, 205, 420, 12.0, 20);
 
                 hasCIWS = true;
@@ -1520,8 +1518,8 @@ public class FleetShip extends Ship {
             case ELITE_REINFORCEMENTS_TITAN -> {
                 name = factionCapitalName("Elite Reinforcements Titan");
 
-                addHullGunPair(0.24, 0.88, 0.33, 7, 1100, 340, true, 12.5, 32);
-                addHullGunPair(0.42, 0.76, 0.31, 5, 990, 285, true, 10.5, 25);
+                addHullGunPairDirect(0.68, 0.54, 0.33, 7, 1100, 340, true, 12.5, 32);
+                addHullGunPairDirect(0.42, 0.56, 0.31, 5, 990, 285, true, 10.5, 25);
                 addHullCenterMissileTurret(0.58, 1.55, 10, 320, 205, 420, 12.0, 20);
 
                 hasCIWS = true;
@@ -1533,9 +1531,9 @@ public class FleetShip extends Ship {
             case MOBILE_STATION_TITAN -> {
                 name = factionCapitalName("Mobile Station Titan");
 
-                addHullGunPair(0.24, 0.84, 0.27, 4, 930, 245, true, 10.0, 22);
-                addHullGunPair(0.40, 0.72, 0.34, 3, 860, 220, true, 9.0, 19);
-                addHullMissilePairDirect(0.58, 0.56, 1.50, 7, 295, 195, 350, 10.5, 17);
+                addHullGunPairDirect(0.24, 0.54, 0.27, 4, 930, 245, true, 10.0, 22);
+                addHullGunPairDirect(0.55, 0.54, 0.34, 3, 860, 220, true, 9.0, 19);
+                addHullMissilePairDirect(0.78, 0.30, 1.50, 7, 295, 195, 350, 10.5, 17);
 
                 hasCIWS = true;
                 ciwsQuality = 0.80;
@@ -1549,8 +1547,8 @@ public class FleetShip extends Ship {
             case HYPERWEAPON_TITAN -> {
                 name = factionCapitalName("Hyperweapon Titan");
 
-                addHullGunPairDirect(0.22, 0.88, 0.44, 4, 980, 255, true, 10.5, 24);
-                addHullGunPairDirect(0.50, 0.72, 0.62, 2, 900, 215, true, 8.0, 18);
+                addHullGunPairDirect(0.72, 0.44, 0.44, 4, 980, 255, true, 10.5, 24);
+                addHullGunPairDirect(0.36, 0.36, 0.62, 2, 900, 215, true, 8.0, 18);
                 if (faction == Faction.ENEMY) {
                     applyRedHyperweaponKineticBatteryProfile();
                 }
@@ -1582,10 +1580,10 @@ public class FleetShip extends Ship {
             case MOTHERSHIP -> {
                 name = factionCapitalName("Mothership");
 
-                addHullGunPair(0.24, 0.90, 0.34, 8, 1120, 360, true, 13.0, 34);
-                addHullGunPair(0.42, 0.80, 0.30, 6, 1020, 320, true, 11.5, 28);
-                addHullGunPairDirect(0.60, 0.62, 0.34, 5, 960, 275, true, 10.5, 24);
-                addHullMissilePairDirect(0.72, 0.48, 1.45, 9, 320, 210, 420, 12.0, 20);
+                addHullGunPairDirect(0.74, 0.52, 0.34, 8, 1120, 360, true, 13.0, 34);
+                addHullGunPairDirect(0.54, 0.58, 0.30, 6, 1020, 320, true, 11.5, 28);
+                addHullGunPairDirect(0.32, 0.50, 0.34, 5, 960, 275, true, 10.5, 24);
+                addHullMissilePairDirect(0.20, 0.42, 1.45, 9, 320, 210, 420, 12.0, 20);
 
                 hasCIWS = true;
                 ciwsQuality = 0.92;
@@ -2048,8 +2046,10 @@ public class FleetShip extends Ship {
 
     private Turret conformTurretToHull(Turret turret) {
         if (turret == null) return null;
-        double footprint = Math.max(2.0, turret.radius * 0.55);
-        if (isTurretMountOnHull(turret.localX, turret.localY, footprint)) return turret;
+        if (isTurretMountOnHull(turret.localX, turret.localY)) return turret;
+
+        double[] nearest = nearestVisibleHullMount(turret.localX, turret.localY);
+        if (nearest != null) return copyTurret(turret, nearest[0], nearest[1]);
 
         double lo = 0.0;
         double hi = 1.0;
@@ -2057,7 +2057,7 @@ public class FleetShip extends Ship {
             double t = 0.5 * (lo + hi);
             double tx = turret.localX * t;
             double ty = turret.localY * t;
-            if (isTurretMountOnHull(tx, ty, footprint)) lo = t;
+            if (isTurretMountOnHull(tx, ty)) lo = t;
             else hi = t;
         }
 
@@ -2066,19 +2066,8 @@ public class FleetShip extends Ship {
         return copyTurret(turret, turret.localX * scale, turret.localY * scale);
     }
 
-    private boolean isTurretMountOnHull(double localX, double localY, double footprint) {
-        HullGeometry.ImpactSample center = HullGeometry.sampleImpact(this, x + localX, y + localY);
-        if (center != null && center.onHull) return true;
-
-        double probe = Math.max(1.5, footprint);
-        HullGeometry.ImpactSample left = HullGeometry.sampleImpact(this, x + localX, y + localY - probe);
-        HullGeometry.ImpactSample right = HullGeometry.sampleImpact(this, x + localX, y + localY + probe);
-        HullGeometry.ImpactSample fore = HullGeometry.sampleImpact(this, x + localX + probe, y + localY);
-        HullGeometry.ImpactSample aft = HullGeometry.sampleImpact(this, x + localX - probe, y + localY);
-        return (left != null && left.onHull)
-                || (right != null && right.onHull)
-                || (fore != null && fore.onHull)
-                || (aft != null && aft.onHull);
+    private boolean isTurretMountOnHull(double localX, double localY) {
+        return ShipHullSilhouette.visualHullContains(role, radius, faction, localX, localY);
     }
 
     private Turret copyTurret(Turret src, double localX, double localY) {
@@ -2200,18 +2189,124 @@ public class FleetShip extends Ship {
     }
 
     private double[] hullCenterMount(double alongFrac) {
+        double[] visual = visualCenterMount(alongFrac);
+        if (visual != null) return visual;
         HullMountColumn column = hullMountColumn(alongFrac);
         return new double[]{column.localX, 0.0};
     }
 
     private double[] hullMount(double alongFrac, double lateralFrac, boolean upper) {
+        double[] visual = visualPairedHullMount(alongFrac, lateralFrac, upper);
+        if (visual != null) return visual;
         HullMountColumn column = hullMountColumn(alongFrac, lateralFrac);
         return hullMountFromColumn(column, lateralFrac, upper);
     }
 
     private double[] hullMountExact(double alongFrac, double lateralFrac, boolean upper) {
+        double[] visual = visualPairedHullMount(alongFrac, lateralFrac, upper);
+        if (visual != null) return visual;
         HullMountColumn column = hullMountColumn(alongFrac);
         return hullMountFromColumn(column, lateralFrac, upper);
+    }
+
+    private double[] visualCenterMount(double alongFrac) {
+        ShipHullSilhouette.VisualBounds bounds = ShipHullSilhouette.visualBounds(role, radius, faction);
+        if (bounds == null) return null;
+        double targetX = bounds.minX
+                + MathUtil.clamp(alongFrac, 0.0, 1.0) * Math.max(1.0, bounds.maxX - bounds.minX);
+        double[] nearest = nearestVisibleHullMount(targetX, visualCenterY(bounds), Math.max(10.0, radius * 0.38));
+        if (nearest == null) return null;
+        return nearest;
+    }
+
+    private double[] visualPairedHullMount(double alongFrac, double lateralFrac, boolean upper) {
+        ShipHullSilhouette.VisualBounds bounds = ShipHullSilhouette.visualBounds(role, radius, faction);
+        if (bounds == null) return null;
+        double targetX = bounds.minX
+                + MathUtil.clamp(alongFrac, 0.0, 1.0) * Math.max(1.0, bounds.maxX - bounds.minX);
+        double frac = MathUtil.clamp(lateralFrac, 0.0, 0.92);
+        double preferredMagnitude = Math.max(2.0, radius * (0.12 + frac * 0.30));
+        double bestX = Double.NaN;
+        double bestMagnitude = Double.NaN;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        double searchRange = Math.max(12.0, radius * 0.78);
+        double xStep = radius <= 24.0 ? 1.0 : 2.0;
+        double yStep = radius <= 24.0 ? 1.0 : 1.5;
+
+        for (double xOffset = -searchRange; xOffset <= searchRange; xOffset += xStep) {
+            double localX = targetX + xOffset;
+            if (localX < bounds.minX || localX > bounds.maxX) continue;
+            ShipHullSilhouette.VisualColumn column =
+                    ShipHullSilhouette.visualHullColumnAtX(role, radius, faction, localX);
+            if (column == null || column.thickness <= 2.0) continue;
+            double centerY = visualCenterY(column);
+            double safeMax = Math.max(1.0,
+                    Math.min(centerY - column.topY, column.bottomY - centerY) - Math.max(1.0, radius * 0.018));
+            double start = Math.min(safeMax, preferredMagnitude);
+            for (double magnitude = start; magnitude >= 0.0; magnitude -= yStep) {
+                double portY = centerY - magnitude;
+                double starboardY = centerY + magnitude;
+                if (!isTurretMountOnHull(localX, portY) || !isTurretMountOnHull(localX, starboardY)) continue;
+                double score = magnitude * 3.0
+                        - Math.abs(magnitude - preferredMagnitude) * 0.70
+                        - Math.abs(xOffset) * 0.32;
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestX = localX;
+                    bestMagnitude = magnitude;
+                }
+                break;
+            }
+        }
+
+        if (Double.isNaN(bestX) || Double.isNaN(bestMagnitude)) return null;
+        ShipHullSilhouette.VisualColumn bestColumn =
+                ShipHullSilhouette.visualHullColumnAtX(role, radius, faction, bestX);
+        double centerY = (bestColumn == null) ? visualCenterY(bounds) : visualCenterY(bestColumn);
+        return new double[]{bestX, upper ? centerY - bestMagnitude : centerY + bestMagnitude};
+    }
+
+    private static double visualCenterY(ShipHullSilhouette.VisualBounds bounds) {
+        return 0.5 * (bounds.minY + bounds.maxY);
+    }
+
+    private static double visualCenterY(ShipHullSilhouette.VisualColumn column) {
+        return 0.5 * (column.topY + column.bottomY);
+    }
+
+    private double[] nearestVisibleHullMount(double targetX, double targetY) {
+        return nearestVisibleHullMount(targetX, targetY, Math.max(12.0, radius * 0.55));
+    }
+
+    private double[] nearestVisibleHullMount(double targetX, double targetY, double maxDistance) {
+        ShipHullSilhouette.VisualBounds bounds = ShipHullSilhouette.visualBounds(role, radius, faction);
+        if (bounds == null) return null;
+        double bestX = Double.NaN;
+        double bestY = Double.NaN;
+        double bestScore = Double.POSITIVE_INFINITY;
+        double step = radius <= 24.0 ? 1.0 : 2.0;
+        for (double dx = -maxDistance; dx <= maxDistance; dx += step) {
+            double localX = targetX + dx;
+            if (localX < bounds.minX || localX > bounds.maxX) continue;
+            for (double dy = -maxDistance; dy <= maxDistance; dy += step) {
+                double localY = targetY + dy;
+                if (localY < bounds.minY || localY > bounds.maxY) continue;
+                if (!isTurretMountOnHull(localX, localY)) continue;
+                double dist2 = dx * dx + dy * dy;
+                double sidePenalty = Math.signum(targetY) != 0.0
+                        && Math.signum(targetY) != Math.signum(localY)
+                        ? radius * radius * 0.16
+                        : 0.0;
+                double score = dist2 + sidePenalty;
+                if (score < bestScore) {
+                    bestScore = score;
+                    bestX = localX;
+                    bestY = localY;
+                }
+            }
+        }
+        if (Double.isNaN(bestX) || Double.isNaN(bestY)) return null;
+        return new double[]{bestX, bestY};
     }
 
     private double[] hullMountFromColumn(HullMountColumn column, double lateralFrac, boolean upper) {
@@ -2226,6 +2321,12 @@ public class FleetShip extends Ship {
     }
 
     private HullMountColumn hullMountColumn(double alongFrac) {
+        ShipHullSilhouette.VisualColumn visualColumn =
+                ShipHullSilhouette.visualHullColumn(role, radius, faction, alongFrac);
+        if (visualColumn != null) {
+            return new HullMountColumn(visualColumn.localX, visualColumn.topY, visualColumn.bottomY);
+        }
+
         java.awt.Polygon hull = ShipHullSilhouette.hullPolygon(role, radius, faction);
         if (hull == null || hull.npoints < 3) {
             double fallbackX = MathUtil.clamp(alongFrac, 0.0, 1.0) * radius * 1.8 - radius * 0.9;
@@ -2252,6 +2353,35 @@ public class FleetShip extends Ship {
     }
 
     private HullMountColumn hullMountColumn(double alongFrac, double lateralFrac) {
+        ShipHullSilhouette.VisualBounds visualBounds = ShipHullSilhouette.visualBounds(role, radius, faction);
+        if (visualBounds != null) {
+            double targetX = visualBounds.minX
+                    + MathUtil.clamp(alongFrac, 0.0, 1.0) * Math.max(1.0, visualBounds.maxX - visualBounds.minX);
+
+            HullMountColumn primary = hullMountColumn(alongFrac);
+            double frac = MathUtil.clamp(lateralFrac, 0.0, 0.92);
+            double desiredBalancedHalfSpan = Math.max(6.0, radius * (0.20 + frac * 0.14));
+            if (primary.balancedHalfSpan >= desiredBalancedHalfSpan) return primary;
+
+            HullMountColumn best = primary;
+            double bestScore = mountColumnScore(primary, 0.0, desiredBalancedHalfSpan);
+            double searchRange = Math.max(14.0, radius * 0.74);
+            for (double offset = -searchRange; offset <= searchRange; offset += 2.0) {
+                if (Math.abs(offset) < 1.0) continue;
+                ShipHullSilhouette.VisualColumn candidateVisual =
+                        ShipHullSilhouette.visualHullColumnAtX(role, radius, faction, targetX + offset);
+                if (candidateVisual == null) continue;
+                HullMountColumn candidate = new HullMountColumn(
+                        candidateVisual.localX, candidateVisual.topY, candidateVisual.bottomY);
+                double score = mountColumnScore(candidate, Math.abs(offset), desiredBalancedHalfSpan);
+                if (score > bestScore) {
+                    best = candidate;
+                    bestScore = score;
+                }
+            }
+            return best;
+        }
+
         java.awt.Polygon hull = ShipHullSilhouette.hullPolygon(role, radius, faction);
         if (hull == null || hull.npoints < 3) {
             return hullMountColumn(alongFrac);

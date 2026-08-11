@@ -8754,7 +8754,7 @@ public class Renderer {
     }
 
     static boolean usesAuthoredTurretSkinsForGameplay() {
-        return false;
+        return true;
     }
 
     private static void drawShopHullCard(Graphics2D g2, Rectangle card, ShopHullOffer offer,
@@ -16263,11 +16263,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 if (hullArea != null) {
                     cg.setClip(hullArea);
                 }
-                drawSkinLayer(cg, skinSet.panel, -span / 2, -span / 2, span, span, 0.46f);
-                drawSkinLayer(cg, skinSet.ao, -span / 2, -span / 2, span, span, 0.50f);
+                drawSkinLayerAtop(cg, skinSet.panel, -span / 2, -span / 2, span, span, 0.46f);
+                drawSkinLayerAtop(cg, skinSet.ao, -span / 2, -span / 2, span, span, 0.50f);
                 if (skinSet.emissive != null) {
-                    drawSkinLayer(cg, skinSet.emissive, -span / 2, -span / 2, span, span, 0.50f);
-                    drawSkinLayer(cg, skinSet.emissive, -span / 2, -span / 2, span, span, 0.17f);
+                    drawSkinLayerAtop(cg, skinSet.emissive, -span / 2, -span / 2, span, span, 0.50f);
+                    drawSkinLayerAtop(cg, skinSet.emissive, -span / 2, -span / 2, span, span, 0.17f);
                 }
                 applyFactionSkinLighting(cg, bounds, resolvedFaction, hull, trim);
                 cg.setClip(oldClip);
@@ -16569,21 +16569,21 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             }
 
             if (hasAuxLayers) {
-                drawSkinLayer(g, skinSet.panel, sx, sy, sw, sh, 0.46f);
-                drawSkinLayer(g, skinSet.ao, sx, sy, sw, sh, 0.50f);
+                drawSkinLayerAtop(g, skinSet.panel, sx, sy, sw, sh, 0.46f);
+                drawSkinLayerAtop(g, skinSet.ao, sx, sy, sw, sh, 0.50f);
 
                 if (skinSet.damage != null && ship.hpMax > 0) {
                     double damageFrac = Math.max(0.0, Math.min(1.0, 1.0 - ship.hp / (double) ship.hpMax));
                     float damageAlpha = (float) Math.min(0.88, 0.18 + damageFrac * 0.72);
                     if (damageAlpha > 0.16f) {
-                        drawSkinLayer(g, skinSet.damage, sx, sy, sw, sh, damageAlpha);
-                        if (damageFrac > 0.50) drawSkinLayer(g, skinSet.damage, sx, sy, sw, sh, damageAlpha * 0.36f);
+                        drawSkinLayerAtop(g, skinSet.damage, sx, sy, sw, sh, damageAlpha);
+                        if (damageFrac > 0.50) drawSkinLayerAtop(g, skinSet.damage, sx, sy, sw, sh, damageAlpha * 0.36f);
                     }
                 }
 
                 if (skinSet.emissive != null) {
-                    drawSkinLayer(g, skinSet.emissive, sx, sy, sw, sh, 0.50f);
-                    drawSkinLayer(g, skinSet.emissive, sx, sy, sw, sh, 0.17f);
+                    drawSkinLayerAtop(g, skinSet.emissive, sx, sy, sw, sh, 0.50f);
+                    drawSkinLayerAtop(g, skinSet.emissive, sx, sy, sw, sh, 0.17f);
                 }
             }
 
@@ -16617,23 +16617,23 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     cg.setClip(hullArea);
                 }
                 if (hasAuxLayers) {
-                    drawSkinLayer(cg, skinSet.panel, -sw / 2, -sh / 2, sw, sh, 0.46f);
-                    drawSkinLayer(cg, skinSet.ao, -sw / 2, -sh / 2, sw, sh, 0.50f);
+                    drawSkinLayerAtop(cg, skinSet.panel, -sw / 2, -sh / 2, sw, sh, 0.46f);
+                    drawSkinLayerAtop(cg, skinSet.ao, -sw / 2, -sh / 2, sw, sh, 0.50f);
 
                     if (skinSet.damage != null && ship.hpMax > 0) {
                         double damageFrac = damageFractionForHullCache(ship);
                         float damageAlpha = (float) Math.min(0.88, 0.18 + damageFrac * 0.72);
                         if (damageAlpha > 0.16f) {
-                            drawSkinLayer(cg, skinSet.damage, -sw / 2, -sh / 2, sw, sh, damageAlpha);
+                            drawSkinLayerAtop(cg, skinSet.damage, -sw / 2, -sh / 2, sw, sh, damageAlpha);
                             if (damageFrac > 0.50) {
-                                drawSkinLayer(cg, skinSet.damage, -sw / 2, -sh / 2, sw, sh, damageAlpha * 0.36f);
+                                drawSkinLayerAtop(cg, skinSet.damage, -sw / 2, -sh / 2, sw, sh, damageAlpha * 0.36f);
                             }
                         }
                     }
 
                     if (skinSet.emissive != null) {
-                        drawSkinLayer(cg, skinSet.emissive, -sw / 2, -sh / 2, sw, sh, 0.50f);
-                        drawSkinLayer(cg, skinSet.emissive, -sw / 2, -sh / 2, sw, sh, 0.17f);
+                        drawSkinLayerAtop(cg, skinSet.emissive, -sw / 2, -sh / 2, sw, sh, 0.50f);
+                        drawSkinLayerAtop(cg, skinSet.emissive, -sw / 2, -sh / 2, sw, sh, 0.17f);
                     }
                 }
                 applyFactionSkinLighting(cg, bounds, ship.faction, hull, trim);
@@ -16796,10 +16796,20 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         private static void drawSkinLayer(Graphics2D g, BufferedImage layer,
                                           int x, int y, int w, int h, float alpha) {
+            drawSkinLayer(g, layer, x, y, w, h, alpha, AlphaComposite.SRC_OVER);
+        }
+
+        private static void drawSkinLayerAtop(Graphics2D g, BufferedImage layer,
+                                              int x, int y, int w, int h, float alpha) {
+            drawSkinLayer(g, layer, x, y, w, h, alpha, AlphaComposite.SRC_ATOP);
+        }
+
+        private static void drawSkinLayer(Graphics2D g, BufferedImage layer,
+                                          int x, int y, int w, int h, float alpha, int compositeRule) {
             if (layer == null || alpha <= 0f) return;
             float a = (float) Math.max(0.0, Math.min(1.0, alpha));
             Composite old = g.getComposite();
-            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
+            g.setComposite(AlphaComposite.getInstance(compositeRule, a));
             g.drawImage(layer, x, y, w, h, null);
             g.setComposite(old);
         }
@@ -16829,7 +16839,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             Paint oldPaint = g.getPaint();
             Composite oldComposite = g.getComposite();
 
-            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1.0f));
+            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_ATOP, 1.0f));
             g.setPaint(new GradientPaint(
                     x, y + h / 2f, withAlpha(preset.rimColor, preset.rimAlpha),
                     x + w * 0.40f, y + h / 2f, withAlpha(preset.rimColor, 0)));
@@ -17386,71 +17396,26 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             if (source == null) return null;
             int width = source.getWidth();
             int height = source.getHeight();
-            int total = width * height;
-            if (width <= 0 || height <= 0 || total <= 0) return source;
+            if (width <= 0 || height <= 0) return source;
 
-            int[] component = new int[total];
-            int[] queue = new int[total];
-            int bestId = 0;
             int bestCount = 0;
-            int bestMinX = 0;
-            int bestMinY = 0;
-            int bestMaxX = width - 1;
-            int bestMaxY = height - 1;
-            int nextId = 1;
+            int bestMinX = width;
+            int bestMinY = height;
+            int bestMaxX = -1;
+            int bestMaxY = -1;
 
-            for (int start = 0; start < total; start++) {
-                if (component[start] != 0 || !turretSkinPixelVisible(source.getRGB(start % width, start / width))) {
-                    continue;
-                }
-                int id = nextId++;
-                int head = 0;
-                int tail = 0;
-                queue[tail++] = start;
-                component[start] = id;
-                int count = 0;
-                int minX = width;
-                int minY = height;
-                int maxX = -1;
-                int maxY = -1;
-
-                while (head < tail) {
-                    int idx = queue[head++];
-                    int px = idx % width;
-                    int py = idx / width;
-                    count++;
-                    if (px < minX) minX = px;
-                    if (py < minY) minY = py;
-                    if (px > maxX) maxX = px;
-                    if (py > maxY) maxY = py;
-
-                    for (int dy = -1; dy <= 1; dy++) {
-                        int ny = py + dy;
-                        if (ny < 0 || ny >= height) continue;
-                        for (int dx = -1; dx <= 1; dx++) {
-                            if (dx == 0 && dy == 0) continue;
-                            int nx = px + dx;
-                            if (nx < 0 || nx >= width) continue;
-                            int nidx = ny * width + nx;
-                            if (component[nidx] != 0) continue;
-                            if (!turretSkinPixelVisible(source.getRGB(nx, ny))) continue;
-                            component[nidx] = id;
-                            queue[tail++] = nidx;
-                        }
-                    }
-                }
-
-                if (count > bestCount) {
-                    bestId = id;
-                    bestCount = count;
-                    bestMinX = minX;
-                    bestMinY = minY;
-                    bestMaxX = maxX;
-                    bestMaxY = maxY;
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    if (!turretSkinPixelVisible(source.getRGB(x, y))) continue;
+                    bestCount++;
+                    if (x < bestMinX) bestMinX = x;
+                    if (y < bestMinY) bestMinY = y;
+                    if (x > bestMaxX) bestMaxX = x;
+                    if (y > bestMaxY) bestMaxY = y;
                 }
             }
 
-            if (bestId == 0 || bestCount < 32) return source;
+            if (bestCount < 32 || bestMaxX < bestMinX || bestMaxY < bestMinY) return source;
             int pad = 4;
             int cropX = Math.max(0, bestMinX - pad);
             int cropY = Math.max(0, bestMinY - pad);
@@ -17464,10 +17429,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 int sy = cropY + yy;
                 for (int xx = 0; xx < cropW; xx++) {
                     int sx = cropX + xx;
-                    int idx = sy * width + sx;
-                    if (component[idx] == bestId) {
-                        cleaned.setRGB(xx, yy, source.getRGB(sx, sy));
-                    }
+                    cleaned.setRGB(xx, yy, source.getRGB(sx, sy));
                 }
             }
             return cleaned;
@@ -18756,15 +18718,14 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (ship.role == ShipRole.FIGHTER || ship.role == ShipRole.BOMBER || ship.role == ShipRole.DRONE) return;
 
         Color accent = factionTrimColor(ship.faction);
-        final double GLOBAL_TURRET_SCALE = 0.44;
         for (Turret t : ship.turrets) {
             if (t == null) continue;
 
             double rel = MathUtil.normalizeAngle(t.angle - ship.angle);
             double fireFrac = turretFireFraction(t);
             TurretVisualScale scale = turretVisualScale(ship.role, t.kind);
-            double bodyScale = scale.bodyScale * GLOBAL_TURRET_SCALE;
-            double barrelScale = scale.barrelScale * GLOBAL_TURRET_SCALE;
+            double bodyScale = scale.bodyScale * GAMEPLAY_TURRET_GLOBAL_SCALE;
+            double barrelScale = scale.barrelScale * GAMEPLAY_TURRET_GLOBAL_SCALE;
             String styleKey = turretStyleKey(ship, t);
             BufferedImage turretSkin = usesAuthoredTurretSkinsForGameplay()
                     ? TurretSkinLibrary.getTurretSkin(styleKey, ship.role, ship.faction)
@@ -18794,13 +18755,64 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
 
         if (ship.hasCIWS) {
-            double ciwsScale = turretVisualScale(ship.role, Turret.Kind.GUN).ciwsScale * GLOBAL_TURRET_SCALE;
+            double ciwsScale = turretVisualScale(ship.role, Turret.Kind.GUN).ciwsScale * GAMEPLAY_TURRET_GLOBAL_SCALE;
             BufferedImage ciwsSkin = usesAuthoredTurretSkinsForGameplay()
                     ? TurretSkinLibrary.getTurretSkin("ciws", ship.role, ship.faction)
                     : null;
-            if (ciwsSkin != null) drawCiwsSkinSprite(g2, ciwsSkin, ciwsScale);
-            else drawCIWSTurret(g2, ciwsScale);
+            double[] mount = ciwsVisualMount(ship);
+            Graphics2D cg = (Graphics2D) g2.create();
+            cg.translate(mount[0], mount[1]);
+            if (ciwsSkin != null) drawCiwsSkinSprite(cg, ciwsSkin, ciwsScale);
+            else drawCIWSTurret(cg, ciwsScale * CIWS_TURRET_SPRITE_SCALE);
+            cg.dispose();
         }
+    }
+
+    private static final double GAMEPLAY_TURRET_GLOBAL_SCALE = 0.22;
+    private static final double MISSILE_POD_TURRET_SPRITE_SCALE = 0.50;
+    private static final double CIWS_TURRET_SPRITE_SCALE = 0.50;
+
+    static double gameplayTurretGlobalScaleForTests() {
+        return GAMEPLAY_TURRET_GLOBAL_SCALE;
+    }
+
+    static double missilePodTurretSpriteScaleForTests() {
+        return MISSILE_POD_TURRET_SPRITE_SCALE;
+    }
+
+    static double ciwsTurretSpriteScaleForTests() {
+        return CIWS_TURRET_SPRITE_SCALE;
+    }
+
+    private static double[] ciwsVisualMount(Ship ship) {
+        if (ship == null) return new double[]{0.0, 0.0};
+        ShipHullSilhouette.VisualBounds bounds =
+                ShipHullSilhouette.visualBounds(ship.role, ship.radius, ship.faction);
+        if (bounds == null) return new double[]{0.0, 0.0};
+        double x = 0.5 * (bounds.minX + bounds.maxX);
+        double y = 0.5 * (bounds.minY + bounds.maxY);
+        if (ShipHullSilhouette.visualHullContains(ship.role, ship.radius, ship.faction, x, y)) {
+            return new double[]{x, y};
+        }
+        double maxDistance = Math.max(12.0, ship.radius * 0.35);
+        double step = ship.radius <= 24.0 ? 1.0 : 2.0;
+        double bestX = 0.0;
+        double bestY = 0.0;
+        double bestScore = Double.POSITIVE_INFINITY;
+        for (double dx = -maxDistance; dx <= maxDistance; dx += step) {
+            for (double dy = -maxDistance; dy <= maxDistance; dy += step) {
+                double tx = x + dx;
+                double ty = y + dy;
+                if (!ShipHullSilhouette.visualHullContains(ship.role, ship.radius, ship.faction, tx, ty)) continue;
+                double score = dx * dx + dy * dy;
+                if (score < bestScore) {
+                    bestScore = score;
+                    bestX = tx;
+                    bestY = ty;
+                }
+            }
+        }
+        return Double.isFinite(bestScore) ? new double[]{bestX, bestY} : new double[]{0.0, 0.0};
     }
 
     private static String turretStyleKey(Ship ship, Turret t) {
@@ -18823,8 +18835,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             w *= 1.24;
             h *= 1.12;
         } else if ("missile_pod".equals(styleKey)) {
-            w *= 1.14;
-            h *= 1.08;
+            w *= 1.14 * MISSILE_POD_TURRET_SPRITE_SCALE;
+            h *= 1.08 * MISSILE_POD_TURRET_SPRITE_SCALE;
         } else if ("stealth_flush".equals(styleKey)) {
             w *= 0.96;
             h *= 0.88;
@@ -18844,7 +18856,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static void drawCiwsSkinSprite(Graphics2D g, BufferedImage skin, double ciwsScale) {
         if (skin == null) return;
         double scaleNorm = Math.max(0.65, ciwsScale / 0.5);
-        int draw = Math.max(10, (int) Math.round(20.0 * scaleNorm));
+        int draw = Math.max(6, (int) Math.round(20.0 * scaleNorm * CIWS_TURRET_SPRITE_SCALE));
         g.drawImage(skin, -draw / 2, -draw / 2, draw, draw, null);
     }
 

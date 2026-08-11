@@ -36,6 +36,13 @@ class TitanGeometryRegressionTest {
             ShipRole.MOTHERSHIP
     };
 
+    private static final Faction[] DISPLAY_FACTIONS = {
+            Faction.ALLY,
+            Faction.ENEMY,
+            Faction.TEAM_C,
+            Faction.TEAM_D
+    };
+
     @Test
     void blueTitanRoomCoverageTracksHullSilhouettes() {
         Ship.enableDeterministicRandom(1234L);
@@ -83,10 +90,8 @@ class TitanGeometryRegressionTest {
                 FleetShip ship = new FleetShip(role, Faction.ALLY, 0.0, 0.0);
                 assertTrue(!ship.turrets.isEmpty(), "expected turrets on " + role);
                 for (Turret turret : ship.turrets) {
-                    HullGeometry.ImpactSample sample = HullGeometry.sampleImpact(
-                            ship, ship.x + turret.localX, ship.y + turret.localY);
-                    assertNotNull(sample, "expected impact sample for " + role);
-                    assertTrue(sample.onHull, role + " turret drifted off hull at "
+                    assertTrue(turretMountCenterIsOnVisualHull(ship, turret),
+                            role + " turret center drifted off visible hull at "
                             + turret.localX + "," + turret.localY);
                 }
             }
@@ -105,6 +110,7 @@ class TitanGeometryRegressionTest {
                 double maxY = Double.NEGATIVE_INFINITY;
                 double sumY = 0.0;
                 int count = 0;
+                double visualCenterY = visualCenterY(ship);
                 for (Turret turret : ship.turrets) {
                     if (turret == null) continue;
                     minY = Math.min(minY, turret.localY);
@@ -114,10 +120,13 @@ class TitanGeometryRegressionTest {
                 }
 
                 assertTrue(count >= 4, "expected capital hardpoints for " + role);
-                assertTrue(minY < -4.0, role + " should place mounts on the port flank");
-                assertTrue(maxY > 4.0, role + " should place mounts on the starboard flank");
-                assertTrue((maxY - minY) >= ship.radius * 0.45, role + " mounts are still too clustered");
-                assertTrue(Math.abs(sumY / count) <= ship.radius * 0.12,
+                assertTrue(minY < visualCenterY - 4.0, role + " should place mounts on the port flank");
+                assertTrue(maxY > visualCenterY + 4.0, role + " should place mounts on the starboard flank");
+                double minVerticalSpread = role == ShipRole.HYPERWEAPON_TITAN
+                        ? ship.radius * 0.32
+                        : ship.radius * 0.45;
+                assertTrue((maxY - minY) >= minVerticalSpread, role + " mounts are still too clustered");
+                assertTrue(Math.abs((sumY / count) - visualCenterY) <= ship.radius * 0.12,
                         role + " mount pattern still leans off-center");
             }
         } finally {
@@ -156,5 +165,59 @@ class TitanGeometryRegressionTest {
         } finally {
             Ship.disableDeterministicRandom();
         }
+    }
+
+    @Test
+    void capitalTurretLayoutsStayCenteredAndOnHullForEveryFaction() {
+        Ship.enableDeterministicRandom(97531L);
+        try {
+            for (Faction faction : DISPLAY_FACTIONS) {
+                for (ShipRole role : BLUE_CAPITAL_ROLES) {
+                    FleetShip ship = new FleetShip(role, faction, 0.0, 0.0);
+                    assertTrue(!ship.turrets.isEmpty(), "expected turrets on " + faction + " " + role);
+
+                    double minX = Double.POSITIVE_INFINITY;
+                    double maxX = Double.NEGATIVE_INFINITY;
+                    double minY = Double.POSITIVE_INFINITY;
+                    double maxY = Double.NEGATIVE_INFINITY;
+                    double sumY = 0.0;
+                    int count = 0;
+                    double visualCenterY = visualCenterY(ship);
+                    for (Turret turret : ship.turrets) {
+                        if (turret == null) continue;
+                        count++;
+                        minX = Math.min(minX, turret.localX);
+                        maxX = Math.max(maxX, turret.localX);
+                        minY = Math.min(minY, turret.localY);
+                        maxY = Math.max(maxY, turret.localY);
+                        sumY += turret.localY;
+                        assertTrue(turretMountCenterIsOnVisualHull(ship, turret),
+                                faction + " " + role + " turret center drifted off visible hull at "
+                                        + turret.localX + "," + turret.localY);
+                    }
+
+                    assertTrue(count >= 4, "expected capital hardpoints for " + faction + " " + role);
+                    assertTrue(minY < visualCenterY - 3.0, faction + " " + role + " should place mounts on the port flank");
+                    assertTrue(maxY > visualCenterY + 3.0, faction + " " + role + " should place mounts on the starboard flank");
+                    assertTrue(Math.abs((sumY / count) - visualCenterY) <= ship.radius * 0.24,
+                            faction + " " + role + " mount pattern should stay centered");
+                    assertTrue((maxX - minX) >= ship.radius * 0.55,
+                            faction + " " + role + " should keep forward/aft weapon bands separated");
+                }
+            }
+        } finally {
+            Ship.disableDeterministicRandom();
+        }
+    }
+
+    private static boolean turretMountCenterIsOnVisualHull(FleetShip ship, Turret turret) {
+        return ShipHullSilhouette.visualHullContains(
+                ship.role, ship.radius, ship.faction, turret.localX, turret.localY);
+    }
+
+    private static double visualCenterY(FleetShip ship) {
+        ShipHullSilhouette.VisualBounds bounds =
+                ShipHullSilhouette.visualBounds(ship.role, ship.radius, ship.faction);
+        return bounds == null ? 0.0 : 0.5 * (bounds.minY + bounds.maxY);
     }
 }

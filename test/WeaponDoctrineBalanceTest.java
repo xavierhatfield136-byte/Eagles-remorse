@@ -106,6 +106,21 @@ class WeaponDoctrineBalanceTest {
     }
 
     @Test
+    void greenLightBeamTurretsUseOneSecondFiringWindow() {
+        FleetShip ship = new FleetShip(ShipRole.FRIGATE, Faction.TEAM_C, 0.0, 0.0);
+        Turret gun = firstGun(ship);
+        assertTrue(gun != null, "expected a primary gun on the Team C frigate");
+        gun.setReady();
+
+        PhaserBeam beam = assertInstanceOf(PhaserBeam.class, gun.fire(ship, null, GameContext.DT));
+
+        assertEquals((int) Math.round(Ship.BEAM_BOLT_RELOAD_SECONDS / GameContext.DT), beam.life,
+                "Green light beams should stay active for the one-second turret firing window");
+        assertNull(gun.fire(ship, null, GameContext.DT),
+                "Green light beam turrets should not fire another beam inside the one-second window");
+    }
+
+    @Test
     void blueProjectilesGainDamageWithFlightDistance() {
         FleetShip ship = new FleetShip(ShipRole.PICKET, Faction.ALLY, 0.0, 0.0);
         Turret gun = firstGun(ship);

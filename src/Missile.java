@@ -3,6 +3,8 @@ public class Missile extends Projectile {
     public static final int HEAVY_INTERCEPT_HP = 4;
     public static final int INFINITE_GUIDANCE_TICKS = Integer.MAX_VALUE;
     public static final double GLOBAL_SPEED_MULT = 2.0;
+    public static final double MAX_RUNTIME_SPEED_M_PER_SEC = 1000.0;
+    public static final double HEAVY_RUNTIME_SPEED_M_PER_SEC = 700.0;
     private static final double NON_YELLOW_SPEED_MULT = 2.35;
     private static final double YELLOW_SPEED_MULT = 1.00;
 
@@ -54,14 +56,13 @@ public class Missile extends Projectile {
         this.angle = angle;
         this.target = target;
 
-        this.speed = speed * GLOBAL_SPEED_MULT * factionMissileSpeedMultiplier(faction);
+        this.speed = capSpeedForRole(speed * GLOBAL_SPEED_MULT * factionMissileSpeedMultiplier(faction), role);
         this.turnRate = turnRate;
         this.interceptHp = (damage >= 8) ? HEAVY_INTERCEPT_HP : BASE_INTERCEPT_HP;
         this.blastRadius = Math.max(38.0, radius * 8.0);
         this.splashDamageMul = 0.60;
 
-        vx = Math.cos(angle) * this.speed * dt;
-        vy = Math.sin(angle) * this.speed * dt;
+        refreshVelocity(dt);
     }
 
     public boolean hasGuidance() {
@@ -83,6 +84,12 @@ public class Missile extends Projectile {
         strikeVisual = (other.strikeVisual == null) ? StrikeVisual.DEFAULT : other.strikeVisual;
     }
 
+    public void applyRoleSpeedCap(Turret.MissileRole role, double dt) {
+        this.role = (role == null) ? Turret.MissileRole.ANTI_MEDIUM : role;
+        speed = capSpeedForRole(speed, this.role);
+        refreshVelocity(dt);
+    }
+
     public boolean applyInterceptHit(int damage) {
         int d = Math.max(1, damage);
         interceptHp -= d;
@@ -95,6 +102,7 @@ public class Missile extends Projectile {
 
     @Override
     public void update(double dt) {
+        speed = capSpeedForRole(speed, role);
         if (guidanceTicksRemaining != INFINITE_GUIDANCE_TICKS) {
             guidanceTicksRemaining = Math.max(0, guidanceTicksRemaining - 1);
         }
@@ -114,13 +122,29 @@ public class Missile extends Projectile {
             angle = MathUtil.normalizeAngle(angle + delta);
         }
 
-        vx = Math.cos(angle) * speed * dt;
-        vy = Math.sin(angle) * speed * dt;
+        refreshVelocity(dt);
 
         super.update(dt);
     }
 
+    public static double configuredSpeedForRuntimeSpeed(double runtimeSpeed, Faction faction) {
+        double mult = GLOBAL_SPEED_MULT * factionMissileSpeedMultiplier(faction);
+        if (!Double.isFinite(runtimeSpeed) || runtimeSpeed <= 0.0 || mult <= 1e-9) return 0.0;
+        return runtimeSpeed / mult;
+    }
+
     private static double factionMissileSpeedMultiplier(Faction faction) {
         return faction != null && faction.isYellowLineage() ? YELLOW_SPEED_MULT : NON_YELLOW_SPEED_MULT;
+    }
+
+    private static double capSpeedForRole(double runtimeSpeed, Turret.MissileRole role) {
+        if (!Double.isFinite(runtimeSpeed) || runtimeSpeed <= 0.0) return 0.0;
+        if (role == Turret.MissileRole.ANTI_HEAVY) return HEAVY_RUNTIME_SPEED_M_PER_SEC;
+        return Math.min(runtimeSpeed, MAX_RUNTIME_SPEED_M_PER_SEC);
+    }
+
+    private void refreshVelocity(double dt) {
+        vx = Math.cos(angle) * speed * dt;
+        vy = Math.sin(angle) * speed * dt;
     }
 }

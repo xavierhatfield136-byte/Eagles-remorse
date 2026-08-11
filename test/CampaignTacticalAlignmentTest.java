@@ -101,9 +101,12 @@ class CampaignTacticalAlignmentTest {
         double kineticProjectileSpeed = DoctrineRegistry.KINETIC_CONSORTIUM.mainProjectileSpeed * Turret.GUN_PROJECTILE_SPEED_MULT;
         double aegisProjectileSpeed = DoctrineRegistry.AEGIS_LATTICE.mainProjectileSpeed * Turret.GUN_PROJECTILE_SPEED_MULT;
         double viperProjectileSpeed = DoctrineRegistry.VIPER_BARRAGE.mainProjectileSpeed * Turret.GUN_PROJECTILE_SPEED_MULT;
-        double baselineMissileSpeed = 220.0 * Turret.MISSILE_SPEED_MULT
-                * Missile.GLOBAL_SPEED_MULT * 2.35;
-        double interceptorMissileSpeed = baselineMissileSpeed * 1.18;
+        double baselineMissileSpeed = Math.min(
+                220.0 * Turret.MISSILE_SPEED_MULT * Missile.GLOBAL_SPEED_MULT * 2.35,
+                Missile.MAX_RUNTIME_SPEED_M_PER_SEC);
+        double interceptorMissileSpeed = Math.min(
+                baselineMissileSpeed * 1.18,
+                Missile.MAX_RUNTIME_SPEED_M_PER_SEC);
 
         assertTrue(energyNavyProjectileSpeed <= 640.0,
                 "energy-navy bolts should stay readable, got " + energyNavyProjectileSpeed);
@@ -113,8 +116,8 @@ class CampaignTacticalAlignmentTest {
                 "aegis bolts should remain anticipatable, got " + aegisProjectileSpeed);
         assertTrue(viperProjectileSpeed <= 840.0,
                 "backup barrage guns should remain readable, got " + viperProjectileSpeed);
-        assertTrue(interceptorMissileSpeed >= 1000.0,
-                "missiles should now be fast enough to force real point-defense reactions, got " + interceptorMissileSpeed);
+        assertTrue(interceptorMissileSpeed <= Missile.MAX_RUNTIME_SPEED_M_PER_SEC,
+                "missiles should stay inside the maximum runtime speed budget, got " + interceptorMissileSpeed);
         assertEquals(2.0, Missile.GLOBAL_SPEED_MULT, 0.0);
         assertTrue(Ship.BEAM_BOLT_SPEED <= 700.0);
         assertTrue(Turret.GUN_PROJECTILE_SPEED_MULT <= 0.84);

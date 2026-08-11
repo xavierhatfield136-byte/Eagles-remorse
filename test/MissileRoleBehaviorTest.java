@@ -3,6 +3,7 @@ import app.config.GameMode;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -76,8 +77,9 @@ class MissileRoleBehaviorTest {
     @Test
     void blueFastMissilesLaunchAtControlledSpeedForPlayerAndAllies() {
         Ship target = new FleetShip(ShipRole.FIGHTER, Faction.ENEMY, 600.0, 0.0);
-        double originalBlueFastSpeed = 220.0 * Turret.MISSILE_SPEED_MULT
-                * Missile.GLOBAL_SPEED_MULT * 2.35;
+        double originalBlueFastSpeed = Math.min(
+                220.0 * Turret.MISSILE_SPEED_MULT * Missile.GLOBAL_SPEED_MULT * 2.35,
+                Missile.MAX_RUNTIME_SPEED_M_PER_SEC);
 
         Player player = new Player(ShipRole.MOTHERSHIP, 0.0, 0.0);
         Missile playerMissile = fireFastMissile(player, target);
@@ -111,10 +113,53 @@ class MissileRoleBehaviorTest {
 
         assertTrue(fired instanceof Missile, "expected high-speed fast rack to launch a missile");
         Missile missile = (Missile) fired;
-        double expectedCap = Turret.BLUE_FAST_MISSILE_MAX_PRE_FACTION_SPEED
-                * Missile.GLOBAL_SPEED_MULT * 2.35;
+        double expectedCap = Math.min(
+                Turret.BLUE_FAST_MISSILE_MAX_PRE_FACTION_SPEED * Missile.GLOBAL_SPEED_MULT * 2.35,
+                Missile.MAX_RUNTIME_SPEED_M_PER_SEC);
         assertEquals(expectedCap, missile.speed, 1e-6,
                 "converted blue fast missile racks should clamp before global/faction speed multipliers");
+    }
+
+    @Test
+    void missileRuntimeSpeedsAreCappedByRole() {
+        Ship target = new FleetShip(ShipRole.FIGHTER, Faction.ENEMY, 600.0, 0.0);
+        Missile missile = new Missile(0.0, 0.0, 0.0, target, GameContext.DT,
+                900.0, Math.toRadians(280.0), 5, 240, 7.0, Faction.ALLY);
+        assertEquals(Missile.MAX_RUNTIME_SPEED_M_PER_SEC, missile.speed, 1e-6,
+                "regular missiles should never launch faster than the global missile ceiling");
+
+        missile.applyRoleSpeedCap(Turret.MissileRole.ANTI_HEAVY, GameContext.DT);
+        assertEquals(Missile.HEAVY_RUNTIME_SPEED_M_PER_SEC, missile.speed, 1e-6,
+                "heavy missiles should travel at the heavy missile ceiling");
+    }
+
+    @Test
+    void secondaryBurstFollowersReuseLeaderRuntimeSpeed() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 5000, 5000, true, 1224L, false));
+        Player player = new Player(ShipRole.FRIGATE, 0.0, 0.0);
+        player.faction = Faction.ENEMY;
+        player.turrets.clear();
+        ctx.player = player;
+
+        Turret rack = new Turret(Turret.Kind.MISSILE, 0.0, 0.0);
+        rack.primary = false;
+        rack.missileRole = Turret.MissileRole.ANTI_MEDIUM;
+        rack.missileSpeed = 180.0;
+        rack.setReady();
+        player.addTurret(rack);
+
+        Ship target = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 600.0, 0.0);
+        List<Projectile> fired = player.fireSecondary(ctx, target, GameContext.DT);
+
+        assertEquals(3, fired.size(), "secondary launch should create a three-missile burst");
+        double leaderSpeed = ((Missile) fired.get(0)).speed;
+        assertTrue(leaderSpeed < Missile.MAX_RUNTIME_SPEED_M_PER_SEC,
+                "test setup should keep the leader below the cap so double-multiplication is visible");
+        for (Projectile projectile : fired) {
+            assertTrue(projectile instanceof Missile, "secondary burst should only contain missiles");
+            assertEquals(leaderSpeed, ((Missile) projectile).speed, 1e-6,
+                    "burst followers should inherit the leader runtime speed without another global/faction multiply");
+        }
     }
 
     @Test
@@ -171,6 +216,8 @@ class MissileRoleBehaviorTest {
         Projectile fired = missileTurret.fire(shooter, target, GameContext.DT);
         assertTrue(fired instanceof Missile, "expected heavy turret to spawn a missile");
         Missile missile = (Missile) fired;
+        assertEquals(Missile.HEAVY_RUNTIME_SPEED_M_PER_SEC, missile.speed, 1e-6,
+                "heavy missiles should travel at the heavy missile speed");
         assertEquals(0.5, missile.visualScale, 1e-6, "heavy missiles should render at half size");
     }
 

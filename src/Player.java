@@ -733,7 +733,7 @@ public class Player extends Ship {
                     ang,
                     target,
                     dt,
-                    leader.speed,
+                    Missile.configuredSpeedForRuntimeSpeed(leader.speed, faction),
                     leader.turnRate,
                     leader.damage,
                     leader.life,
@@ -741,6 +741,7 @@ public class Player extends Ship {
                     faction
             );
             burst.copyBehaviorFrom(leader);
+            burst.applyRoleSpeedCap(burst.role, dt);
             burst.sourceShipId = id;
             out.add(burst);
         }

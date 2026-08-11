@@ -8539,6 +8539,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         missile.role = payload == StrategicStrikePayload.TORPEDO
                 ? Turret.MissileRole.ANTI_HEAVY
                 : Turret.MissileRole.ANTI_MEDIUM;
+        missile.applyRoleSpeedCap(missile.role, GameContext.DT);
         missile.blastRadius = Math.max(40.0, blastRadius);
         missile.splashDamageMul = payload == StrategicStrikePayload.ATOMIC ? 1.0 : 0.55;
         missile.visualScale = payload == StrategicStrikePayload.ATOMIC ? 2.2 : 1.35;

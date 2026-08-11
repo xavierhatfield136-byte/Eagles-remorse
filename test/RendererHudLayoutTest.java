@@ -1,5 +1,6 @@
 import org.junit.jupiter.api.Test;
 
+import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
@@ -9,6 +10,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RendererHudLayoutTest {
@@ -141,9 +143,114 @@ class RendererHudLayoutTest {
     }
 
     @Test
-    void gameplayUsesOriginalProceduralTurretsUntilAuthoredSpritesAreClean() {
-        assertFalse(Renderer.usesAuthoredTurretSkinsForGameplay(),
-                "generated turret concept PNGs should not override the original clean gameplay turret renderers");
+    void gameplayUsesAuthoredFactionTurretSkins() throws Exception {
+        assertTrue(Renderer.usesAuthoredTurretSkinsForGameplay(),
+                "gameplay should use the authored faction turret PNGs when they are available");
+
+        Class<?> libraryClass = null;
+        for (Class<?> nested : Renderer.class.getDeclaredClasses()) {
+            if ("TurretSkinLibrary".equals(nested.getSimpleName())) {
+                libraryClass = nested;
+                break;
+            }
+        }
+        assertNotNull(libraryClass, "renderer should expose the turret skin loader");
+        Method getSkin = libraryClass.getDeclaredMethod("getTurretSkin", String.class, ShipRole.class, Faction.class);
+        getSkin.setAccessible(true);
+
+        String[] styleKeys = {"twin_gun", "heavy_triple", "missile_pod", "beam_emitter", "stealth_flush", "ciws"};
+        for (String styleKey : styleKeys) {
+            BufferedImage enemySkin = (BufferedImage) getSkin.invoke(null, styleKey, ShipRole.FRIGATE, Faction.ENEMY);
+            assertNotNull(enemySkin, "enemy turret PNG should load for red ships: " + styleKey);
+        }
+
+        String[] greenStyleKeys = {"twin_gun", "heavy_triple", "missile_pod", "beam_emitter", "stealth_flush", "ciws"};
+        for (String styleKey : greenStyleKeys) {
+            BufferedImage greenSkin = (BufferedImage) getSkin.invoke(null, styleKey, ShipRole.FRIGATE, Faction.TEAM_C);
+            assertNotNull(greenSkin, "green turret PNG should load for team C ships: " + styleKey);
+        }
+    }
+
+    @Test
+    void missilePodsAndCiwsUseReducedGameplaySpriteScale() {
+        assertEquals(0.50, Renderer.missilePodTurretSpriteScaleForTests(), 0.001,
+                "missile launcher sprites should be half-size so they do not swamp hull art");
+        assertEquals(0.50, Renderer.ciwsTurretSpriteScaleForTests(), 0.001,
+                "CIWS sprites should be half-size so they remain readable but compact");
+    }
+
+    @Test
+    void factionHullLightingDoesNotPaintTransparentSpritePadding() throws Exception {
+        Class<?> shipRenderer = null;
+        for (Class<?> nested : Renderer.class.getDeclaredClasses()) {
+            if ("ShipRenderer".equals(nested.getSimpleName())) {
+                shipRenderer = nested;
+                break;
+            }
+        }
+        assertNotNull(shipRenderer, "renderer should expose the ship renderer");
+        Method lighting = shipRenderer.getDeclaredMethod("applyFactionSkinLighting",
+                Graphics2D.class, Rectangle2D.class, Faction.class, Color.class, Color.class);
+        lighting.setAccessible(true);
+
+        BufferedImage image = new BufferedImage(48, 28, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = image.createGraphics();
+        try {
+            g2.setColor(new Color(210, 220, 225, 255));
+            g2.fillRect(21, 12, 6, 5);
+            lighting.invoke(null, g2, new Rectangle2D.Double(0.0, 0.0, image.getWidth(), image.getHeight()),
+                    Faction.TEAM_C, new Color(180, 210, 190), new Color(120, 245, 205));
+        } finally {
+            g2.dispose();
+        }
+
+        assertEquals(0, (image.getRGB(3, 3) >>> 24) & 0xff,
+                "hull lighting should not create visible hitbox haze in transparent sprite padding");
+        assertTrue(((image.getRGB(23, 14) >>> 24) & 0xff) > 0,
+                "hull lighting should still affect existing hull pixels");
+    }
+
+    @Test
+    void auxiliaryHullSkinLayersDoNotPaintTransparentSpritePadding() throws Exception {
+        Class<?> shipRenderer = null;
+        for (Class<?> nested : Renderer.class.getDeclaredClasses()) {
+            if ("ShipRenderer".equals(nested.getSimpleName())) {
+                shipRenderer = nested;
+                break;
+            }
+        }
+        assertNotNull(shipRenderer, "renderer should expose the ship renderer");
+        Method drawLayerAtop = shipRenderer.getDeclaredMethod("drawSkinLayerAtop",
+                Graphics2D.class, BufferedImage.class, int.class, int.class, int.class, int.class, float.class);
+        drawLayerAtop.setAccessible(true);
+
+        BufferedImage base = new BufferedImage(48, 28, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = base.createGraphics();
+        BufferedImage overlay = new BufferedImage(48, 28, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D og = overlay.createGraphics();
+        try {
+            g2.setColor(new Color(210, 220, 225, 255));
+            g2.fillRect(21, 12, 6, 5);
+
+            og.setColor(new Color(80, 255, 200, 255));
+            og.fillRect(0, 0, overlay.getWidth(), overlay.getHeight());
+
+            drawLayerAtop.invoke(null, g2, overlay, 0, 0, overlay.getWidth(), overlay.getHeight(), 1.0f);
+        } finally {
+            og.dispose();
+            g2.dispose();
+        }
+
+        assertEquals(0, (base.getRGB(3, 3) >>> 24) & 0xff,
+                "auxiliary hull layers should not create haze in transparent sprite padding");
+        assertTrue(((base.getRGB(23, 14) >>> 24) & 0xff) > 0,
+                "auxiliary hull layers should still modify existing hull pixels");
+    }
+
+    @Test
+    void gameplayTurretSpritesUseRequestedHalfScale() {
+        assertEquals(0.22, Renderer.gameplayTurretGlobalScaleForTests(), 1e-9,
+                "gameplay weapon sprites should render at 50% of their prior 0.44 global scale");
     }
 
     @Test

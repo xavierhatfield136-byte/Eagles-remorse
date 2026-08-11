@@ -277,6 +277,7 @@ public class Turret {
 
         if (kind == Kind.GUN) {
             double baseReloadSeconds = cooldown / cycleMul;
+            double effectiveReloadSeconds = baseReloadSeconds;
             boolean blueMainBattery = prof.doctrine == Doctrine.ENERGY_NAVY
                     && !usesCiwsPelletsAgainst(host, this, missileTarget);
             if (blueMainBattery) {
@@ -284,10 +285,11 @@ public class Turret {
                 if (baseReloadSeconds > 1e-6) {
                     damageMul *= flooredReload / baseReloadSeconds;
                 }
-                coolLeft = flooredReload;
+                effectiveReloadSeconds = flooredReload;
             } else {
-                coolLeft = baseReloadSeconds;
+                effectiveReloadSeconds = baseReloadSeconds;
             }
+            coolLeft = effectiveReloadSeconds;
             if (usesCiwsPelletsAgainst(host, this, missileTarget)) {
                 double pelletSpeed = effectiveInterceptorProjectileSpeed(host, this);
                 int pelletDamage = Math.max(1, host.resolveStrikeCraftWeaponDamage(this, damage * damageMul));
@@ -307,7 +309,7 @@ public class Turret {
             int gunDamage = host.resolveStrikeCraftWeaponDamage(this, damage * damageMul);
             if (host.faction == Faction.TEAM_C) {
                 // Team C uses a persistent, tracking cutting beam.
-                double shotInterval = Math.max(GameContext.DT, cooldown / cycleMul);
+                double shotInterval = Math.max(GameContext.DT, effectiveReloadSeconds);
                 int beamLife = Math.max(2, (int) Math.round(shotInterval / GameContext.DT));
                 double baseDps = gunDamage / shotInterval;
                 double beamDps = baseDps * 1.08;
@@ -423,6 +425,7 @@ public class Turret {
             p.sourceShipId = host.id;
             if (p instanceof Missile missile) {
                 missile.role = (missileRole == null) ? MissileRole.ANTI_MEDIUM : missileRole;
+                missile.applyRoleSpeedCap(missile.role, dt);
                 missile.projectileTarget = projectileTarget;
                 missile.visualScale = missileVisualScale;
                 if (missile.role == MissileRole.ANTI_LIGHT) {
@@ -445,6 +448,9 @@ public class Turret {
 
     private boolean isWithinHullWeaponArc(Ship host) {
         if (host == null) return false;
+        if (host instanceof Player && host.role == ShipRole.ARTILLERY_SHIP) {
+            return true;
+        }
         double relative = Math.abs(MathUtil.normalizeAngle(angle - host.angle));
         if (host.role == ShipRole.ARTILLERY_SHIP || host.role == ShipRole.ARTILLERY_TITAN) {
             return relative <= Math.toRadians(18.0);

@@ -417,6 +417,7 @@ public final class AudioSystem {
 
         static int sfxVariantCount(SfxManifest.EventSpec spec) {
             if (spec == null) return 0;
+            if (useSingleAuthoredWeaponVariant(spec)) return 1;
             String folder = spec.folder();
             String eventPrefix = spec.filePrefix();
             List<File> files = filesFor("audio", folder, eventPrefix, new File(ROOT_AUDIO, folder));
@@ -430,13 +431,26 @@ public final class AudioSystem {
             String eventPrefix = spec.filePrefix();
             List<File> files = filesFor("audio", folder, eventPrefix, new File(ROOT_AUDIO, folder));
             if (!files.isEmpty()) {
-                int idx = Math.floorMod(preferredVariantIndex, files.size());
+                int count = useSingleAuthoredWeaponVariant(spec) ? 1 : files.size();
+                int idx = Math.floorMod(preferredVariantIndex, count);
                 return new SfxPick(files.get(idx), null, idx, files.size());
             }
             List<String> bundled = bundledFor("audio", folder, eventPrefix);
             if (bundled.isEmpty()) return null;
-            int idx = Math.floorMod(preferredVariantIndex, bundled.size());
+            int count = useSingleAuthoredWeaponVariant(spec) ? 1 : bundled.size();
+            int idx = Math.floorMod(preferredVariantIndex, count);
             return new SfxPick(null, bundled.get(idx), idx, bundled.size());
+        }
+
+        private static boolean useSingleAuthoredWeaponVariant(SfxManifest.EventSpec spec) {
+            if (spec == null) return false;
+            String folder = spec.folder();
+            String prefix = spec.filePrefix();
+            if (!"weapons".equals(folder) || prefix == null) return false;
+            if (prefix.startsWith("weapon_") && prefix.endsWith("_fire")) return true;
+            return "missile_launch".equals(prefix)
+                    || "torpedo_launch".equals(prefix)
+                    || "ciws_fire".equals(prefix);
         }
 
         private static List<File> filesFor(String root, String folder, String eventId, File dir) {
@@ -744,6 +758,7 @@ public final class AudioSystem {
         if (ctx == null || st == null || eventId == null || eventId.isBlank()) return;
         if (source != null && !shouldPlayWorldSfxAt(ctx, source.x, source.y)) return;
         double ttl = Math.max(0.10, holdSec);
+        double activeUntilBeforeTouch = st.greenWeaponLoopUntilSec;
         st.greenWeaponLoopUntilSec = Math.max(st.greenWeaponLoopUntilSec, now + ttl);
         String incomingFamily = greenLoopFamilyKey(eventId);
         String activeEventId = st.greenWeaponLoopEventId;
@@ -751,9 +766,13 @@ public final class AudioSystem {
         if (activeEventId == null || activeEventId.isBlank()) {
             st.greenWeaponLoopEventId = eventId;
         } else if ("superweapon.green".equals(activeFamily) && !"superweapon.green".equals(incomingFamily)
-                && now < st.greenWeaponLoopUntilSec) {
+                && now < activeUntilBeforeTouch) {
             return;
         } else if (!incomingFamily.equals(activeFamily)) {
+            stopGreenWeaponLoop(st);
+            st.greenWeaponLoopEventId = eventId;
+        } else if (!eventId.equals(activeEventId)
+                && shouldSwitchGreenLoopEvent(activeEventId, eventId, now, activeUntilBeforeTouch)) {
             stopGreenWeaponLoop(st);
             st.greenWeaponLoopEventId = eventId;
         }
@@ -765,6 +784,28 @@ public final class AudioSystem {
         if (eventId.startsWith("weapon.green.")) return "weapon.green";
         if (eventId.startsWith("super.green.") || eventId.startsWith("hyper.green.")) return "superweapon.green";
         return eventId;
+    }
+
+    private static boolean shouldSwitchGreenLoopEvent(String activeEventId, String incomingEventId,
+                                                      double now, double activeUntilBeforeTouch) {
+        if (incomingEventId == null || incomingEventId.isBlank()) return false;
+        if (activeEventId == null || activeEventId.isBlank()) return true;
+        if (now >= activeUntilBeforeTouch) return true;
+        int incomingRank = greenLoopEventRank(incomingEventId);
+        int activeRank = greenLoopEventRank(activeEventId);
+        return incomingRank > activeRank;
+    }
+
+    private static int greenLoopEventRank(String eventId) {
+        if (eventId == null) return 0;
+        return switch (eventId) {
+            case "weapon.green.small_fire" -> 1;
+            case "weapon.green.medium_fire" -> 2;
+            case "weapon.green.capital_fire" -> 3;
+            case "super.green.charge", "hyper.green.charge" -> 4;
+            case "super.green.fire", "hyper.green.fire" -> 5;
+            default -> eventId.startsWith("weapon.green.") ? 1 : 0;
+        };
     }
 
     private static double greenLoopHoldSeconds(String eventId) {
