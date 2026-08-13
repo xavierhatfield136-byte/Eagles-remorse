@@ -44,6 +44,13 @@ public class Player extends Ship {
         faction = Faction.PLAYER;
     }
 
+    public Player(ShipRole role, double x, double y, CustomShipDefinition customDefinition, CustomShipRegistry customRegistry) {
+        applyHull(role, x, y);
+        name = "Player";
+        faction = Faction.PLAYER;
+        CustomShipRuntimeAdapter.applyToShip(this, customDefinition, customRegistry);
+    }
+
     /** Rebuild the player stats/turrets from a role template (used by loadouts). */
     public void applyHull(ShipRole role, double x, double y) {
         Faction preservedFaction = (this.faction == null) ? Faction.PLAYER : this.faction;

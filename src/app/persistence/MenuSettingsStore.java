@@ -49,7 +49,7 @@ public final class MenuSettingsStore {
                 modeName = GameMode.CAMPAIGN_OPS.name();
             }
             mapIndex = clamp(mapIndex, 0, 2);
-            playerTeamId = clamp(playerTeamId, 0, 3);
+            playerTeamId = clamp(playerTeamId, 0, 6);
             if (seedText == null) seedText = "0";
             seedText = seedText.trim();
             if (seedText.isBlank()) seedText = "0";

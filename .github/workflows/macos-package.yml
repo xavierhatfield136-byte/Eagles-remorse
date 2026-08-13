@@ -1,0 +1,46 @@
+name: macOS Package
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  package-macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Verification
+        run: ./gradlew --no-daemon currentReleaseVerificationHeadless
+
+      - name: Build macOS package
+        run: ./gradlew --no-daemon phase11MacPackaging
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: EaglesRemorse-macos-package
+          path: |
+            build/package/macos/*.zip
+            build/package/macos/SHA256SUMS-macos.txt
+
+      - name: Attach release assets
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/package/macos/*.zip
+            build/package/macos/SHA256SUMS-macos.txt

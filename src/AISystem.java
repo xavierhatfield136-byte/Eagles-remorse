@@ -3447,6 +3447,7 @@ public final class AISystem {
             case ENEMY -> 0.28;
             case TEAM_C -> -0.10;
             case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> 0.16;
+            case TEAM_E -> 0.0;
         };
     }
 
@@ -3457,6 +3458,7 @@ public final class AISystem {
             case ENEMY -> -0.10;
             case TEAM_C -> 0.34;
             case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> -0.06;
+            case TEAM_E -> 0.0;
         };
     }
 
@@ -3467,6 +3469,7 @@ public final class AISystem {
             case ENEMY -> 0.60;
             case TEAM_C -> 0.22;
             case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> 0.95;
+            case TEAM_E -> 0.35;
         };
     }
 
@@ -3477,6 +3480,7 @@ public final class AISystem {
             case ENEMY -> 0.55;
             case TEAM_C -> 0.20;
             case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> 0.42;
+            case TEAM_E -> 0.28;
         };
     }
 
@@ -3487,6 +3491,7 @@ public final class AISystem {
             case ENEMY -> -0.08;
             case TEAM_C -> 0.26;
             case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> -0.24;
+            case TEAM_E -> 0.0;
         };
     }
 
@@ -5870,7 +5875,8 @@ public final class AISystem {
                 case PLAYER, ALLY -> -0.02;
                 case ENEMY -> -0.12;
                 case TEAM_C -> 0.12;
-            case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> -0.08;
+                case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> -0.08;
+                case TEAM_E -> 0.0;
             };
         }
         return bias;
@@ -5893,7 +5899,8 @@ public final class AISystem {
                 case PLAYER, ALLY -> 0.04;
                 case ENEMY -> 0.08;
                 case TEAM_C -> -0.10;
-            case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> 0.12;
+                case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> 0.12;
+                case TEAM_E -> 0.0;
             };
         }
         return Math.max(0.48, Math.min(1.05, bias));

@@ -14,6 +14,15 @@ import java.util.Locale;
  */
 public class FleetShip extends Ship {
     public FleetShip(ShipRole role, Faction faction, double x, double y) {
+        this(role, faction, x, y, null, null);
+    }
+
+    public FleetShip(ShipRole role, Faction faction, double x, double y, CustomShipDefinition customDefinition) {
+        this(role, faction, x, y, customDefinition, null);
+    }
+
+    public FleetShip(ShipRole role, Faction faction, double x, double y,
+                     CustomShipDefinition customDefinition, CustomShipRegistry customRegistry) {
         this.role = role;
         this.faction = faction;
         this.x = x;
@@ -31,6 +40,7 @@ public class FleetShip extends Ship {
         applyCustomFlightDeckLoadout();
         applyStrikeCraftDurabilityAndDamageRebalance();
         applyCarrierWingCapacityRebalance();
+        CustomShipRuntimeAdapter.applyToShip(this, customDefinition, customRegistry);
     }
 
     public FleetBuildingSystem.HullProfile hullProfile() {

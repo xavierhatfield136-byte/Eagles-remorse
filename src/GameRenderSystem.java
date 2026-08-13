@@ -1314,6 +1314,7 @@ if (DevTools.isDebugOverlay()) {
             case TEAM_D -> new Color(255, 212, 122, alpha);
             case BRIGHT_YELLOW -> new Color(255, 232, 86, alpha);
             case DARK_YELLOW -> new Color(210, 126, 46, alpha);
+            case TEAM_E -> new Color(184, 132, 255, alpha);
         };
     }
 

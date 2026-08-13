@@ -8,7 +8,7 @@ Scope: Build a reusable custom-hull pipeline for player-uploaded PNG ships, expo
 
 The core rule for this feature is:
 
-- [ ] Faction identity and hull definition identity are independent.
+- [x] Faction identity and hull definition identity are independent.
 
 Team E is the first custom-mission place where player-created ships appear. Team E is not the custom ship system itself.
 
@@ -24,18 +24,18 @@ The custom definition decides the hull. The mission roster decides the faction a
 
 ## Non-Negotiable Invariants
 
-- [ ] Saved custom definitions are authoritative. Generation happens only when creating or regenerating a ship, not every time the game loads.
-- [ ] UUID is identity. Display name is cosmetic, and duplicate display names are allowed.
-- [ ] Custom content cannot alter built-in Blue, Red, Green, or Yellow ship definitions.
-- [ ] Team E is custom-mission-only in V1.
-- [ ] Team E must not participate in campaign simulation, territorial ownership, economy, invasions, reinforcements, diplomacy, faction AI, or strategic map ownership in V1.
-- [ ] Mission allegiance is separate from faction appearance.
-- [ ] Missing custom content is a recoverable error, never a startup or mission crash.
-- [ ] Custom ship folders are sandboxed under the game's custom content root.
-- [ ] The runtime must never depend on arbitrary original import paths such as a user's Downloads folder.
-- [ ] Old definitions remain stable across generator updates.
-- [ ] Generator changes must not mutate already-saved custom ships.
-- [ ] Built-in ships must still spawn without loading `CustomShipRegistry`.
+- [x] Saved custom definitions are authoritative. Generation happens only when creating or regenerating a ship, not every time the game loads.
+- [x] UUID is identity. Display name is cosmetic, and duplicate display names are allowed.
+- [x] Custom content cannot alter built-in Blue, Red, Green, or Yellow ship definitions.
+- [x] Team E is custom-mission-only in V1.
+- [x] Team E must not participate in campaign simulation, territorial ownership, economy, invasions, reinforcements, diplomacy, faction AI, or strategic map ownership in V1.
+- [x] Mission allegiance is separate from faction appearance.
+- [x] Missing custom content is a recoverable error, never a startup or mission crash.
+- [x] Custom ship folders are sandboxed under the game's custom content root.
+- [x] The runtime must never depend on arbitrary original import paths such as a user's Downloads folder.
+- [x] Old definitions remain stable across generator updates.
+- [x] Generator changes must not mutate already-saved custom ships.
+- [x] Built-in ships must still spawn without loading `CustomShipRegistry`.
 - [ ] Do not opportunistically refactor campaign faction logic while adding Team E.
 
 ## Desired Pipeline
@@ -80,76 +80,100 @@ save/custom_ships/
     thumbnail.png
 ```
 
-- [ ] Store processed content under `save/custom_ships/<uuid>/`.
-- [ ] Copy and normalize the imported image into `hull.png`.
-- [ ] Generate `thumbnail.png` for UI previews.
-- [ ] Store all generated stats, weapons, hardpoints, and room layout data in `definition.json`.
-- [ ] Do not store the imported image's original filesystem path as a runtime dependency.
+- [x] Store processed content under `save/custom_ships/<uuid>/`.
+- [x] Keep generated and saved custom ships local to the user's computer.
+- [x] Do not place generated player ships under `assets/`, `config/`, or any other Git-tracked content folder.
+- [x] Keep `save/custom_ships/` ignored by Git so GitHub is not crowded with player-generated ships.
+- [x] Store only source code, tests, documentation, and deliberately authored fixtures in the repository.
+- [x] If tests need custom ship content, use tiny deterministic fixtures under a test-only folder, not player-created ships.
+- [x] Copy and normalize the imported image into `hull.png`.
+- [x] Generate `thumbnail.png` for UI previews.
+- [x] Store all generated stats, weapons, hardpoints, and room layout data in `definition.json`.
+- [x] Do not store the imported image's original filesystem path as a runtime dependency.
 - [ ] Add future room for `preview.png`, `metadata.json`, import/export manifests, and content hashes.
 
 ## Data Model
 
-- [ ] Add `CustomHullClass`.
-  - [ ] `SMALL_CRAFT`
-  - [ ] `ESCORT`
-  - [ ] `FRIGATE`
-  - [ ] `CRUISER`
-  - [ ] `CAPITAL`
-  - [ ] `TITAN`
-- [ ] Add `CustomShipDefinition`.
-  - [ ] `UUID id`
-  - [ ] `String displayName`
-  - [ ] `int schemaVersion`
-  - [ ] `int generatorVersion`
-  - [ ] `String hullImagePath`
-  - [ ] `String thumbnailImagePath`
-  - [ ] `CustomHullClass hullClass`
-  - [ ] `ShipRole balanceTemplate`
-  - [ ] `double radius`
-  - [ ] `int hpMax`
-  - [ ] `double shieldMax`
-  - [ ] `double shieldRegen`
-  - [ ] `double desiredSpeed`
-  - [ ] `List<CustomWeaponMount> weapons`
-  - [ ] `String roomLayoutPreset`
+- [x] Add `CustomCombatClassification`.
+  - [x] `PICKET`
+  - [x] `LINE`
+  - [x] `CAPITAL`
+  - [x] `TITAN`
+- [x] Add `CustomHullClass`.
+  - [x] `SMALL_CRAFT`
+  - [x] `ESCORT`
+  - [x] `FRIGATE`
+  - [x] `CRUISER`
+  - [x] `CAPITAL`
+  - [x] `TITAN`
+- [x] Add `CustomWeaponDoctrine`.
+  - [x] `BALANCED`
+  - [x] `GUNSHIP`
+  - [x] `MISSILE`
+  - [x] `POINT_DEFENSE`
+  - [x] `ENERGY`
+- [x] Add `CustomDefenseBias`.
+  - [x] `ARMOR_HEAVY`
+  - [x] `BALANCED`
+  - [x] `SHIELD_HEAVY`
+- [x] Add `CustomShipDefinition`.
+  - [x] `UUID id`
+  - [x] `String displayName`
+  - [x] `String declaredShipClass`
+  - [x] `int schemaVersion`
+  - [x] `int generatorVersion`
+  - [x] `String hullImagePath`
+  - [x] `String thumbnailImagePath`
+  - [x] `CustomHullClass hullClass`
+  - [x] `CustomCombatClassification combatClassification`
+  - [x] `CustomWeaponDoctrine weaponDoctrine`
+  - [x] `CustomDefenseBias defenseBias`
+  - [x] `ShipRole balanceTemplate`
+  - [x] `double radius`
+  - [x] `int hpMax`
+  - [x] `double shieldMax`
+  - [x] `double shieldRegen`
+  - [x] `double desiredSpeed`
+  - [x] `List<CustomWeaponMount> weapons`
+  - [x] `String roomLayoutPreset`
   - [ ] optional generated room polygons after the internals milestone
-- [ ] Add `CustomWeaponMount`.
-  - [ ] stable mount id
-  - [ ] normalized x coordinate from `0.0` to `1.0`
-  - [ ] normalized y coordinate from `0.0` to `1.0`
-  - [ ] weapon kind
-  - [ ] cooldown
-  - [ ] damage
-  - [ ] projectile speed
-  - [ ] range or projectile life
+- [x] Add `CustomWeaponMount`.
+  - [x] stable mount id
+  - [x] normalized x coordinate from `0.0` to `1.0`
+  - [x] normalized y coordinate from `0.0` to `1.0`
+  - [x] weapon kind
+  - [x] cooldown
+  - [x] damage
+  - [x] projectile speed
+  - [x] range or projectile life
   - [ ] firing arc or mount permission, if needed later
-- [ ] Add `CustomShipRegistry`.
-  - [ ] create definition
-  - [ ] load all definitions
-  - [ ] load one definition by UUID
-  - [ ] save definition
-  - [ ] delete definition folder
-  - [ ] validate definition
-  - [ ] report missing content
-- [ ] Add `CustomShipImageProcessor`.
-  - [ ] validate image
-  - [ ] decode PNG
-  - [ ] crop transparent margins
-  - [ ] normalize canvas
-  - [ ] enforce canonical facing direction
+- [x] Add `CustomShipRegistry`.
+  - [x] create definition
+  - [x] load all definitions
+  - [x] load one definition by UUID
+  - [x] save definition
+  - [x] delete definition folder
+  - [x] validate definition
+  - [x] report missing content
+- [x] Add `CustomShipImageProcessor`.
+  - [x] validate image
+  - [x] decode PNG
+  - [x] crop transparent margins
+  - [x] normalize canvas
+- [ ] enforce canonical facing direction
   - [ ] resize if necessary
   - [ ] calculate alpha silhouette
-  - [ ] generate thumbnail
-  - [ ] write processed assets into the per-ship folder
+  - [x] generate thumbnail
+  - [x] write processed assets into the per-ship folder
 
 ## Image Import Rules
 
-- [ ] V1 accepts PNG only.
-- [ ] Transparent pixels mean "not hull."
-- [ ] Reject unreadable or corrupt images.
-- [ ] Enforce max image dimensions.
-- [ ] Enforce max file size.
-- [ ] Preserve alpha.
+- [x] V1 accepts PNG only.
+- [x] Transparent pixels mean "not hull."
+- [x] Reject unreadable or corrupt images.
+- [x] Enforce max image dimensions.
+- [x] Enforce max file size.
+- [x] Preserve alpha.
 - [ ] Show a preview with a clear `FRONT ->` facing indicator.
 - [ ] Require the canonical game orientation: ship forward points right.
 - [ ] Later: add rotate 90 degrees, rotate 180 degrees, flip horizontal, and flip vertical controls.
@@ -159,12 +183,12 @@ save/custom_ships/
 
 Mission code should not accumulate repeated `if (customShipId != null)` branches.
 
-- [ ] Add `ShipDefinitionRef`.
-  - [ ] `BuiltinShipRef` for normal `ShipRole` hulls.
-  - [ ] `CustomShipRef` for UUID-backed custom hulls.
-- [ ] Update `MissionSlotSpec` to reference `ShipDefinitionRef`.
-- [ ] Preserve compatibility with existing `ShipRole defaultHull` launch data until migration is complete.
-- [ ] Ensure mission rosters say "spawn this referenced ship definition" instead of directly choosing only a `ShipRole`.
+- [x] Add `ShipDefinitionRef`.
+  - [x] `BuiltinShipRef` for normal `ShipRole` hulls.
+  - [x] `CustomShipRef` for UUID-backed custom hulls.
+- [x] Update `MissionSlotSpec` to reference `ShipDefinitionRef`.
+- [x] Preserve compatibility with existing `ShipRole defaultHull` launch data until migration is complete.
+- [x] Ensure mission rosters say "spawn this referenced ship definition" instead of directly choosing only a `ShipRole`.
 
 Longer-term direction:
 
@@ -179,53 +203,65 @@ Transitional runtime constructor:
 FleetShip(ShipRole templateRole, Faction faction, CustomShipDefinition customDefinition)
 ```
 
-- [ ] `customDefinition == null` preserves existing built-in behavior.
-- [ ] `customDefinition != null` applies custom sprite, stats, hardpoints, and weapon definitions after the template setup.
+- [x] `customDefinition == null` preserves existing built-in behavior.
+- [x] `customDefinition != null` applies custom sprite, stats, hardpoints, and weapon definitions after the template setup.
 
 ## Team E Boundary
 
-- [ ] Add Team E only where V1 needs it for custom missions.
-- [ ] Keep campaign systems aware only of their existing campaign factions until a later deliberate campaign-custom-content milestone.
-- [ ] Add a faction capability/rules model before adding broad Team E checks.
-  - [ ] playable
-  - [ ] selectable in custom battle
-  - [ ] participates in campaign
-  - [ ] owns territory
-  - [ ] can trade
-  - [ ] can use custom hulls
-- [ ] Initial Team E capabilities:
-  - [ ] playable
-  - [ ] selectable in custom battle
-  - [ ] custom hulls enabled
-  - [ ] campaign participation disabled
-  - [ ] territory ownership disabled
-  - [ ] diplomacy disabled outside mission-defined relationships
+- [x] Add Team E only where V1 needs it for custom missions.
+- [x] Keep campaign systems aware only of their existing campaign factions until a later deliberate campaign-custom-content milestone.
+- [x] Add a faction capability/rules model before adding broad Team E checks.
+  - [x] playable
+  - [x] selectable in custom battle
+  - [x] participates in campaign
+  - [x] owns territory
+  - [x] can trade
+  - [x] can use custom hulls
+- [x] Initial Team E capabilities:
+  - [x] playable
+  - [x] selectable in custom battle
+  - [x] custom hulls enabled
+  - [x] campaign participation disabled
+  - [x] territory ownership disabled
+  - [x] diplomacy disabled outside mission-defined relationships
 - [ ] Do not sprinkle `if (faction == TEAM_E)` through campaign code.
 - [ ] Avoid using color or faction identity as the source of hostility.
 - [ ] Custom missions should define team relationships separately from faction appearance.
 
 ## Weapon Generation Rules
 
-- [ ] Split weapon count from weapon doctrine.
+- [x] Split weapon count from weapon doctrine.
+- [x] Let the player choose the broad weapon type or doctrine before generation.
 - [ ] V1 doctrines:
-  - [ ] Balanced
-  - [ ] Gunship
-  - [ ] Missile
-  - [ ] Point Defense
-  - [ ] Energy
-- [ ] Each hull class defines weapon slot limits.
-- [ ] Each hull class defines an offensive budget.
-- [ ] Each weapon type has a budget cost.
-- [ ] More weapons should consume budget rather than linearly dividing damage by weapon count.
-- [ ] Enforce minimum weapon usefulness so many-gun ships do not become visually noisy pea shooters.
-- [ ] Enforce maximum single-weapon power so one-gun ships do not become absurd.
-- [ ] Save actual generated weapon stats into `definition.json`.
-- [ ] AI effective range must derive from the generated weapons.
+  - [x] Balanced
+  - [x] Gunship
+  - [x] Missile
+  - [x] Point Defense
+  - [x] Energy
+- [x] Use the selected weapon doctrine to fill weapon slots predictably.
+  - [x] Balanced: mixed guns, missiles, and limited point defense.
+  - [x] Gunship: mostly direct-fire guns or beam weapons.
+  - [x] Missile: mostly missile launchers with at least one direct-fire fallback where class budget allows.
+  - [x] Point Defense: more CIWS/intercept mounts with lower anti-ship pressure.
+  - [x] Energy: energy bolts, beam bolts, or direct-energy packages using existing weapon behavior.
+- [x] Each hull class defines weapon slot limits.
+- [x] Each hull class defines an offensive budget.
+- [x] Each combat classification applies a role multiplier:
+  - [x] Picket: scouting, screening, point defense, lighter weapons.
+  - [x] Line: main fleet combatant, balanced durability and firepower.
+  - [x] Capital: slower heavy combatant with larger budgets.
+  - [x] Titan: largest hulls, special packages only when explicitly enabled.
+- [x] Each weapon type has a budget cost.
+- [x] More weapons should consume budget rather than linearly dividing damage by weapon count.
+- [x] Enforce minimum weapon usefulness so many-gun ships do not become visually noisy pea shooters.
+- [x] Enforce maximum single-weapon power so one-gun ships do not become absurd.
+- [x] Save actual generated weapon stats into `definition.json`.
+- [x] AI effective range must derive from the generated weapons.
 
 ## Hardpoint Generation Rules
 
-- [ ] Store hardpoints as normalized coordinates, not pixels.
-- [ ] Initial V1 mount patterns can be deterministic presets:
+- [x] Store hardpoints as normalized coordinates, not pixels.
+- [x] Initial V1 mount patterns can be deterministic presets:
 
 ```text
 1 weapon:
@@ -244,11 +280,11 @@ FleetShip(ShipRole templateRole, Faction faction, CustomShipDefinition customDef
 
 - [ ] Project normalized mount pattern positions onto valid alpha areas of the hull.
 - [ ] Keep turret centers inside the hull silhouette.
-- [ ] Avoid placing mounts too close together.
-- [ ] Prefer symmetry when the weapon count and hull silhouette allow it.
+- [x] Avoid placing mounts too close together.
+- [x] Prefer symmetry when the weapon count and hull silhouette allow it.
 - [ ] Do not place turrets outside visible hull pixels.
-- [ ] Resizing an imported image must not move hardpoints.
-- [ ] Weapons cannot fire backward unless the mount explicitly permits it.
+- [x] Resizing an imported image must not move hardpoints.
+- [x] Weapons cannot fire backward unless the mount explicitly permits it.
 - [ ] Later: add manual hardpoint editing.
 
 ## Internals And Rooms
@@ -276,60 +312,60 @@ Fully procedural room generation is deferred.
 
 Procedural ability generation is out of scope for V1.
 
-- [ ] V1 custom ships receive no novel generated activated ability.
+- [x] V1 custom ships receive no novel generated activated ability.
 - [ ] Optional V1 behavior: inherit a safe ability package from the selected size/profile.
 - [ ] Titan custom ships may later choose authored packages:
   - [ ] Artillery
   - [ ] Missile Barrage
   - [ ] Beam
   - [ ] Carrier
-- [ ] Do not generate new `SuperweaponPattern` behavior from player input.
-- [ ] Reuse systems that AI, renderer, damage model, and UI already understand.
-- [ ] Avoid stun or movement-hindering abilities.
+- [x] Do not generate new `SuperweaponPattern` behavior from player input.
+- [x] Reuse systems that AI, renderer, damage model, and UI already understand.
+- [x] Avoid stun or movement-hindering abilities.
 
 ## Milestone 1: Data Foundation
 
-- [ ] Add `CustomHullClass`.
-- [ ] Add `CustomShipDefinition`.
-- [ ] Add `CustomWeaponMount`.
-- [ ] Add `CustomShipRegistry`.
-- [ ] Add schema version.
-- [ ] Add generator version.
-- [ ] Add UUID identity.
-- [ ] Add per-ship folder management.
-- [ ] Add JSON save/load.
-- [ ] Add definition validation.
-- [ ] Add malformed/missing content reporting.
+- [x] Add `CustomHullClass`.
+- [x] Add `CustomShipDefinition`.
+- [x] Add `CustomWeaponMount`.
+- [x] Add `CustomShipRegistry`.
+- [x] Add schema version.
+- [x] Add generator version.
+- [x] Add UUID identity.
+- [x] Add per-ship folder management.
+- [x] Add JSON save/load.
+- [x] Add definition validation.
+- [x] Add malformed/missing content reporting.
 
 Tests:
 
-- [ ] Definition round-trips through save/load.
-- [ ] Duplicate display names are allowed.
-- [ ] UUID remains stable after save/load.
-- [ ] Malformed JSON cannot crash startup.
-- [ ] Missing custom ship folder is recreated where appropriate.
-- [ ] Old schema can be rejected or migrated cleanly.
-- [ ] Custom content cannot escape `save/custom_ships/`.
-- [ ] Built-in ships still spawn without loading `CustomShipRegistry`.
+- [x] Definition round-trips through save/load.
+- [x] Duplicate display names are allowed.
+- [x] UUID remains stable after save/load.
+- [x] Malformed JSON cannot crash startup.
+- [x] Missing custom ship folder is recreated where appropriate.
+- [x] Old schema can be rejected or migrated cleanly.
+- [x] Custom content cannot escape `save/custom_ships/`.
+- [x] Built-in ships still spawn without loading `CustomShipRegistry`.
 
 ## Milestone 2: Runtime Hull
 
-- [ ] Add custom PNG load path.
-- [ ] Add custom sprite render path.
-- [ ] Apply custom radius.
-- [ ] Apply custom hp, shields, shield regen, and speed.
-- [ ] Apply generated weapon definitions.
-- [ ] Apply normalized mounts.
-- [ ] Allow AI movement for custom ships.
-- [ ] Allow AI firing for custom ships.
-- [ ] Add missing sprite fallback or recoverable missing-content state.
+- [x] Add custom PNG load path.
+- [x] Add custom sprite render path.
+- [x] Apply custom radius.
+- [x] Apply custom hp, shields, shield regen, and speed.
+- [x] Apply generated weapon definitions.
+- [x] Apply normalized mounts.
+- [x] Allow AI movement for custom ships.
+- [x] Allow AI firing for custom ships.
+- [x] Add missing sprite fallback or recoverable missing-content state.
 
 Tests:
 
-- [ ] Custom ship spawns.
-- [ ] Custom sprite loads.
-- [ ] Missing sprite produces a recoverable fallback/error.
-- [ ] Mount coordinates remain within `0.0..1.0`.
+- [x] Custom ship spawns.
+- [x] Custom sprite loads.
+- [x] Missing sprite produces a recoverable fallback/error.
+- [x] Mount coordinates remain within `0.0..1.0`.
 - [ ] AI targets custom ship.
 - [ ] AI-controlled custom ship fires.
 - [ ] Custom ship effective range is recognized by AI.
@@ -337,49 +373,73 @@ Tests:
 
 ## Milestone 3: Custom Mission Integration
 
-- [ ] Add Team E where custom missions require it.
+- [x] Add Team E where custom missions require it.
 - [ ] Add mission relationship rules separate from faction identity.
-- [ ] Add `ShipDefinitionRef`.
-- [ ] Update `MissionSlotSpec`.
-- [ ] Update custom mission roster model.
-- [ ] Update `CustomBattleSpawnPlan`.
-- [ ] Allow custom ships in single-player custom mission rosters.
+- [x] Add `ShipDefinitionRef`.
+- [x] Update `MissionSlotSpec`.
+- [x] Update custom mission roster model.
+- [x] Update `CustomBattleSpawnPlan`.
+- [x] Allow custom ships in single-player custom mission rosters.
+- [x] Expose Team E in the Custom Battle player-team selector.
 - [ ] Allow Team E to be player, ally, hostile, or neutral based on mission setup.
-- [ ] Keep campaign generation from seeing Team E or custom ships.
+- [x] Keep campaign generation from seeing Team E or custom ships.
 
 Tests:
 
-- [ ] Team E custom ship can be player-controlled.
-- [ ] Team E custom ship can be hostile.
-- [ ] Same custom hull can spawn under different factions.
-- [ ] Built-in roster still works.
-- [ ] Campaign fleet generation never includes Team E.
-- [ ] Custom ship does not appear in campaign fleet generation.
+- [x] Team E custom ship can be player-controlled.
+- [x] Team E custom ship can be hostile.
+- [x] Same custom hull can spawn under different factions.
+- [x] Custom Battle player-team selector includes Team E.
+- [x] Built-in roster still works.
+- [x] Campaign fleet generation never includes Team E.
+- [x] Custom ship does not appear in campaign fleet generation.
 - [ ] Two Team E rosters can be hostile if mission relationships say so.
 - [ ] Custom mission missing a referenced custom ship shows a recoverable error.
 
 ## Milestone 4: Builder V1
 
-- [ ] Add Custom Ships menu.
-- [ ] Add import PNG action.
-- [ ] Add name field.
-- [ ] Add hull class selector.
-- [ ] Add weapon count selector.
-- [ ] Add weapon doctrine selector.
-- [ ] Add Generate action.
-- [ ] Add preview.
-- [ ] Add Save action.
-- [ ] Add Delete action.
+- [x] Add Team E Shipyard main-menu entry.
+- [x] Add import PNG action.
+- [x] Add name field.
+- [x] Add uploaded ship class selector or field.
+  - [ ] Fighter
+  - [ ] Corvette
+  - [ ] Frigate
+  - [ ] Destroyer
+  - [ ] Cruiser
+  - [ ] Battleship
+  - [ ] Carrier
+  - [ ] Station
+  - [x] Custom label
+- [x] Add hull class selector.
+- [x] Add combat classification selector.
+  - [x] Picket
+  - [x] Line
+  - [x] Capital
+  - [x] Titan
+- [x] Add weapon count selector.
+- [x] Add weapon doctrine selector.
+- [ ] Add weapon type selector if this is separate from doctrine in the first UI.
+- [x] Add armor-vs-shield balance selector.
+  - [x] Armor-heavy
+  - [x] Balanced
+  - [x] Shield-heavy
+- [x] Add Generate action.
+- [x] Add preview.
+- [x] Add Save action.
+- [x] Add Delete action.
 - [ ] Add regenerate warning when replacing generated data.
 
 Tests:
 
-- [ ] Importing a valid PNG creates a custom ship folder.
-- [ ] Invalid image is rejected with a clear message.
-- [ ] Saved ship appears in builder list.
-- [ ] Deleting a ship removes only its sandboxed folder.
+- [x] Importing a valid PNG creates a custom ship folder.
+- [x] Invalid image is rejected with a clear message.
+- [x] Saved ship appears in builder list.
+- [x] Saved ship remains under the local custom ship folder and is not added to Git-tracked assets.
+- [x] Deleting a ship removes only its sandboxed folder.
 - [ ] Regenerating a ship changes generated data only after confirmation.
-- [ ] Duplicate display names remain selectable without collision.
+- [x] Duplicate display names remain selectable without collision.
+- [x] Armor-heavy, balanced, and shield-heavy selections produce different saved stat distributions with the same total defensive budget.
 
 ## Milestone 5: Better Hardpoints
 

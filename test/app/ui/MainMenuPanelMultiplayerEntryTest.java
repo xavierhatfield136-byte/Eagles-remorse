@@ -3,6 +3,7 @@ package app.ui;
 import app.config.GameConfig;
 import app.config.GameMode;
 import app.config.MultiplayerMissionChoice;
+import app.config.PlayerTeamChoice;
 
 import javax.swing.JComponent;
 import javax.swing.JButton;
@@ -60,6 +61,33 @@ class MainMenuPanelMultiplayerEntryTest {
         } finally {
             panel.stopBackgroundTimerForTests();
         }
+    }
+
+    @Test
+    void mainMenuExposesTeamEShipCreatorEntry() {
+        MainMenuPanel panel = menu();
+
+        try {
+            JButton shipyard = (JButton) findByName(panel, "customShipCreatorButton");
+
+            assertNotNull(shipyard);
+            assertEquals("Team E Shipyard", shipyard.getText());
+        } finally {
+            panel.stopBackgroundTimerForTests();
+        }
+    }
+
+    @Test
+    void customBattleModeAllowsTeamEForPlayerSelection() throws Exception {
+        java.lang.reflect.Method allowedTeams = MainMenuPanel.class.getDeclaredMethod(
+                "allowedTeamsForMode", GameMode.class);
+        allowedTeams.setAccessible(true);
+
+        PlayerTeamChoice[] customBattleTeams = (PlayerTeamChoice[]) allowedTeams.invoke(null, GameMode.CUSTOM_BATTLES);
+        PlayerTeamChoice[] lastStandTeams = (PlayerTeamChoice[]) allowedTeams.invoke(null, GameMode.LAST_STAND);
+
+        assertTrue(java.util.Arrays.asList(customBattleTeams).contains(PlayerTeamChoice.TEAM_E));
+        assertTrue(!java.util.Arrays.asList(lastStandTeams).contains(PlayerTeamChoice.TEAM_E));
     }
 
     @Test

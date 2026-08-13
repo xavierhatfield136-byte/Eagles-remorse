@@ -59,6 +59,7 @@ public final class DoctrineRegistry {
             case ENEMY -> KINETIC_CONSORTIUM;
             case TEAM_C -> AEGIS_LATTICE;
             case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> VIPER_BARRAGE;
+            case TEAM_E -> ENERGY_NAVY;
         };
     }
 
@@ -328,6 +329,7 @@ public final class DoctrineRegistry {
                 case HAULER -> 1.0256;
                 default -> 1.0;
             };
+            case TEAM_E -> 1.0;
         };
     }
 

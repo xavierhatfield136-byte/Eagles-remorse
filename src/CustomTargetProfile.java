@@ -1,0 +1,8 @@
+public enum CustomTargetProfile {
+    GENERAL_PURPOSE,
+    SMALL_CRAFT,
+    MISSILES,
+    FRIGATES_AND_CRUISERS,
+    CAPITAL_AND_TITAN,
+    STRUCTURES
+}

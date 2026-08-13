@@ -4,6 +4,8 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.UUID;
+import java.nio.file.Path;
 
 /**
  * Base ship.
@@ -85,6 +87,10 @@ public abstract class Ship {
     public String name = "Ship";
     public Faction faction = Faction.ENEMY;
     public ShipRole role = ShipRole.FRIGATE;
+    public UUID customShipDefinitionId = null;
+    public CustomShipDefinition customShipDefinition = null;
+    public Path customHullImagePath = null;
+    public Path customThumbnailImagePath = null;
 
     public double x, y;
     public double vx, vy; // per-tick delta

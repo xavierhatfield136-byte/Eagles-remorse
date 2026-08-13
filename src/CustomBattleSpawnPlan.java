@@ -17,11 +17,26 @@ public record CustomBattleSpawnPlan(BaseSpawn friendlyBase,
     public record BaseSpawn(Faction faction, double x, double y) {}
 
     public record ShipSpawn(ShipRole role,
+                            ShipDefinitionRef definitionRef,
                             Faction faction,
                             double x,
                             double y,
                             double angle,
-                            boolean playerShip) {}
+                            boolean playerShip) {
+        public ShipSpawn(ShipRole role,
+                         Faction faction,
+                         double x,
+                         double y,
+                         double angle,
+                         boolean playerShip) {
+            this(role, ShipDefinitionRef.builtin(role), faction, x, y, angle, playerShip);
+        }
+
+        public ShipSpawn {
+            if (role == null) role = ShipRole.FRIGATE;
+            if (definitionRef == null) definitionRef = ShipDefinitionRef.builtin(role);
+        }
+    }
 
     public static CustomBattleSpawnPlan create(int worldW,
                                                int worldH,
@@ -46,7 +61,7 @@ public record CustomBattleSpawnPlan(BaseSpawn friendlyBase,
         BaseSpawn enemyBase = new BaseSpawn(enemyFaction, enemyBasePos[0], enemyBasePos[1]);
 
         double[] playerPos = inwardSpawnNearBase(safeWorldW, safeWorldH, friendlyBase.x(), friendlyBase.y());
-        ShipSpawn playerSpawn = new ShipSpawn(ShipRole.MOTHERSHIP, playerFaction,
+        ShipSpawn playerSpawn = new ShipSpawn(ShipRole.MOTHERSHIP, ShipDefinitionRef.builtin(ShipRole.MOTHERSHIP), playerFaction,
                 playerPos[0], playerPos[1], 0.0, true);
 
         LinkedHashMap<ShipRole, Integer> friendlyRoster = parseRoster(friendlyRosterText);
@@ -68,12 +83,41 @@ public record CustomBattleSpawnPlan(BaseSpawn friendlyBase,
         }
         int playerTeamId = playerTeamId(spec);
         int enemyTeamId = enemyTeamId(spec, playerTeamId);
-        LinkedHashMap<ShipRole, Integer> friendlyRoster = rosterForTeam(spec, playerTeamId);
-        LinkedHashMap<ShipRole, Integer> enemyRoster = rosterForTeam(spec, enemyTeamId);
-        if (friendlyRoster.isEmpty()) friendlyRoster = defaultRoster(true);
-        if (enemyRoster.isEmpty()) enemyRoster = defaultRoster(false);
-        return create(spec.worldW(), spec.worldH(), rng, playerTeamId, enemyTeamId,
-                encodeRoster(friendlyRoster), encodeRoster(enemyRoster));
+        int safeWorldW = Math.max(1800, spec.worldW());
+        int safeWorldH = Math.max(1800, spec.worldH());
+        Random random = rng == null ? new Random(0L) : rng;
+        int safeEnemyTeamId = enemyTeamId == playerTeamId
+                ? (playerTeamId == 0 ? 1 : 0)
+                : enemyTeamId;
+
+        Faction playerFaction = playerFactionForTeamId(playerTeamId);
+        Faction friendlyFaction = Faction.forTeamId(playerTeamId);
+        Faction enemyFaction = Faction.forTeamId(safeEnemyTeamId);
+        double[] friendlyBasePos = edgeBasePosition(safeWorldW, safeWorldH, true);
+        double[] enemyBasePos = edgeBasePosition(safeWorldW, safeWorldH, false);
+        BaseSpawn friendlyBase = new BaseSpawn(friendlyFaction, friendlyBasePos[0], friendlyBasePos[1]);
+        BaseSpawn enemyBase = new BaseSpawn(enemyFaction, enemyBasePos[0], enemyBasePos[1]);
+
+        MissionSlotSpec playerSlot = firstPlayerSlot(spec, playerTeamId);
+        ShipDefinitionRef playerRef = playerSlot == null ? ShipDefinitionRef.builtin(ShipRole.MOTHERSHIP) : playerSlot.definitionRef();
+        ShipRole playerRole = playerRef != null && playerRef.isCustom()
+                ? playerRef.templateRole()
+                : ShipRole.MOTHERSHIP;
+        double[] playerPos = inwardSpawnNearBase(safeWorldW, safeWorldH, friendlyBase.x(), friendlyBase.y());
+        ShipSpawn playerSpawn = new ShipSpawn(playerRole, playerRef, playerFaction,
+                playerPos[0], playerPos[1], 0.0, true);
+
+        ArrayList<MissionSlotSpec> friendlySlots = rosterSlotsForTeam(spec, playerTeamId);
+        ArrayList<MissionSlotSpec> enemySlots = rosterSlotsForTeam(spec, safeEnemyTeamId);
+        if (friendlySlots.isEmpty()) friendlySlots = slotsFromRoster(playerTeamId, defaultRoster(true), 10_000);
+        if (enemySlots.isEmpty()) enemySlots = slotsFromRoster(safeEnemyTeamId, defaultRoster(false), 20_000);
+
+        ArrayList<ShipSpawn> rosterSpawns = new ArrayList<>();
+        addSlotSpawns(rosterSpawns, safeWorldW, safeWorldH, random,
+                friendlyFaction, friendlyBase, friendlySlots, true);
+        addSlotSpawns(rosterSpawns, safeWorldW, safeWorldH, random,
+                enemyFaction, enemyBase, enemySlots, false);
+        return new CustomBattleSpawnPlan(friendlyBase, enemyBase, playerSpawn, rosterSpawns);
     }
 
     private static void addRosterSpawns(ArrayList<ShipSpawn> out,
@@ -120,7 +164,51 @@ public record CustomBattleSpawnPlan(BaseSpawn friendlyBase,
             double angle = playerSide
                     ? Math.atan2(centerY - y, centerX - x)
                     : Math.atan2(base.y() - y, base.x() - x);
-            out.add(new ShipSpawn(role, faction, x, y, angle, false));
+            out.add(new ShipSpawn(role, ShipDefinitionRef.builtin(role), faction, x, y, angle, false));
+        }
+    }
+
+    private static void addSlotSpawns(ArrayList<ShipSpawn> out,
+                                      int worldW,
+                                      int worldH,
+                                      Random rng,
+                                      Faction faction,
+                                      BaseSpawn base,
+                                      List<MissionSlotSpec> slots,
+                                      boolean playerSide) {
+        ArrayList<MissionSlotSpec> ordered = new ArrayList<>(slots == null ? List.of() : slots);
+        ordered.sort((a, b) -> Integer.compare(spawnWeight(b.defaultHull()), spawnWeight(a.defaultHull())));
+        if (ordered.isEmpty()) return;
+
+        double centerX = worldW * 0.5;
+        double centerY = worldH * 0.5;
+        double dx = centerX - base.x();
+        double dy = centerY - base.y();
+        double len = Math.hypot(dx, dy);
+        if (len <= 1e-6) len = 1.0;
+        double nx = dx / len;
+        double ny = dy / len;
+        double tx = -ny;
+        double ty = nx;
+
+        int columns = Math.max(4, (int) Math.ceil(Math.sqrt(ordered.size())));
+        for (int i = 0; i < ordered.size(); i++) {
+            MissionSlotSpec slot = ordered.get(i);
+            ShipRole role = slot.defaultHull();
+            int row = i / columns;
+            int col = i % columns;
+            double lane = col - (columns - 1) * 0.5;
+            double size = spacingScale(role);
+            double forward = 340.0 + row * (175.0 * size);
+            double lateral = lane * (150.0 * size);
+            double jitterX = (rng.nextDouble() - 0.5) * 26.0;
+            double jitterY = (rng.nextDouble() - 0.5) * 26.0;
+            double x = GameMath.clamp(base.x() + nx * forward + tx * lateral + jitterX, 20.0, worldW - 20.0);
+            double y = GameMath.clamp(base.y() + ny * forward + ty * lateral + jitterY, 20.0, worldH - 20.0);
+            double angle = playerSide
+                    ? Math.atan2(centerY - y, centerX - x)
+                    : Math.atan2(base.y() - y, base.x() - x);
+            out.add(new ShipSpawn(role, slot.definitionRef(), faction, x, y, angle, false));
         }
     }
 
@@ -211,24 +299,41 @@ public record CustomBattleSpawnPlan(BaseSpawn friendlyBase,
         return playerTeamId == 0 ? 1 : 0;
     }
 
-    private static LinkedHashMap<ShipRole, Integer> rosterForTeam(MissionLaunchSpec spec, int teamId) {
-        LinkedHashMap<ShipRole, Integer> roster = new LinkedHashMap<>();
+    private static MissionSlotSpec firstPlayerSlot(MissionLaunchSpec spec, int playerTeamId) {
+        for (MissionSlotSpec slot : spec.playerSlots()) {
+            if (slot != null && slot.teamId() == playerTeamId) return slot;
+        }
+        for (MissionSlotSpec slot : spec.resolvedRosters()) {
+            if (slot != null && slot.teamId() == playerTeamId
+                    && (slot.controlMode() == MissionSlotControlMode.PLAYER_REQUIRED
+                    || slot.controlMode() == MissionSlotControlMode.PLAYER_OR_AI)) {
+                return slot;
+            }
+        }
+        return null;
+    }
+
+    private static ArrayList<MissionSlotSpec> rosterSlotsForTeam(MissionLaunchSpec spec, int teamId) {
+        ArrayList<MissionSlotSpec> roster = new ArrayList<>();
         for (MissionSlotSpec slot : spec.resolvedRosters()) {
             if (slot == null || slot.teamId() != teamId) continue;
-            ShipRole role = slot.defaultHull();
-            if (role != null) roster.merge(role, 1, Integer::sum);
+            roster.add(slot);
         }
         return roster;
     }
 
-    private static String encodeRoster(LinkedHashMap<ShipRole, Integer> roster) {
-        StringBuilder encoded = new StringBuilder();
+    private static ArrayList<MissionSlotSpec> slotsFromRoster(int teamId, LinkedHashMap<ShipRole, Integer> roster, int baseSlotId) {
+        ArrayList<MissionSlotSpec> slots = new ArrayList<>();
+        int nextSlotId = Math.max(1, baseSlotId);
         for (Map.Entry<ShipRole, Integer> entry : roster.entrySet()) {
             if (entry.getKey() == null || entry.getValue() == null || entry.getValue() <= 0) continue;
-            if (!encoded.isEmpty()) encoded.append(';');
-            encoded.append(entry.getKey().name()).append('=').append(entry.getValue());
+            for (int i = 0; i < entry.getValue(); i++) {
+                slots.add(new MissionSlotSpec(nextSlotId++, teamId, entry.getKey(),
+                        MissionSlotControlMode.AI_ONLY, true,
+                        "default-" + teamId + "-" + entry.getKey().name().toLowerCase(Locale.ROOT) + "-" + i));
+            }
         }
-        return encoded.toString();
+        return slots;
     }
 
     private static int spawnWeight(ShipRole role) {

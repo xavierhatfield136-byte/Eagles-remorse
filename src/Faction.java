@@ -5,7 +5,8 @@ public enum Faction {
     TEAM_C(2, "Green"),
     TEAM_D(3, "Yellow"),
     BRIGHT_YELLOW(4, "Bright Yellow"),
-    DARK_YELLOW(5, "Dark Orange-Yellow");
+    DARK_YELLOW(5, "Dark Orange-Yellow"),
+    TEAM_E(6, "Custom");
 
     private static volatile boolean campaignBlueGreenAlliance = false;
     private static volatile boolean campaignBlueYellowAlliance = false;
@@ -54,6 +55,7 @@ public enum Faction {
         return switch (this) {
             case BRIGHT_YELLOW -> "BYC";
             case DARK_YELLOW -> "DYC";
+            case TEAM_E -> "CST";
             case TEAM_D -> "YEL";
             case PLAYER, ALLY -> "BLU";
             case ENEMY -> "RED";
@@ -65,6 +67,7 @@ public enum Faction {
         return switch (this) {
             case BRIGHT_YELLOW -> "relief_screen_and_open_escort_columns";
             case DARK_YELLOW -> "compressed_spearhead_and_red_interlock";
+            case TEAM_E -> "custom_mission_roster";
             case TEAM_D -> "legacy_yellow_viper_screen";
             case PLAYER, ALLY -> "blue_mutual_support";
             case ENEMY -> "red_pressure_spearhead";
@@ -76,6 +79,7 @@ public enum Faction {
         return switch (this) {
             case BRIGHT_YELLOW -> "civilian_protection_coalition_legitimacy";
             case DARK_YELLOW -> "centralized_security_red_alignment";
+            case TEAM_E -> "custom_mission_only";
             case TEAM_D -> "legacy_yellow_survival";
             case PLAYER, ALLY -> "blue_command";
             case ENEMY -> "red_domination";
@@ -184,6 +188,7 @@ public enum Faction {
             case 3 -> TEAM_D;
             case 4 -> BRIGHT_YELLOW;
             case 5 -> DARK_YELLOW;
+            case 6 -> TEAM_E;
             default -> ALLY;
         };
     }

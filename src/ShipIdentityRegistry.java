@@ -116,6 +116,7 @@ public final class ShipIdentityRegistry {
             case ENEMY -> RED_KINETIC_MOMENTUM;
             case TEAM_C -> GREEN_AEGIS_LATTICE;
             case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> YELLOW_VIPER_ASSAULT;
+            case TEAM_E -> NONE_TRAIT;
         };
     }
 
@@ -347,6 +348,7 @@ public final class ShipIdentityRegistry {
             case ENEMY -> Faction.ENEMY;
             case TEAM_C -> Faction.TEAM_C;
             case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> Faction.TEAM_D;
+            case TEAM_E -> null;
         };
     }
 
@@ -377,6 +379,7 @@ public final class ShipIdentityRegistry {
             case ENEMY -> red;
             case TEAM_C -> green;
             case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> yellow;
+            case TEAM_E -> new BonusSpec(IdentityStat.NONE, 1.0, "Custom Definition");
         };
         return new RoleBonus(
                 selected.stat,

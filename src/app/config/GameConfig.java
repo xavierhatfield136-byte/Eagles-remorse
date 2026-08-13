@@ -122,9 +122,9 @@ public class GameConfig {
         this.randomEvents = true;
         this.seed = seed;
         this.fullscreen = fullscreen;
-        this.playerTeamId = Math.max(0, Math.min(3, playerTeamId));
+        this.playerTeamId = Math.max(0, Math.min(6, playerTeamId));
         this.resumeCampaign = resumeCampaign;
-        this.customBattleEnemyTeamId = Math.max(0, Math.min(3, customBattleEnemyTeamId));
+        this.customBattleEnemyTeamId = Math.max(0, Math.min(6, customBattleEnemyTeamId));
         this.customBattleFriendlyRoster = (customBattleFriendlyRoster == null) ? "" : customBattleFriendlyRoster.trim();
         this.customBattleEnemyRoster = (customBattleEnemyRoster == null) ? "" : customBattleEnemyRoster.trim();
         this.startupPreset = (startupPreset == null) ? "" : startupPreset.trim();

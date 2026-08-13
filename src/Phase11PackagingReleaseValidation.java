@@ -32,7 +32,7 @@ public final class Phase11PackagingReleaseValidation {
                 new DistributionChannel("itch", APP_BUNDLE_NAME + "-<version>.zip", "prepared",
                         "Portable ZIP is the canonical itch.io upload; butler may push the unpacked app-image directory."),
                 new DistributionChannel("github", APP_BUNDLE_NAME + "-<version>.zip/.exe + Linux .tar.gz", "prepared",
-                        "GitHub Actions builds native Windows and Linux artifacts and attaches them to releases."),
+                        "GitHub Actions builds native Windows, Linux, and macOS artifacts and attaches them to releases."),
                 new DistributionChannel("private", APP_BUNDLE_NAME + "-<version> platform archive", "prepared",
                         "Private distribution uses the appropriate platform archive plus its SHA256SUMS file."),
                 new DistributionChannel("steam", "deferred", "investigated",
@@ -71,6 +71,7 @@ public final class Phase11PackagingReleaseValidation {
         requireFile(base.resolve("docs/release/DISTRIBUTION_CHANNELS.md"), errors, "distribution channel plan");
         requireFile(base.resolve(".github/workflows/windows-package.yml"), errors, "GitHub Windows package workflow");
         requireFile(base.resolve(".github/workflows/linux-package.yml"), errors, "GitHub Linux package workflow");
+        requireFile(base.resolve(".github/workflows/macos-package.yml"), errors, "GitHub macOS package workflow");
 
         String build = Files.readString(base.resolve("build.gradle"), StandardCharsets.UTF_8);
         contains(build, "JavaLanguageVersion.of(21)", errors, "Gradle must target Java 21");
@@ -79,6 +80,8 @@ public final class Phase11PackagingReleaseValidation {
         contains(build, "packageWindowsExe", errors, "EXE installer task missing");
         contains(build, "packageLinuxAppImage", errors, "Linux app-image task missing");
         contains(build, "packageLinuxTar", errors, "Linux portable tarball task missing");
+        contains(build, "packageMacAppImage", errors, "macOS app-image task missing");
+        contains(build, "packageMacZip", errors, "macOS portable ZIP task missing");
         contains(build, "--win-menu", errors, "installer menu shortcut option missing");
         contains(build, "--win-shortcut", errors, "installer desktop shortcut option missing");
         contains(build, "hasWixTools", errors, "WiX detection missing");
@@ -107,18 +110,22 @@ public final class Phase11PackagingReleaseValidation {
         Path base = root == null ? Path.of(".") : root;
         List<String> errors = new ArrayList<>(validateProjectContract(base));
         String version = readVersion(base);
-        boolean windows = "windows".equalsIgnoreCase(platform);
-        Path packageDir = base.resolve(Path.of("build", "package", windows ? "windows" : "linux")).normalize();
-        Path appImage = packageDir.resolve(APP_BUNDLE_NAME);
+        String normalizedPlatform = normalizePlatform(platform);
+        boolean windows = "windows".equals(normalizedPlatform);
+        boolean macos = "macos".equals(normalizedPlatform);
+        Path packageDir = base.resolve(Path.of("build", "package", normalizedPlatform)).normalize();
+        Path appImage = packageDir.resolve(macos ? APP_BUNDLE_NAME + ".app" : APP_BUNDLE_NAME);
         Path archive = packageDir.resolve(windows
                 ? APP_BUNDLE_NAME + "-" + version + "-windows-x64-full.zip"
-                : APP_BUNDLE_NAME + "-" + version + "-linux-x64.tar.gz");
+                : (macos
+                ? APP_BUNDLE_NAME + "-" + version + "-macos.zip"
+                : APP_BUNDLE_NAME + "-" + version + "-linux-x64.tar.gz"));
 
         if (!Files.isDirectory(appImage)) errors.add("app image missing: " + appImage);
         if (!Files.isRegularFile(archive)) errors.add("portable archive missing: " + archive);
 
-        Path appDir = appImage.resolve(windows ? "app" : Path.of("lib", "app").toString());
-        Path runtimeDir = appImage.resolve(windows ? "runtime" : Path.of("lib", "runtime").toString());
+        Path appDir = appImage.resolve(windows ? "app" : (macos ? Path.of("Contents", "app").toString() : Path.of("lib", "app").toString()));
+        Path runtimeDir = appImage.resolve(windows ? "runtime" : (macos ? Path.of("Contents", "runtime", "Contents", "Home").toString() : Path.of("lib", "runtime").toString()));
         Path jar = findFirst(appDir, ".jar");
         if (jar == null) errors.add("packaged app JAR missing under " + appDir);
         else validateJar(jar, version, errors);
@@ -127,16 +134,24 @@ public final class Phase11PackagingReleaseValidation {
         Path runtimeModules = runtimeDir.resolve(Path.of("lib", "modules"));
         Path runtimeJvm = windows
                 ? runtimeDir.resolve(Path.of("bin", "server", "jvm.dll"))
-                : runtimeDir.resolve(Path.of("lib", "server", "libjvm.so"));
+                : runtimeDir.resolve(macos ? Path.of("lib", "server", "libjvm.dylib") : Path.of("lib", "server", "libjvm.so"));
         if (!Files.isRegularFile(runtimeRelease)) errors.add("bundled Java runtime release metadata missing: " + runtimeRelease);
         if (!Files.isRegularFile(runtimeModules)) errors.add("bundled Java runtime modules missing: " + runtimeModules);
         if (!Files.isRegularFile(runtimeJvm)) errors.add("bundled Java runtime JVM missing: " + runtimeJvm);
-        Path launcher = appImage.resolve(windows ? APP_BUNDLE_NAME + ".exe" : Path.of("bin", APP_BUNDLE_NAME).toString());
+        Path launcher = appImage.resolve(windows ? APP_BUNDLE_NAME + ".exe"
+                : (macos ? Path.of("Contents", "MacOS", APP_BUNDLE_NAME).toString() : Path.of("bin", APP_BUNDLE_NAME).toString()));
         if (!Files.isRegularFile(launcher)) errors.add("app launcher missing: " + launcher);
 
-        if (windows && Files.isRegularFile(archive)) validateZip(archive, errors);
-        writeChecksums(packageDir, windows ? "SHA256SUMS-windows.txt" : "SHA256SUMS-linux.txt");
+        if ((windows || macos) && Files.isRegularFile(archive)) validateZip(archive, errors);
+        writeChecksums(packageDir, windows ? "SHA256SUMS-windows.txt" : (macos ? "SHA256SUMS-macos.txt" : "SHA256SUMS-linux.txt"));
         return errors;
+    }
+
+    private static String normalizePlatform(String platform) {
+        String value = platform == null ? "" : platform.trim().toLowerCase(Locale.ROOT);
+        if (value.equals("mac") || value.equals("darwin") || value.equals("osx")) return "macos";
+        if (value.equals("windows") || value.equals("win")) return "windows";
+        return value.equals("macos") ? "macos" : "linux";
     }
 
     public static void main(String[] args) throws Exception {
@@ -185,9 +200,12 @@ public final class Phase11PackagingReleaseValidation {
 
     private static void validateZip(Path zip, List<String> errors) throws IOException {
         try (ZipFile zf = new ZipFile(zip.toFile())) {
-            boolean hasRuntimeRelease = zf.stream().anyMatch(e -> e.getName().endsWith("runtime/release"));
-            boolean hasRuntimeModules = zf.stream().anyMatch(e -> e.getName().endsWith("runtime/lib/modules"));
-            boolean hasJar = zf.stream().anyMatch(e -> e.getName().startsWith("app/") && e.getName().endsWith(".jar"));
+            boolean hasRuntimeRelease = zf.stream().anyMatch(e -> e.getName().endsWith("runtime/release")
+                    || e.getName().endsWith("runtime/Contents/Home/release"));
+            boolean hasRuntimeModules = zf.stream().anyMatch(e -> e.getName().endsWith("runtime/lib/modules")
+                    || e.getName().endsWith("runtime/Contents/Home/lib/modules"));
+            boolean hasJar = zf.stream().anyMatch(e -> (e.getName().startsWith("app/")
+                    || e.getName().contains(".app/Contents/app/")) && e.getName().endsWith(".jar"));
             boolean hasSource = zf.stream().anyMatch(e -> e.getName().startsWith("src/"));
             boolean hasIde = zf.stream().anyMatch(e -> e.getName().startsWith(".idea/") || e.getName().endsWith(".iml"));
             if (!hasRuntimeRelease) errors.add("ZIP does not contain bundled runtime/release metadata");

@@ -1,0 +1,9 @@
+public enum CustomDamageProfile {
+    BALANCED,
+    SHIELD_PRESSURE,
+    ARMOR_PIERCING,
+    HULL_BREAKER,
+    AREA_SUPPRESSION,
+    ANTI_FIGHTER,
+    ANTI_CAPITAL
+}

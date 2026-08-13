@@ -8748,6 +8748,9 @@ public final class CampaignSystem extends CampaignSystemModels {
             EventSystem.showBanner(ctx, "ATOMIC STRIKE  |  LAUNCH FAILED", 1.2);
             return false;
         }
+        if (!hasInfiniteTacticalStrikeStores(ctx) && st.strategicAtomicCharges > 0) {
+            st.strategicAtomicCharges = Math.max(0, st.strategicAtomicCharges - 1);
+        }
         startStrikeCooldown(st, "ATOMIC_STRIKE");
         st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + 18.0, 0.0, 100.0);
         st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel + 20.0, 0.0, 100.0);
@@ -16528,6 +16531,7 @@ public final class CampaignSystem extends CampaignSystemModels {
             case TEAM_D, BRIGHT_YELLOW -> "YELLOW";
             case DARK_YELLOW -> "DARK_YELLOW";
             case ENEMY -> "RED";
+            case TEAM_E -> "CUSTOM";
         };
     }
 
@@ -18087,6 +18091,7 @@ public final class CampaignSystem extends CampaignSystemModels {
             case ENEMY -> location.ownerFaction == Faction.ENEMY;
             case PLAYER, ALLY -> location.ownerFaction == Faction.PLAYER
                     || location.ownerFaction == Faction.ALLY;
+            case TEAM_E -> false;
         };
     }
 

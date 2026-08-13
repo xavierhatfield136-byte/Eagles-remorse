@@ -34,4 +34,14 @@ class MenuSettingsStoreTest {
         assertEquals(MultiplayerMissionChoice.DEFAULT_MISSION_ID, settings.multiplayerMissionId);
         assertEquals("Player", settings.multiplayerPlayerName);
     }
+
+    @Test
+    void teamEPlayerSelectionCanBePersistedForCustomBattles() {
+        MenuSettingsStore.MenuSettings settings = new MenuSettingsStore.MenuSettings();
+        settings.playerTeamId = 6;
+
+        settings.normalize();
+
+        assertEquals(6, settings.playerTeamId);
+    }
 }

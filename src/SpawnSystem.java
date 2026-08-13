@@ -645,6 +645,7 @@ public final class SpawnSystem {
                 ? null
                 : SinglePlayerLaunchAdapter.fromGameConfig(ctx.config);
         CustomBattleSpawnPlan plan = CustomBattleSpawnPlan.create(spec, ctx.rng);
+        CustomShipRegistry customShipRegistry = new CustomShipRegistry();
 
         Ship friendlyBase = new FleetShip(ShipRole.BASE, plan.friendlyBase().faction(),
                 plan.friendlyBase().x(), plan.friendlyBase().y());
@@ -668,13 +669,18 @@ public final class SpawnSystem {
         ctx.baseUpgrades.put(hostileBase, enemyUpgrades);
 
         CustomBattleSpawnPlan.ShipSpawn playerSpawn = plan.playerSpawn();
-        ctx.player = new Player(playerSpawn.role(), playerSpawn.x(), playerSpawn.y());
+        CustomShipDefinition playerCustomDefinition =
+                CustomShipRuntimeAdapter.loadForRef(playerSpawn.definitionRef(), customShipRegistry);
+        ctx.player = new Player(playerSpawn.role(), playerSpawn.x(), playerSpawn.y(),
+                playerCustomDefinition, customShipRegistry);
         ctx.player.faction = playerSpawn.faction();
         ctx.player.name = "Player";
+        if (playerCustomDefinition != null) ctx.player.name = playerCustomDefinition.displayName;
         ctx.ships.add(ctx.player);
 
         for (CustomBattleSpawnPlan.ShipSpawn spawn : plan.rosterSpawns()) {
-            Ship ship = spawnExactTeamShip(ctx, spawn.role(), spawn.faction(), spawn.x(), spawn.y());
+            Ship ship = spawnExactTeamShip(ctx, spawn.role(), spawn.definitionRef(), spawn.faction(),
+                    spawn.x(), spawn.y(), customShipRegistry);
             if (ship != null) ship.angle = spawn.angle();
         }
 
@@ -937,13 +943,20 @@ public final class SpawnSystem {
     }
 
     private static Ship spawnExactTeamShip(GameContext ctx, ShipRole role, Faction faction, double x, double y) {
+        return spawnExactTeamShip(ctx, role, ShipDefinitionRef.builtin(role), faction, x, y, null);
+    }
+
+    private static Ship spawnExactTeamShip(GameContext ctx, ShipRole role, ShipDefinitionRef definitionRef,
+                                           Faction faction, double x, double y,
+                                           CustomShipRegistry customShipRegistry) {
         if (ctx == null || role == null || faction == null) return null;
         if (role == ShipRole.MINER && TeamSystem.countAliveMiners(ctx, faction) >= MAX_MINERS_PER_FACTION) {
             return null;
         }
         double sx = GameMath.clamp(x, 20, ctx.WORLD_W - 20);
         double sy = GameMath.clamp(y, 20, ctx.WORLD_H - 20);
-        Ship ship = new FleetShip(role, faction, sx, sy);
+        CustomShipDefinition customDefinition = CustomShipRuntimeAdapter.loadForRef(definitionRef, customShipRegistry);
+        Ship ship = new FleetShip(role, faction, sx, sy, customDefinition, customShipRegistry);
         ctx.ships.add(ship);
         try { DoctrineRegistry.applyToShip(ship); } catch (Throwable ignored) {}
         if (role == ShipRole.MINER) logMinerSpawn(ship);

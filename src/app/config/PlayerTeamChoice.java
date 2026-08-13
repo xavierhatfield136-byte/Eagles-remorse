@@ -4,7 +4,8 @@ public enum PlayerTeamChoice {
     TEAM_A("Blue Team", 0),
     TEAM_B("Red Team", 1),
     TEAM_C("Green Team", 2),
-    TEAM_D("Yellow Team", 3);
+    TEAM_D("Yellow Team", 3),
+    TEAM_E("Custom Team", 6);
 
     private final String label;
     private final int teamId;

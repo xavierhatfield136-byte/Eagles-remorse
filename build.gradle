@@ -158,6 +158,10 @@ tasks.register("currentReleaseVerification", Test) {
         includeTestsMatching "AISystemEscortFormationTest"
         includeTestsMatching "RendererHudLayoutTest"
         includeTestsMatching "MainMenuPanelMultiplayerEntryTest"
+        includeTestsMatching "CustomShipRegistryTest"
+        includeTestsMatching "CustomShipGeneratorAndTeamETest"
+        includeTestsMatching "CustomWeaponRegistryTest"
+        includeTestsMatching "CustomWeaponRuntimeIntegrationTest"
     }
 }
 
@@ -188,6 +192,10 @@ tasks.register("currentReleaseVerificationHeadless", Test) {
         includeTestsMatching "PowerManagementControlTest"
         includeTestsMatching "AISystemEscortFormationTest"
         includeTestsMatching "RendererHudLayoutTest"
+        includeTestsMatching "CustomShipRegistryTest"
+        includeTestsMatching "CustomShipGeneratorAndTeamETest"
+        includeTestsMatching "CustomWeaponRegistryTest"
+        includeTestsMatching "CustomWeaponRuntimeIntegrationTest"
     }
 }
 
@@ -656,6 +664,11 @@ def isLinuxHost = {
     System.getProperty("os.name").toLowerCase(Locale.US).contains("linux")
 }
 
+def isMacHost = {
+    def os = System.getProperty("os.name").toLowerCase(Locale.US)
+    os.contains("mac") || os.contains("darwin")
+}
+
 def commandExists = { String command ->
     if (!isWindowsHost()) {
         return false
@@ -852,4 +865,71 @@ tasks.register("phase11LinuxPackaging", JavaExec) {
     mainClass = "Phase11PackagingReleaseValidation"
     args("--strict", "--built", "--platform=linux",
             "--report=build/reports/phase11_linux_packaging_release_validation.json")
+}
+
+def macJpackageInputDir = layout.buildDirectory.dir("jpackage/macos-input")
+
+tasks.register("stageMacPackageInput", Sync) {
+    dependsOn(tasks.named("jar"))
+    from(tasks.named("jar"))
+    into(macJpackageInputDir)
+}
+
+tasks.register("packageMacAppImage", Exec) {
+    dependsOn(tasks.named("stageMacPackageInput"))
+    group = "distribution"
+    description = "Build a macOS app-image with a bundled Java runtime."
+    workingDir = rootDir
+    doFirst {
+        if (!isMacHost()) {
+            throw new GradleException("macOS packaging tasks can only run on macOS hosts.")
+        }
+        def packageDir = layout.buildDirectory.dir("package/macos").get().asFile
+        packageDir.mkdirs()
+        delete(new File(packageDir, "${appBundleName}.app"))
+        delete(macJpackageInputDir)
+        copy {
+            from(tasks.named("jar"))
+            into(macJpackageInputDir)
+        }
+    }
+    def jarTask = tasks.named("jar").get()
+    commandLine("jpackage",
+            "--type", "app-image",
+            "--input", macJpackageInputDir.get().asFile.absolutePath,
+            "--dest", layout.buildDirectory.dir("package/macos").get().asFile.absolutePath,
+            "--name", appBundleName,
+            "--main-jar", jarTask.archiveFileName.get(),
+            "--main-class", application.mainClass.get(),
+            "--app-version", packageVersion,
+            "--vendor", "xhatf",
+            "--description", appDisplayName,
+            "--java-options", "-Dfile.encoding=UTF-8")
+}
+
+tasks.register("packageMacZip", Zip) {
+    group = "distribution"
+    description = "Create a portable macOS ZIP containing the app-image and bundled runtime."
+    dependsOn("packageMacAppImage")
+    archiveFileName = "${appBundleName}-${project.version}-macos.zip"
+    destinationDirectory = layout.buildDirectory.dir("package/macos")
+    from(layout.buildDirectory.dir("package/macos/${appBundleName}.app")) {
+        into("${appBundleName}.app")
+    }
+}
+
+tasks.register("packageMac") {
+    group = "distribution"
+    description = "Build the portable macOS app-image ZIP."
+    dependsOn("packageMacZip")
+}
+
+tasks.register("phase11MacPackaging", JavaExec) {
+    group = "verification"
+    description = "Build and validate the macOS app-image, portable ZIP, release docs, and checksums."
+    dependsOn("packageMac")
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "Phase11PackagingReleaseValidation"
+    args("--strict", "--built", "--platform=macos",
+            "--report=build/reports/phase11_macos_packaging_release_validation.json")
 }

@@ -2065,6 +2065,7 @@ public final class AudioSystem {
             case ENEMY -> "red";
             case TEAM_C -> "green";
             case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> "yellow";
+            case TEAM_E -> "blue";
         };
     }
 

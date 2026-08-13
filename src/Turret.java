@@ -64,6 +64,7 @@ public class Turret {
     public int damage = 1;
     public double bulletSpeed = 750;
     public int bulletLife = 120;
+    public WeaponRuntimeProfile weaponProfile = null;
 
     public double missileSpeed = 220;
     public double missileTurnRate = Math.toRadians(180);
@@ -276,6 +277,15 @@ public class Turret {
         }
 
         if (kind == Kind.GUN) {
+            if (weaponProfile != null && weaponProfile.isV1ADirectProjectile()) {
+                double effectiveReloadSeconds = Math.max(0.05, weaponProfile.cooldownSeconds() / cycleMul);
+                coolLeft = effectiveReloadSeconds;
+                int shotDamage = host.resolveStrikeCraftWeaponDamage(this, weaponProfile.damage() * damageMul);
+                Projectile p = new CustomProjectile(mx, my, angle, dt, weaponProfile, shotDamage, host.faction);
+                p.sourceShipId = host.id;
+                lastFiredProjectile = p;
+                return p;
+            }
             double baseReloadSeconds = cooldown / cycleMul;
             double effectiveReloadSeconds = baseReloadSeconds;
             boolean blueMainBattery = prof.doctrine == Doctrine.ENERGY_NAVY

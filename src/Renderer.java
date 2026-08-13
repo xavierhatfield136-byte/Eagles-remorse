@@ -59,6 +59,7 @@ public class Renderer {
     private static final Map<String, BufferedImage> HUD_FRAME_CACHE = new BoundedCache<>(96);
     private static final Map<String, BufferedImage> SPACE_BACKGROUND_CACHE = new BoundedCache<>(12);
     private static final Map<String, BufferedImage> SHIP_PREVIEW_THUMBNAIL_CACHE = new BoundedCache<>(192);
+    private static final Map<String, BufferedImage> CUSTOM_WEAPON_ASSET_CACHE = new BoundedCache<>(256);
     private static final int UI_PAD_SMALL = 6;
     private static final int UI_PAD = 10;
     private static final int UI_PAD_LARGE = 16;
@@ -4426,6 +4427,12 @@ public class Renderer {
                 continue;
             }
 
+            if (p instanceof CustomProjectile customProjectile) {
+                drawCustomProjectile(g2, customProjectile);
+                drawn++;
+                continue;
+            }
+
             if (p instanceof CIWSPellet pellet) {
                 int r = (int) Math.round(Math.max(1.0, pellet.radius));
                 int x = (int) Math.round(pellet.x);
@@ -4583,6 +4590,52 @@ public class Renderer {
             drawSimplifiedProjectileBatch(g2, simplifiedBatch);
         }
         return drawn;
+    }
+
+    private static void drawCustomProjectile(Graphics2D g2, CustomProjectile projectile) {
+        if (projectile == null) return;
+        BufferedImage skin = loadCustomWeaponAsset(projectile.projectileAssetPath);
+        int r = (int) Math.round(Math.max(1.0, projectile.radius));
+        if (skin != null) {
+            double base = Math.max(8.0, r * 4.0) * projectile.visualScale;
+            double aspect = skin.getHeight() <= 0 ? 1.0 : skin.getWidth() / (double) skin.getHeight();
+            double drawW = aspect >= 1.0 ? base : base * aspect;
+            double drawH = aspect >= 1.0 ? base / aspect : base;
+            drawOrientedProjectileSkin(g2, skin, projectile.x, projectile.y, projectile.angle,
+                    Math.max(4.0, drawW), Math.max(3.0, drawH), 0.96f);
+            return;
+        }
+
+        int x = (int) Math.round(projectile.x);
+        int y = (int) Math.round(projectile.y);
+        double nx = Math.cos(projectile.angle);
+        double ny = Math.sin(projectile.angle);
+        double trailLen = Math.max(8.0, Math.min(30.0, 10.0 + Math.hypot(projectile.vx, projectile.vy) * 0.18));
+        Stroke old = g2.getStroke();
+        g2.setStroke(new BasicStroke(Math.max(1.2f, r * 0.9f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(withAlpha(projectileTrailColor(projectile.faction), 150));
+        g2.drawLine((int) Math.round(projectile.x - nx * trailLen),
+                (int) Math.round(projectile.y - ny * trailLen), x, y);
+        g2.setStroke(old);
+        g2.setColor(withAlpha(projectileCoreColor(projectile.faction), 230));
+        g2.fillOval(x - r, y - r, r * 2, r * 2);
+    }
+
+    private static BufferedImage loadCustomWeaponAsset(java.nio.file.Path assetPath) {
+        if (assetPath == null) return null;
+        try {
+            java.nio.file.Path path = assetPath.toAbsolutePath().normalize();
+            if (!java.nio.file.Files.isRegularFile(path)) return null;
+            String key = path + "|" + java.nio.file.Files.getLastModifiedTime(path).toMillis();
+            BufferedImage cached = CUSTOM_WEAPON_ASSET_CACHE.get(key);
+            if (cached != null) return cached;
+            BufferedImage image = ImageIO.read(path.toFile());
+            if (image == null) return null;
+            CUSTOM_WEAPON_ASSET_CACHE.put(key, image);
+            return image;
+        } catch (IOException | RuntimeException ex) {
+            return null;
+        }
     }
 
     private static boolean shouldDrawSimplifiedProjectile(Projectile projectile, boolean pressure, int liveProjectileCount) {
@@ -5065,6 +5118,7 @@ public class Renderer {
             case TEAM_D -> new Color(255, 198, 126);
             case BRIGHT_YELLOW -> new Color(255, 230, 92);
             case DARK_YELLOW -> new Color(214, 132, 48);
+            case TEAM_E -> new Color(186, 132, 255);
         };
     }
 
@@ -5257,6 +5311,7 @@ public class Renderer {
             case TEAM_D -> new Color(255, 186, 92);
             case BRIGHT_YELLOW -> new Color(255, 226, 76);
             case DARK_YELLOW -> new Color(212, 122, 40);
+            case TEAM_E -> new Color(190, 120, 255);
         };
         if (missile == null) return base;
         return switch (missile.role) {
@@ -5276,6 +5331,7 @@ public class Renderer {
             case TEAM_D -> new Color(255, 210, 128);
             case BRIGHT_YELLOW -> new Color(255, 236, 126);
             case DARK_YELLOW -> new Color(226, 146, 72);
+            case TEAM_E -> new Color(160, 226, 255);
         };
         if (missile == null) return base;
         return switch (missile.role) {
@@ -5295,6 +5351,7 @@ public class Renderer {
             case TEAM_D -> new Color(255, 220, 146);
             case BRIGHT_YELLOW -> new Color(255, 240, 150);
             case DARK_YELLOW -> new Color(226, 154, 88);
+            case TEAM_E -> new Color(216, 190, 255);
         };
     }
 
@@ -5307,6 +5364,7 @@ public class Renderer {
             case TEAM_D -> new Color(255, 194, 116);
             case BRIGHT_YELLOW -> new Color(255, 224, 92);
             case DARK_YELLOW -> new Color(204, 112, 44);
+            case TEAM_E -> new Color(152, 110, 255);
         };
     }
 
@@ -5319,6 +5377,7 @@ public class Renderer {
             case TEAM_D -> new Color(255, 206, 118);
             case BRIGHT_YELLOW -> new Color(255, 232, 104);
             case DARK_YELLOW -> new Color(218, 126, 48);
+            case TEAM_E -> new Color(176, 136, 255);
         };
     }
 
@@ -15996,6 +16055,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static final class ShipRenderer {
         private static final Map<String, ShipVisual> CACHE = new BoundedCache<>(256);
         private static final Map<String, BufferedImage> HULL_SPRITE_CACHE = new BoundedCache<>(1024);
+        private static final Map<String, BufferedImage> CUSTOM_HULL_CACHE = new BoundedCache<>(128);
 
         static void drawShip(Graphics2D g2, Ship ship) {
             drawShip(g2, ship, true, true, true);
@@ -16045,19 +16105,27 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             Area hullArea = visual.hullArea;
             ShipSkinSet skinSet = ShipSkinLibrary.getSkinSet(ship.role, ship.faction);
             boolean hasAlbedoSkin = skinSet != null && skinSet.hasAlbedo();
+            boolean drewCustomHull = false;
 
             long partStart;
-            if (!hasAlbedoSkin) {
+            if (ship.customHullImagePath != null) {
+                partStart = System.nanoTime();
+                drewCustomHull = drawCustomHullSkin(g, ship);
+                frameShipSkinNs += System.nanoTime() - partStart;
+            }
+            if (!drewCustomHull && !hasAlbedoSkin) {
                 partStart = System.nanoTime();
                 drawHullShadow(g, visual);
                 drawHullAndSuper(g, visual, hull, trim);
                 frameShipSkinNs += System.nanoTime() - partStart;
             }
+            if (!drewCustomHull) {
+                partStart = System.nanoTime();
+                drawHullSkin(g, ship, visual, hullArea, hull, trim, skinSet);
+                frameShipSkinNs += System.nanoTime() - partStart;
+            }
             partStart = System.nanoTime();
-            drawHullSkin(g, ship, visual, hullArea, hull, trim, skinSet);
-            frameShipSkinNs += System.nanoTime() - partStart;
-            partStart = System.nanoTime();
-            drawPanelsAndWindows(g, ship, visual, hullArea, hasAlbedoSkin);
+            drawPanelsAndWindows(g, ship, visual, hullArea, hasAlbedoSkin || drewCustomHull);
             frameShipDetailNs += System.nanoTime() - partStart;
             if (fullDamageFx) {
                 partStart = System.nanoTime();
@@ -16591,6 +16659,35 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 applyFactionSkinLighting(g, bounds, ship.faction, hull, trim);
             }
             g.setClip(oldClip);
+        }
+
+        private static boolean drawCustomHullSkin(Graphics2D g, Ship ship) {
+            BufferedImage image = loadCustomHullImage(ship);
+            if (image == null) return false;
+            int baseSpan = Math.max(1, (int) Math.round(ship.radius * 2.0));
+            int maxDraw = Math.max(1, (int) Math.round(baseSpan * ShipHullSilhouette.skinRenderScale()));
+            double scale = maxDraw / (double) Math.max(image.getWidth(), image.getHeight());
+            int drawW = Math.max(1, (int) Math.round(image.getWidth() * scale));
+            int drawH = Math.max(1, (int) Math.round(image.getHeight() * scale));
+            g.drawImage(image, -drawW / 2, -drawH / 2, drawW, drawH, null);
+            return true;
+        }
+
+        private static BufferedImage loadCustomHullImage(Ship ship) {
+            if (ship == null || ship.customHullImagePath == null) return null;
+            try {
+                java.nio.file.Path path = ship.customHullImagePath.toAbsolutePath().normalize();
+                if (!java.nio.file.Files.isRegularFile(path)) return null;
+                String key = path + "|" + java.nio.file.Files.getLastModifiedTime(path).toMillis();
+                BufferedImage cached = CUSTOM_HULL_CACHE.get(key);
+                if (cached != null) return cached;
+                BufferedImage image = ImageIO.read(path.toFile());
+                if (image == null) return null;
+                CUSTOM_HULL_CACHE.put(key, image);
+                return image;
+            } catch (IOException | RuntimeException ex) {
+                return null;
+            }
         }
 
         private static BufferedImage cachedHullSprite(Ship ship, ShipVisual visual, Area hullArea, Rectangle2D bounds,
@@ -17183,6 +17280,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 case ENEMY -> new HullLightingPreset(baseKey, baseRim, 52, 40, 26, 26);
                 case TEAM_C -> new HullLightingPreset(baseKey, baseRim, 58, 46, 29, 24);
                 case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> new HullLightingPreset(baseKey, baseRim, 57, 48, 28, 24);
+                case TEAM_E -> new HullLightingPreset(baseKey, baseRim, 60, 50, 30, 24);
             };
         }
 
@@ -17301,6 +17399,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 case ENEMY -> "enemy";
                 case TEAM_C -> "team_c";
                 case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> "team_d";
+                case TEAM_E -> "ally";
             };
         }
 
@@ -17452,6 +17551,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 case ENEMY -> "enemy";
                 case TEAM_C -> "team_c";
                 case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> "team_d";
+                case TEAM_E -> "ally";
             };
         }
 
@@ -17537,6 +17637,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 case ENEMY -> "enemy";
                 case TEAM_C -> "team_c";
                 case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> "team_d";
+                case TEAM_E -> "ally";
             };
         }
 
@@ -18727,6 +18828,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             double bodyScale = scale.bodyScale * GAMEPLAY_TURRET_GLOBAL_SCALE;
             double barrelScale = scale.barrelScale * GAMEPLAY_TURRET_GLOBAL_SCALE;
             String styleKey = turretStyleKey(ship, t);
+            BufferedImage customTurretSkin = (t.weaponProfile == null)
+                    ? null
+                    : loadCustomWeaponAsset(t.weaponProfile.turretAssetPath());
             BufferedImage turretSkin = usesAuthoredTurretSkinsForGameplay()
                     ? TurretSkinLibrary.getTurretSkin(styleKey, ship.role, ship.faction)
                     : null;
@@ -18735,7 +18839,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             tg.translate(t.localX, t.localY);
             tg.rotate(rel);
 
-            if (turretSkin != null) {
+            if (customTurretSkin != null) {
+                drawCustomTurretSkinSprite(tg, customTurretSkin, t, fireFrac, bodyScale);
+            } else if (turretSkin != null) {
                 drawTurretSkinSprite(tg, turretSkin, styleKey, fireFrac, bodyScale);
             } else {
                 if (t.kind == Turret.Kind.MISSILE) {
@@ -18851,6 +18957,19 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         int x = -drawW / 2 - recoilPx;
         int y = -drawH / 2;
         g.drawImage(skin, x, y, drawW, drawH, null);
+    }
+
+    private static void drawCustomTurretSkinSprite(Graphics2D g, BufferedImage skin, Turret turret,
+                                                   double fireFrac, double bodyScale) {
+        if (skin == null || turret == null) return;
+        double visualScale = turret.weaponProfile == null ? 1.0 : turret.weaponProfile.turretVisualScale();
+        double base = Math.max(8.0, Math.max(turret.radius * 2.6, 26.0 * Math.max(0.55, bodyScale / 0.5)))
+                * visualScale;
+        double aspect = skin.getHeight() <= 0 ? 1.0 : skin.getWidth() / (double) skin.getHeight();
+        int drawW = Math.max(6, (int) Math.round(aspect >= 1.0 ? base : base * aspect));
+        int drawH = Math.max(6, (int) Math.round(aspect >= 1.0 ? base / aspect : base));
+        int recoilPx = (int) Math.round(fireFrac * Math.max(1.0, drawW * 0.07));
+        g.drawImage(skin, -drawW / 2 - recoilPx, -drawH / 2, drawW, drawH, null);
     }
 
     private static void drawCiwsSkinSprite(Graphics2D g, BufferedImage skin, double ciwsScale) {

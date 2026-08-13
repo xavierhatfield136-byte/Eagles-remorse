@@ -4,6 +4,7 @@ import app.config.GameMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 /** Resolves legacy single-player custom battle config into the shared mission launch model. */
 public final class SinglePlayerLaunchAdapter {
@@ -44,10 +45,13 @@ public final class SinglePlayerLaunchAdapter {
                                     MissionSlotControlMode controlMode,
                                     boolean friendly) {
         List<RosterEntry> entries = parseRoster(rosterText);
+        if (entries.isEmpty() && teamId == Faction.TEAM_E.teamId()) {
+            entries = localCustomRoster();
+        }
         if (entries.isEmpty()) entries = defaultRoster(friendly);
         for (RosterEntry entry : entries) {
             for (int i = 0; i < entry.count(); i++) {
-                out.add(new MissionSlotSpec(nextSlotId++, teamId, entry.hull(), controlMode, true,
+                out.add(new MissionSlotSpec(nextSlotId++, teamId, entry.hull(), entry.definitionRef(), controlMode, true,
                         "single-player-" + teamId + "-" + entry.hull().name().toLowerCase(Locale.ROOT) + "-" + i));
             }
         }
@@ -58,6 +62,7 @@ public final class SinglePlayerLaunchAdapter {
         for (MissionSlotSpec slot : roster) {
             if (slot.teamId() == playerTeamId && slot.controlMode() == MissionSlotControlMode.PLAYER_OR_AI) {
                 return new MissionSlotSpec(slot.slotId(), slot.teamId(), slot.defaultHull(),
+                        slot.definitionRef(),
                         MissionSlotControlMode.PLAYER_REQUIRED, true, slot.spawnAnchorId());
             }
         }
@@ -74,9 +79,10 @@ public final class SinglePlayerLaunchAdapter {
             String clean = entry == null ? "" : entry.trim();
             if (clean.isBlank()) continue;
             String[] fields = clean.split("[:=]", 2);
-            ShipRole role = parseRole(fields[0]);
+            ShipDefinitionRef ref = parseDefinitionRef(fields[0]);
+            ShipRole role = ref == null ? null : ref.templateRole();
             int count = fields.length > 1 ? parseCount(fields[1]) : 1;
-            if (role != null && count > 0) out.add(new RosterEntry(role, count));
+            if (role != null && count > 0) out.add(new RosterEntry(role, ref, count));
         }
         return out;
     }
@@ -84,20 +90,60 @@ public final class SinglePlayerLaunchAdapter {
     private static List<RosterEntry> defaultRoster(boolean friendly) {
         if (friendly) {
             return List.of(
-                    new RosterEntry(ShipRole.FRIGATE, 4),
-                    new RosterEntry(ShipRole.CIWS_CORVETTE, 2),
-                    new RosterEntry(ShipRole.LIGHT_CRUISER, 2),
-                    new RosterEntry(ShipRole.BATTLECRUISER, 1),
-                    new RosterEntry(ShipRole.CARRIER, 1),
-                    new RosterEntry(ShipRole.SUPERSHIP, 1));
+                    RosterEntry.builtin(ShipRole.FRIGATE, 4),
+                    RosterEntry.builtin(ShipRole.CIWS_CORVETTE, 2),
+                    RosterEntry.builtin(ShipRole.LIGHT_CRUISER, 2),
+                    RosterEntry.builtin(ShipRole.BATTLECRUISER, 1),
+                    RosterEntry.builtin(ShipRole.CARRIER, 1),
+                    RosterEntry.builtin(ShipRole.SUPERSHIP, 1));
         }
         return List.of(
-                new RosterEntry(ShipRole.FRIGATE, 6),
-                new RosterEntry(ShipRole.MISSILE_BOAT, 3),
-                new RosterEntry(ShipRole.LIGHT_CRUISER, 2),
-                new RosterEntry(ShipRole.BATTLESHIP, 1),
-                new RosterEntry(ShipRole.INTERDICTION_TITAN, 1),
-                new RosterEntry(ShipRole.MOTHERSHIP, 1));
+                RosterEntry.builtin(ShipRole.FRIGATE, 6),
+                RosterEntry.builtin(ShipRole.MISSILE_BOAT, 3),
+                RosterEntry.builtin(ShipRole.LIGHT_CRUISER, 2),
+                RosterEntry.builtin(ShipRole.BATTLESHIP, 1),
+                RosterEntry.builtin(ShipRole.INTERDICTION_TITAN, 1),
+                RosterEntry.builtin(ShipRole.MOTHERSHIP, 1));
+    }
+
+    private static List<RosterEntry> localCustomRoster() {
+        try {
+            ArrayList<RosterEntry> entries = new ArrayList<>();
+            for (CustomShipDefinition definition : new CustomShipRegistry().loadAll()) {
+                if (definition == null) continue;
+                entries.add(new RosterEntry(definition.balanceTemplate,
+                        ShipDefinitionRef.custom(definition.id, definition.balanceTemplate), 1));
+            }
+            return entries;
+        } catch (Exception ignored) {
+            return List.of();
+        }
+    }
+
+    private static ShipDefinitionRef parseDefinitionRef(String text) {
+        String clean = text == null ? "" : text.trim();
+        if (clean.regionMatches(true, 0, "custom:", 0, "custom:".length())) {
+            String idAndMaybeRole = clean.substring("custom:".length()).trim();
+            String[] parts = idAndMaybeRole.split(":", 2);
+            try {
+                UUID id = UUID.fromString(parts[0].trim());
+                ShipRole template = parts.length > 1 ? parseRole(parts[1]) : customTemplateFor(id);
+                return ShipDefinitionRef.custom(id, template == null ? ShipRole.FRIGATE : template);
+            } catch (RuntimeException ignored) {
+                return null;
+            }
+        }
+        ShipRole role = parseRole(clean);
+        return role == null ? null : ShipDefinitionRef.builtin(role);
+    }
+
+    private static ShipRole customTemplateFor(UUID id) {
+        if (id == null) return ShipRole.FRIGATE;
+        try {
+            return new CustomShipRegistry().load(id).map(def -> def.balanceTemplate).orElse(ShipRole.FRIGATE);
+        } catch (RuntimeException ignored) {
+            return ShipRole.FRIGATE;
+        }
     }
 
     private static ShipRole parseRole(String text) {
@@ -116,5 +162,9 @@ public final class SinglePlayerLaunchAdapter {
         }
     }
 
-    private record RosterEntry(ShipRole hull, int count) {}
+    private record RosterEntry(ShipRole hull, ShipDefinitionRef definitionRef, int count) {
+        static RosterEntry builtin(ShipRole hull, int count) {
+            return new RosterEntry(hull, ShipDefinitionRef.builtin(hull), count);
+        }
+    }
 }

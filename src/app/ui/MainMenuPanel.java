@@ -108,11 +108,13 @@ public final class MainMenuPanel extends JPanel {
         continueCampaignButton = createMenuButton("Continue Campaign", new Color(71, 139, 96), uiScale);
         JButton campaignOps = createMenuButton("Campaign Ops", new Color(41, 112, 170), uiScale);
         JButton customBattle = createMenuButton("Custom Battle", new Color(64, 126, 177), uiScale);
+        JButton customShipCreator = createMenuButton("Team E Shipyard", new Color(66, 112, 148), uiScale);
         JButton galaxyMapTest = createMenuButton("Galaxy Map Test", new Color(72, 103, 150), uiScale);
         JButton tutorialStart = createMenuButton("Tutorial", new Color(60, 118, 186), uiScale);
         JButton experienceButton = createMenuButton("Accessibility", new Color(64, 80, 116), uiScale);
         JButton controlsButton = createMenuButton("Controls", new Color(65, 91, 126), uiScale);
         customBattle.setName("customBattleButton");
+        customShipCreator.setName("customShipCreatorButton");
         tutorialStart.setName("tutorialStartButton");
         controlsButton.setName(InputBindingsDialog.CONTROLS_BUTTON_NAME);
         JButton hostBattle = createMenuButton("Create Lobby", new Color(53, 123, 126), uiScale);
@@ -309,6 +311,7 @@ public final class MainMenuPanel extends JPanel {
             modeBox.setSelectedItem(GameMode.CUSTOM_BATTLES);
             startWithMode.accept(GameMode.CUSTOM_BATTLES);
         });
+        customShipCreator.addActionListener(e -> openCustomShipCreator(this));
         galaxyMapTest.addActionListener(e -> {
             persistSettings.accept(GameMode.CAMPAIGN_OPS);
             int w = 20000;
@@ -443,6 +446,7 @@ public final class MainMenuPanel extends JPanel {
         campaignActions.add(campaignOps);
         campaignActions.add(continueCampaignButton);
         campaignActions.add(customBattle);
+        campaignActions.add(customShipCreator);
         campaignActions.add(tutorialStart);
         campaignActions.add(galaxyMapTest);
         campaignActions.add(experienceButton);
@@ -1135,11 +1139,18 @@ public final class MainMenuPanel extends JPanel {
     private static PlayerTeamChoice[] allowedTeamsForMode(GameMode mode) {
         if (mode == null) return new PlayerTeamChoice[]{PlayerTeamChoice.TEAM_A};
         return switch (mode) {
-            case RESOURCE_RUSH, SHOOTING_RANGE, CUSTOM_BATTLES -> new PlayerTeamChoice[]{
+            case RESOURCE_RUSH, SHOOTING_RANGE -> new PlayerTeamChoice[]{
                     PlayerTeamChoice.TEAM_A,
                     PlayerTeamChoice.TEAM_B,
                     PlayerTeamChoice.TEAM_C,
                     PlayerTeamChoice.TEAM_D
+            };
+            case CUSTOM_BATTLES -> new PlayerTeamChoice[]{
+                    PlayerTeamChoice.TEAM_A,
+                    PlayerTeamChoice.TEAM_B,
+                    PlayerTeamChoice.TEAM_C,
+                    PlayerTeamChoice.TEAM_D,
+                    PlayerTeamChoice.TEAM_E
             };
             case FOUR_TEAM_DOMINATION -> new PlayerTeamChoice[]{
                     PlayerTeamChoice.TEAM_A,
@@ -1149,6 +1160,20 @@ public final class MainMenuPanel extends JPanel {
             };
             default -> new PlayerTeamChoice[]{PlayerTeamChoice.TEAM_A};
         };
+    }
+
+    private static void openCustomShipCreator(Component parent) {
+        try {
+            Class<?> dialogClass = Class.forName("CustomShipBuilderDialog");
+            java.lang.reflect.Method show = dialogClass.getMethod("show", Component.class);
+            show.invoke(null, parent);
+        } catch (ReflectiveOperationException ex) {
+            String message = ex.getCause() == null ? ex.getMessage() : ex.getCause().getMessage();
+            JOptionPane.showMessageDialog(parent,
+                    "Team E ship creator is unavailable: " + message,
+                    "Team E Shipyard",
+                    JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     private static GameConfig buildCustomBattleConfig(Component parent,

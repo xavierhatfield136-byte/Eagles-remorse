@@ -38,6 +38,10 @@ bin/
 
 ### Local Runtime Data ###
 save/
+save/custom_ships/
+save/custom_weapons/
+custom_ships/
+custom_weapons/
 forge-launch.log
 
 ### Local Tool Caches ###
