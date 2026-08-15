@@ -232,6 +232,25 @@ public class Renderer {
         SpriteAtlasRegistry.atlas("ui");
     }
 
+    public static void prewarmShipHardpointAssets(Iterable<Ship> ships) {
+        if (!usesAuthoredTurretSkinsForGameplay() || ships == null) return;
+        for (Ship ship : ships) {
+            if (ship == null) continue;
+            if (ship.turrets != null) {
+                for (Turret turret : ship.turrets) {
+                    if (turret == null) continue;
+                    if (turret.weaponProfile != null) {
+                        loadCustomWeaponAsset(turret.weaponProfile.turretAssetPath());
+                    }
+                    TurretSkinLibrary.getTurretSkin(turretStyleKey(ship, turret), ship.role, ship.faction);
+                }
+            }
+            if (ship.hasCIWS) {
+                TurretSkinLibrary.getTurretSkin("ciws", ship.role, ship.faction);
+            }
+        }
+    }
+
     public static final class ShopClickTarget {
         public enum Kind {
             UPGRADE,
@@ -1191,7 +1210,7 @@ public class Renderer {
 
     private static HoverTooltip campaignMapHoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
         if (ctx == null || ctx.ui == null) return null;
-        if (CampaignSystem.isStrategicGalaxyMapMode(ctx)) {
+        if (CampaignSystem.isStrategicOvermapMode(ctx)) {
             return galaxyMapHoverTooltipAt(ctx, viewW, viewH, mouseX, mouseY);
         }
         if (ctx.ui.mapOpen) {
@@ -1322,7 +1341,7 @@ public class Renderer {
     }
 
     private static HoverTooltip galaxyMapSurfaceHoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
-        if (ctx == null || ctx.ui == null || !CampaignSystem.isStrategicGalaxyMapMode(ctx)) return null;
+        if (ctx == null || ctx.ui == null || !CampaignSystem.isStrategicOvermapMode(ctx)) return null;
         Rectangle map = getStrategicMapInnerRect(viewW, viewH, true);
         if (!map.contains(mouseX, mouseY)) return null;
         double worldMinX = UISystem.strategicMapWorldMinX(ctx);
@@ -1410,7 +1429,7 @@ public class Renderer {
                     "Mission",
                     fullTacticalMissionSummaryLines(ctx),
                     "Markers",
-                    buildStrategicObjectiveMarkerLines(CampaignSystem.activeObjectiveMarkers(ctx)),
+                    buildStrategicObjectiveMarkerLines(CampaignSystem.activeObjectiveMarkersForRendering(ctx)),
                     "Actions",
                     CampaignSystem.tacticalMapVisibleActions(ctx).stream()
                             .map(action -> action.label + ": " + defaultIfBlank(action.tooltip, action.shortDescription))
@@ -3001,13 +3020,12 @@ public class Renderer {
             boolean visible = FogOfWarSystem.isVisibleToPerspective(fog, perspective, s);
             if (visible) {
                 if (!isWorldCircleVisible(s.x, s.y, shipDrawCullRadius(s), minX, minY, maxX, maxY)) continue;
-                if (performanceTokenMode) {
+                if (performanceTokenMode && shouldDrawPerformanceToken(ctx, s)) {
                     drawPerformanceShipToken(g2, s);
                     drawn++;
                     continue;
                 }
-                boolean simplified = performanceTokenMode
-                        || PerformanceGuardrails.simplifyDistantShip(s, (minX + maxX) * 0.5, (minY + maxY) * 0.5);
+                boolean simplified = PerformanceGuardrails.simplifyDistantShip(s, (minX + maxX) * 0.5, (minY + maxY) * 0.5);
                 if (!simplified && highDensityShips && shouldSimplifyHighDensityShip(ctx, s, minX, minY, maxX, maxY)) {
                     simplified = true;
                 }
@@ -3069,7 +3087,22 @@ public class Renderer {
     }
 
     static boolean shouldDrawPerformanceToken(GameContext ctx, Ship ship) {
-        return false;
+        if (!performanceTokenMode(ctx) || ship == null || isPlayerShip(ship)) return false;
+        if (ctx != null && ctx.lockedTarget == ship) return false;
+        Player player = ctx == null ? null : ctx.player;
+        if (player == null || !player.alive) return false;
+        double dx = ship.x - player.x;
+        double dy = ship.y - player.y;
+        double dist = Math.hypot(dx, dy);
+        double readableRadius = Math.max(1150.0, player.radius * 6.0 + ship.radius * 3.5);
+        if (dist <= readableRadius) return false;
+
+        double forwardX = Math.cos(player.angle);
+        double forwardY = Math.sin(player.angle);
+        double forward = dx * forwardX + dy * forwardY;
+        double side = Math.abs(dx * -forwardY + dy * forwardX);
+        double forwardConeWidth = Math.max(760.0, Math.max(0.0, forward) * 0.48);
+        return forward <= 0.0 || side > forwardConeWidth;
     }
 
     private static void drawPerformanceShipToken(Graphics2D g2, Ship ship) {
@@ -5445,7 +5478,7 @@ public class Renderer {
                 stationStatus, overlayStatus, contextHint, leftX, cardY, leftW, detail, ctx);
         drawCombatHudPanels(g2, ctx, player, viewW, viewH, detail);
 
-        if (!resourceRush && gameOverText != null && !gameOverText.isBlank()) {
+        if (gameOverText != null && !gameOverText.isBlank()) {
             String msg = gameOverText;
             g2.setFont(new Font("Consolas", Font.BOLD, 22));
             g2.setColor(new Color(255, 255, 255, 220));
@@ -5454,6 +5487,7 @@ public class Renderer {
             g2.drawString(msg, Math.max(10, tx), 52);
             g2.setFont(new Font("Consolas", Font.PLAIN, 14));
             g2.setColor(new Color(255, 255, 255, 220));
+            drawBattleResultReportPanel(g2, ctx, viewW, 72);
         }
 
         if (lockedTarget != null && lockedTarget.alive) {
@@ -6152,6 +6186,48 @@ public class Renderer {
                 .replace("   |   ", " | ")
                 .replace("->", "to")
                 .trim();
+    }
+
+    private static void drawBattleResultReportPanel(Graphics2D g2, GameContext ctx, int viewW, int topY) {
+        if (g2 == null || ctx == null || ctx.battleResultRecorder == null) return;
+        AfterActionReport report = ctx.battleResultRecorder.latestReport();
+        if (report == null) return;
+        Font titleFont = new Font("Consolas", Font.BOLD, 13);
+        Font bodyFont = new Font("Consolas", Font.PLAIN, 12);
+        g2.setFont(bodyFont);
+        FontMetrics bodyFm = g2.getFontMetrics();
+        int panelW = Math.min(680, Math.max(340, viewW - 48));
+        int x = (viewW - panelW) / 2;
+        int contentW = panelW - 28;
+        ArrayList<String> lines = new ArrayList<>();
+        lines.add(cleanHudLine(report.resultLine));
+        lines.add(cleanHudLine(report.forceSummary));
+        lines.add(cleanHudLine(report.lossesSummary));
+        lines.add(cleanHudLine(report.resourcesSummary));
+        for (String factor : limitHudLines(report.keyBattleFactors, 2)) {
+            lines.add("Key: " + cleanHudLine(factor));
+        }
+        lines.add("Next: " + cleanHudLine(report.nextAction));
+        ArrayList<String> wrapped = new ArrayList<>();
+        for (String line : lines) {
+            wrapped.addAll(limitHudLines(wrapHudText(bodyFm, line, contentW), 1));
+        }
+        wrapped = new ArrayList<>(limitHudLines(wrapped, 7));
+        int panelH = 42 + wrapped.size() * 16;
+        g2.setColor(new Color(4, 10, 20, 218));
+        g2.fillRoundRect(x, topY, panelW, panelH, 16, 16);
+        g2.setColor(new Color(122, 190, 255, 190));
+        g2.drawRoundRect(x, topY, panelW, panelH, 16, 16);
+        g2.setFont(titleFont);
+        g2.setColor(new Color(220, 238, 255, 232));
+        g2.drawString(cleanHudLine(report.title), x + 14, topY + 22);
+        g2.setFont(bodyFont);
+        int y = topY + 42;
+        for (int i = 0; i < wrapped.size(); i++) {
+            g2.setColor(i >= 4 ? new Color(255, 218, 138, 220) : new Color(226, 236, 246, 220));
+            g2.drawString(wrapped.get(i), x + 14, y);
+            y += 16;
+        }
     }
 
     private static String countLabel(int count, String singular) {
@@ -10652,7 +10728,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         Rectangle r = getStrategicMapRect(viewW, viewH);
         boolean sectorized = BattlefieldSectorSystem.isEnabled(ctx);
-        boolean galaxyMode = CampaignSystem.isStrategicGalaxyMapMode(ctx);
+        boolean galaxyMode = CampaignSystem.isStrategicOvermapMode(ctx);
         List<BattlefieldSectorSystem.SectorSnapshot> sectorSnapshots = sectorized
                 ? BattlefieldSectorSystem.snapshots(ctx)
                 : List.of();
@@ -11259,7 +11335,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static void drawCampaignFleetMovementArrows(Graphics2D g2, GameContext ctx, Rectangle mapRect,
                                                         double worldMinX, double worldMinY, double worldW, double worldH) {
         if (g2 == null || ctx == null || mapRect == null) return;
-        List<CampaignSystem.CampaignForceSummary> forces = CampaignSystem.campaignForceSummaries(ctx);
+        List<CampaignSystem.CampaignForceSummary> forces = CampaignSystem.campaignForceSummariesForRendering(ctx);
         if (forces.isEmpty()) return;
         Stroke oldStroke = g2.getStroke();
         Composite oldComposite = g2.getComposite();
@@ -11690,7 +11766,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static void drawStrategicObjectivePanel(Graphics2D g2, GameContext ctx, Rectangle panelRect) {
         if (g2 == null || ctx == null || panelRect == null) return;
-        if (CampaignSystem.isStrategicGalaxyMapMode(ctx)) {
+        if (CampaignSystem.isStrategicOvermapMode(ctx)) {
             drawGalaxySidebar(g2, ctx, panelRect);
             return;
         }
@@ -11808,7 +11884,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         switch (tab) {
             case MISSION -> {
                 out.add(new TacticalSectionBlock("SUMMARY", tacticalMissionSummaryLines(ctx), new Color(255, 198, 126, 220)));
-                out.add(new TacticalSectionBlock("MARKERS", conciseSidebarLines(buildStrategicObjectiveMarkerLines(CampaignSystem.activeObjectiveMarkers(ctx)), 3), new Color(255, 214, 132, 220)));
+                out.add(new TacticalSectionBlock("MARKERS", conciseSidebarLines(buildStrategicObjectiveMarkerLines(CampaignSystem.activeObjectiveMarkersForRendering(ctx)), 3), new Color(255, 214, 132, 220)));
             }
             case FLEET -> {
                 out.add(new TacticalSectionBlock("FLAGSHIP", conciseSidebarLines(tacticalFlagshipStatusLines(ctx), 4), new Color(168, 220, 255, 220)));
@@ -12194,7 +12270,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
     public static CampaignHubClickTarget tacticalMapClickTargetAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
-        if (ctx == null || ctx.ui == null || CampaignSystem.isStrategicGalaxyMapMode(ctx)) return null;
+        if (ctx == null || ctx.ui == null || CampaignSystem.isStrategicOvermapMode(ctx)) return null;
         if (ctx.ui.campaignActionConfirm.active) {
             Rectangle overlay = campaignActionConfirmOverlayRect(viewW, viewH);
             Rectangle closeRect = new Rectangle(overlay.x + overlay.width - 92, overlay.y + overlay.height - 38, 78, 22);
@@ -13374,7 +13450,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         String body = CampaignSystem.hudObjectiveExpandedDetail(ctx);
         if ((title == null || title.isBlank()) && (body == null || body.isBlank())) return Integer.MIN_VALUE;
 
-        List<CampaignSystem.CampaignObjectiveMarker> markers = CampaignSystem.activeObjectiveMarkers(ctx);
+        List<CampaignSystem.CampaignObjectiveMarker> markers = CampaignSystem.activeObjectiveMarkersForRendering(ctx);
         List<CampaignSystem.CampaignLandmark> landmarks = CampaignSystem.strategicLandmarks(ctx);
         List<GameRenderSystem.SensorNetEntry> supportEntries = buildStrategicSupportEntryList(ctx);
         List<String> taskForceLines = CampaignSystem.strategicTaskForceSummaryLines(ctx);
@@ -13443,7 +13519,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
     public static CampaignHubClickTarget campaignHubClickTargetAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
-        if (ctx == null || ctx.ui == null || !CampaignSystem.isStrategicGalaxyMapMode(ctx)) return null;
+        if (ctx == null || ctx.ui == null || !CampaignSystem.isStrategicOvermapMode(ctx)) return null;
         if (ctx.ui.strategicEncounterPrompt.active
                 && !ctx.ui.campaignHubMenu.active
                 && !ctx.ui.campaignActionConfirm.active) {
@@ -13579,7 +13655,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
     public static boolean campaignFleetRosterContains(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
-        if (ctx == null || ctx.ui == null || !CampaignSystem.isStrategicGalaxyMapMode(ctx)) return false;
+        if (ctx == null || ctx.ui == null || !CampaignSystem.isStrategicOvermapMode(ctx)) return false;
         if (ctx.ui.campaignCommandTab != UiState.CampaignCommandTab.FLEET) return false;
         Rectangle panelRect = getStrategicMapSidebarRect(viewW, viewH, true);
         Rectangle roster = galaxyFleetRosterRect(ctx, panelRect);
@@ -14024,7 +14100,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         int loaded = CampaignSystem.currentLoadedMissionSubzone(ctx);
         Set<Integer> objectiveSubzones = new HashSet<>();
         Set<Integer> primarySubzones = new HashSet<>();
-        for (CampaignSystem.CampaignObjectiveMarker marker : CampaignSystem.activeObjectiveMarkers(ctx)) {
+        for (CampaignSystem.CampaignObjectiveMarker marker : CampaignSystem.activeObjectiveMarkersForRendering(ctx)) {
             if (marker == null) continue;
             int subzone = CampaignSystem.missionSubzoneForPoint(ctx, ctx.campaign.sector, marker.x, marker.y);
             if (subzone < 0) continue;
@@ -14140,7 +14216,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                                                       double worldMinX, double worldMinY,
                                                       double worldW, double worldH) {
         if (g2 == null || ctx == null || mapRect == null) return;
-        List<CampaignSystem.CampaignObjectiveMarker> markers = new ArrayList<>(CampaignSystem.activeObjectiveMarkers(ctx));
+        List<CampaignSystem.CampaignObjectiveMarker> markers = new ArrayList<>(CampaignSystem.activeObjectiveMarkersForRendering(ctx));
         if (markers.isEmpty()) return;
         markers.sort(Comparator.comparingInt((CampaignSystem.CampaignObjectiveMarker marker) -> marker.priority).reversed());
 
@@ -14179,7 +14255,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                                                     double worldMinX, double worldMinY,
                                                     double worldW, double worldH) {
         if (g2 == null || ctx == null || mapRect == null) return;
-        List<CampaignSystem.CampaignSupportMarker> markers = new ArrayList<>(CampaignSystem.activeSupportMarkers(ctx));
+        List<CampaignSystem.CampaignSupportMarker> markers = new ArrayList<>(CampaignSystem.activeSupportMarkersForRendering(ctx));
         if (markers.isEmpty()) return;
         markers.sort(Comparator.comparingInt((CampaignSystem.CampaignSupportMarker marker) -> marker.priority).reversed());
 
@@ -14207,7 +14283,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                                                   double worldMinY,
                                                   double worldW,
                                                   double worldH) {
-        if (g2 == null || ctx == null || mapRect == null || !CampaignSystem.isStrategicGalaxyMapMode(ctx)) return;
+        if (g2 == null || ctx == null || mapRect == null || !CampaignSystem.isStrategicOvermapMode(ctx)) return;
         ArrayList<CampaignSystem.FleetFormationCutout> cutouts = new ArrayList<>(CampaignSystem.selectedFleetFormationCutouts(ctx, 10));
         double zoom = UISystem.strategicMapZoom(ctx);
         if (zoom >= 3.10 && ctx.campaign != null) {
@@ -14376,7 +14452,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
     private static boolean shouldDrawObjectiveMarkerAtZoom(GameContext ctx, CampaignSystem.CampaignObjectiveMarker marker) {
-        if (marker == null || !CampaignSystem.isStrategicGalaxyMapMode(ctx)) return true;
+        if (marker == null || !CampaignSystem.isStrategicOvermapMode(ctx)) return true;
         if (isSelectedMapMarker(ctx, marker.label, marker.x, marker.y)) return true;
         double zoom = UISystem.strategicMapZoom(ctx);
         if (zoom < 2.15) {
@@ -14394,7 +14470,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
     static boolean shouldDrawSupportMarkerAtZoom(GameContext ctx, CampaignSystem.CampaignSupportMarker marker) {
-        if (marker == null || !CampaignSystem.isStrategicGalaxyMapMode(ctx)) return true;
+        if (marker == null || !CampaignSystem.isStrategicOvermapMode(ctx)) return true;
         if (isSelectedMapMarker(ctx, marker.label, marker.x, marker.y)) return true;
         double zoom = UISystem.strategicMapZoom(ctx);
         if (zoom < 2.15) {
@@ -14426,7 +14502,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
     private static boolean shouldDrawLandmarkAtZoom(GameContext ctx, CampaignSystem.CampaignLandmark marker) {
-        if (marker == null || !CampaignSystem.isStrategicGalaxyMapMode(ctx)) return true;
+        if (marker == null || !CampaignSystem.isStrategicOvermapMode(ctx)) return true;
         if (isSelectedMapMarker(ctx, marker.label, marker.x, marker.y)) return true;
         double zoom = UISystem.strategicMapZoom(ctx);
         if (zoom < 2.15) {
@@ -14879,7 +14955,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static boolean isSelectedMapMarker(GameContext ctx, String label, double x, double y) {
         if (ctx == null || ctx.ui == null) return false;
-        if (CampaignSystem.isStrategicGalaxyMapMode(ctx)) {
+        if (CampaignSystem.isStrategicOvermapMode(ctx)) {
             if (CampaignSystem.hasSelectedCampaignContactTarget(ctx)
                     && Double.isFinite(ctx.ui.selectedCampaignContactX)
                     && Double.isFinite(ctx.ui.selectedCampaignContactY)
@@ -14904,7 +14980,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                                                         CampaignSystem.CampaignSupportMarker marker,
                                                         boolean selected) {
         if (marker == null) return false;
-        if (!CampaignSystem.isStrategicGalaxyMapMode(ctx)) return true;
+        if (!CampaignSystem.isStrategicOvermapMode(ctx)) return true;
         return selected || isPriorityCampaignFleetMarker(marker);
     }
 
@@ -14916,7 +14992,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static CampaignSystem.CampaignLocation campaignLocationForMarker(GameContext ctx,
                                                                              CampaignSystem.CampaignObjectiveMarker marker) {
-        if (ctx == null || marker == null || !CampaignSystem.isStrategicGalaxyMapMode(ctx)) return null;
+        if (ctx == null || marker == null || !CampaignSystem.isStrategicOvermapMode(ctx)) return null;
         CampaignSystem.CampaignLocation byPoint = CampaignSystem.nearestCampaignLocation(ctx, marker.x, marker.y, 80.0);
         if (byPoint != null && byPoint.name != null && marker.label != null
                 && byPoint.name.equalsIgnoreCase(marker.label)) return byPoint;
@@ -14930,7 +15006,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static Color strategicMarkerColor(GameContext ctx,
                                               CampaignSystem.CampaignObjectiveMarker marker,
                                               CampaignSystem.CampaignLocationControlView controlView) {
-        if (CampaignSystem.isStrategicGalaxyMapMode(ctx) && controlView != null) {
+        if (CampaignSystem.isStrategicOvermapMode(ctx) && controlView != null) {
             return campaignControlColor(controlView.control, 232);
         }
         if (marker != null && marker.faction != null

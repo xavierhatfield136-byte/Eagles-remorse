@@ -197,7 +197,10 @@ public final class ExperienceSettings {
         if (firingMode == null) firingMode = InteractionMode.HOLD;
         if (mapMode == null) mapMode = InteractionMode.TOGGLE;
         if (visualDetail == null) visualDetail = VisualDetail.AUTO;
-        applyUniversalDifficulty(this);
+        commandComplexity = clamp(commandComplexity, 0.0, 2.0);
+        combatLethality = clamp(combatLethality, 0.0, 2.0);
+        strategicPressure = clamp(strategicPressure, 0.0, 2.0);
+        attrition = clamp(attrition, 0.0, 2.0);
         uiTextScale = clamp(uiTextScale, 0.8, 1.6);
         subtitleScale = clamp(subtitleScale, 0.8, 1.8);
     }

@@ -117,6 +117,7 @@ final class ShipPartLibrary {
             if (ship == null) continue;
             String key = keyForRole(ship.role) + "|" + keyForFaction(ship.faction);
             if (!seen.add(key)) continue;
+            getSet(ship.role, ship.faction, Variant.NORMAL);
             getSet(ship.role, ship.faction, Variant.DAMAGED);
             getSet(ship.role, ship.faction, Variant.CRITICAL);
             getSet(ship.role, ship.faction, Variant.DESTROYED);

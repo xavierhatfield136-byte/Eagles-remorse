@@ -646,7 +646,7 @@ public class FleetShip extends Ship {
 
                 // Single battleship-grade spinal gun on a fragile early-game hull.
                 Turret spinalGun = new Turret(Turret.Kind.GUN, 16, 0);
-                spinalGun.cooldown = 0.34;
+                spinalGun.cooldown = 0.30;
                 spinalGun.damage = 4;
                 spinalGun.bulletSpeed = 980;
                 spinalGun.bulletLife = 270;
@@ -1280,8 +1280,10 @@ public class FleetShip extends Ship {
                 desiredSpeed = 52;
                 bountyValue = 1600;
 
-                addHullGunPairDirect(0.72, 0.52, 0.36, 6, 1080, 320, true, 12, 30);
-                addHullGunPairDirect(0.34, 0.44, 0.30, 4, 980, 280, true, 10, 24);
+                addHullCenterGunTurret(0.72, 0.36, 6, 1080, 320, true, 12, 30);
+                addHullCenterGunTurret(0.56, 0.36, 6, 1080, 320, true, 12, 30);
+                addHullCenterGunTurret(0.40, 0.30, 4, 980, 280, true, 10, 24);
+                addHullCenterGunTurret(0.24, 0.30, 4, 980, 280, true, 10, 24);
 
                 Turret mb = new Turret(Turret.Kind.MISSILE, 2, 0);
                 mb.cooldown = 1.65;
@@ -2200,7 +2202,7 @@ public class FleetShip extends Ship {
 
     private double[] hullCenterMount(double alongFrac) {
         double[] visual = visualCenterMount(alongFrac);
-        if (visual != null) return visual;
+        if (visual != null) return new double[]{visual[0], MathUtil.clamp(visual[1], -1.0, 1.0)};
         HullMountColumn column = hullMountColumn(alongFrac);
         return new double[]{column.localX, 0.0};
     }

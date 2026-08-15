@@ -110,7 +110,7 @@ public final class MainMenuPanel extends JPanel {
         JButton customBattle = createMenuButton("Custom Battle", new Color(64, 126, 177), uiScale);
         JButton customShipCreator = createMenuButton("Team E Shipyard", new Color(66, 112, 148), uiScale);
         JButton galaxyMapTest = createMenuButton("Galaxy Map Test", new Color(72, 103, 150), uiScale);
-        JButton tutorialStart = createMenuButton("Tutorial", new Color(60, 118, 186), uiScale);
+        JButton tutorialStart = createMenuButton("Commander's Academy", new Color(60, 118, 186), uiScale);
         JButton experienceButton = createMenuButton("Accessibility", new Color(64, 80, 116), uiScale);
         JButton controlsButton = createMenuButton("Controls", new Color(65, 91, 126), uiScale);
         customBattle.setName("customBattleButton");

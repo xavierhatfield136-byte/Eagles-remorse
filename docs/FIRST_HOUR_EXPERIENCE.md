@@ -1,7 +1,7 @@
 # First-Hour And Steam Readiness Checklist
 
-Date updated: 2026-08-13
-Status: Final governing checklist for the final major development phase
+Date updated: 2026-08-15
+Status: Reconciled; automated release gates passed, manual playtest/platform validation still open
 Authority: Owner direction, Commander Academy planning notes, and current 1.0 release-readiness checklist
 
 ## Core Goal
@@ -24,7 +24,122 @@ The remaining highest-leverage work is comprehension, not more content. The fina
 major feature phase is the Commander Academy prologue plus a real After-Action
 Report system.
 
+## Implementation Pass - 2026-08-15
+
+Completed in code:
+
+- Added `BattleResult` as the normalized tactical fact container.
+- Added `BattleAnalysisService` as the evidence-based interpretation layer.
+- Added `AfterActionReport` as display-ready report data.
+- Added `PersistentBattleRecord` as compact retained history.
+- Added `BattleResultRecorder` and wired it into the central simulation tick.
+- Wired campaign AAR output to the normalized report when available.
+- Added an immediate game-over AAR summary panel for tactical, Academy, and custom battles.
+- Renamed the main-menu first-time entry to `Commander's Academy`.
+- Added `AcademyDirector` as the stable authority/facade over the existing real tutorial flow.
+- Added local-only Academy progress and JSONL playtest telemetry under `UserDataPaths`.
+- Added automated coverage for BattleResult analysis, recorder completion, menu entry text, Academy persistence/telemetry, HUD rendering, and existing command-school regressions.
+- Added BattleResult schema/save metadata, mission ID, campaign sector/subzone, difficulty preset/modifier summary, stable ship-history keys, repair/replacement estimates, and compact debug exports.
+- Added named AAR analysis rules with priorities, confidence scores, debug explanations, and evidence-backed player-facing copy.
+- Added local Academy failure/recovery/abandonment/graduation telemetry hooks plus a Gradle-accessible telemetry summary tool.
+- Fixed a performance-soak release blocker where healthy multipart ship sprites
+  could decode during measured render frames after only damaged/destroyed variants
+  had been prewarmed.
+
+Baseline evidence recorded this pass:
+
+- Version: `1.0.1.12`.
+- Current commit at pass start: `23fb143`.
+- Latest public release tag: `v1.0.1.11`.
+- `git status -sb`: branch `main...origin/main` with existing in-progress changes.
+- `git diff --check`: passed; only CRLF normalization warnings for `config/screenshot_baselines.properties` and `src/Renderer.java`.
+- Focused tests passed: `.\gradlew.bat test --tests BattleResultAnalysisServiceTest --tests app.persistence.AcademyProgressStoreTest`.
+- Tutorial viability tests passed: `.\gradlew.bat test --tests CommandSchoolOverworldExpansionTest --tests TutorialWarpRegressionTest`.
+- AAR/BattleResult release coverage passed: `.\gradlew.bat test --tests BattleResultAnalysisServiceTest`.
+- Multipart render-prewarm regression coverage passed: `.\gradlew.bat test --tests ShipDamagePatchLibraryTest --tests BattleResultAnalysisServiceTest`.
+- Automated release gate passed: `.\gradlew.bat check currentReleaseVerification productionValidation phase11ReleaseContract performanceGuardrailsCi screenshotRegression`.
+- Final full check after adding campaign defeat/withdrawal recorder coverage passed:
+  `.\gradlew.bat check`.
+- Windows package validation passed: `.\gradlew.bat phase11Packaging`.
+- Built portable Windows artifact: `build\package\windows\EaglesRemorse-1.0.1.12-windows-x64-full.zip`.
+- WiX was not found on `PATH`, so the EXE installer artifact was skipped by the
+  existing Gradle packaging rule.
+
+Still requires owner/playtest/platform validation:
+
+- Full blind first-hour playtests.
+- Manual packaged Windows Academy/campaign smoke from clean user data.
+- Linux/macOS packaged smoke tests if those platforms remain release targets.
+- Steamworks/AppID/depot setup.
+- Final screenshots, store copy, release notes, and owner go/no-go sign-off.
+- Any first-hour polish discovered by real testers.
+
+## Checklist Reconciliation - 2026-08-15
+
+This document is intentionally broader than the code pass. It combines four
+different kinds of checklist rows:
+
+- `Code-backed`: implemented or covered by automated tests in the local repo.
+- `Manual validation`: requires a human playthrough, packaged build, visual QA,
+  owner review, or external tester evidence.
+- `Optional V2 instrumentation`: useful AAR/telemetry depth, but not required for
+  the first V1 learning loop unless blind testing proves it is needed.
+- `Release/platform gate`: Steamworks, packaging, full verification, or final
+  go/no-go work that cannot be checked from source code alone.
+
+Current checklist count after reconciliation:
+
+- `FIRST_HOUR_EXPERIENCE.md`: 298 checked, 474 unchecked.
+- `1_0_MASTER_IMPLEMENTATION_CHECKLIST.md`: 991 checked, 101 unchecked.
+
+Interpretation: the large number of unchecked rows is expected. The unchecked
+rows are not all release blockers. They include manual playtest questions,
+Steamworks tasks, optional analysis instrumentation, platform smoke tests,
+owner acceptance, and intentionally unverified release gates.
+
+Code-backed confidence currently established:
+
+- AAR/BattleResult V1 foundations are implemented and covered by focused tests.
+- Academy progress/telemetry V1 foundations are implemented and covered by focused tests.
+- The current Command School/Academy tutorial flow can be completed end-to-end
+  through supported game/UI actions without debug tools.
+- Recent tutorial softlocks found during reconciliation were fixed and covered by
+  `CommandSchoolOverworldExpansionTest`.
+- Full automated release validation, performance guardrails, save/load soak,
+  campaign-transition fuzzing, screenshot regression, production validation, and
+  Windows package validation have passed locally.
+
+Items intentionally left unchecked:
+
+- Anything that requires blind first-hour playtesting.
+- Anything that requires an interactive packaged-build playthrough or Steamworks access.
+- Optional AAR detail such as per-ship damage dealt, missile interception counts,
+  engagement range time, escort coverage time, and point-defense contribution.
+- Owner go/no-go and subjective quality acceptance.
+
+## Remaining Release Blockers
+
+These are the actionable blockers still open before treating this as a release
+candidate:
+
+1. Manually smoke-test the packaged Windows game from a clean user data
+   directory, including Academy start/completion, normal campaign start,
+   save/load, AAR display, telemetry summary, and no repo-file dependency.
+2. Run blind first-hour playtests from a packaged build, record observation
+   notes, collect interview answers, and promote reproducible confusion or
+   softlocks into fixes.
+3. Re-run the first-hour flow after those fixes until no P0/P1 issue remains and
+   the owner accepts first-hour clarity.
+4. Complete Steamworks/AppID/depot setup, SteamPipe upload test, store-page
+   materials, final release notes, known issues, system requirements, and save
+   compatibility policy.
+5. Make the owner go/no-go decision after the validation evidence above exists.
+
 ## Release Promise
+
+Reconciliation note: these rows are acceptance outcomes, not code tasks. Leave
+them unchecked until blind first-hour testing verifies that new players actually
+understand each item without developer explanation.
 
 After one hour, a blind first-time player should understand:
 
@@ -46,6 +161,9 @@ Once this phase starts, Eagles Remorse enters Steam Candidate Feature Freeze.
 
 Checklist change rule: stop expanding this document. Add new checklist items only
 when implementation or blind testing proves that something necessary is missing.
+
+Reconciliation note: the rows in this section describe the allowed/frozen scope.
+They are not evidence of feature completion by themselves.
 
 Allowed work:
 
@@ -78,25 +196,25 @@ Frozen work:
 
 ## Non-Negotiable Implementation Rules
 
-- [ ] The Academy uses the real tactical battle system.
-- [ ] The Academy uses the real fleet order system.
-- [ ] The Academy uses the real ship AI.
-- [ ] The Academy uses the real damage model.
-- [ ] The Academy uses the real repair and refit flow.
-- [ ] The Academy uses the real campaign mission framework.
-- [ ] The Academy uses the real save system.
-- [ ] The Academy uses the real After-Action Report system.
-- [ ] The Academy does not use a duplicate tutorial-only combat framework.
-- [ ] The Academy does not use fake tutorial-only ship logic.
-- [ ] The Academy does not use a duplicate tutorial-only campaign model.
-- [ ] The Academy does not replace the normal UI with unrelated tutorial screens.
-- [ ] The Academy director orchestrates normal gameplay instead of replacing it.
-- [ ] The After-Action Report system is implemented before Academy chapters depend on it.
-- [ ] Battle facts, battle analysis, and report UI remain separate.
-- [ ] All player-facing explanations must be evidence-based.
-- [ ] No battle analysis line may be shown unless a measurable condition triggered it.
-- [ ] The Academy teaches only systems needed for the normal first campaign hour.
-- [ ] The Academy does not teach custom Team E builders, advanced titan systems,
+- [x] The Academy uses the real tactical battle system.
+- [x] The Academy uses the real fleet order system.
+- [x] The Academy uses the real ship AI.
+- [x] The Academy uses the real damage model.
+- [x] The Academy uses the real repair and refit flow.
+- [x] The Academy uses the real campaign mission framework.
+- [x] The Academy uses the real save system.
+- [x] The Academy uses the real After-Action Report system.
+- [x] The Academy does not use a duplicate tutorial-only combat framework.
+- [x] The Academy does not use fake tutorial-only ship logic.
+- [x] The Academy does not use a duplicate tutorial-only campaign model.
+- [x] The Academy does not replace the normal UI with unrelated tutorial screens.
+- [x] The Academy director orchestrates normal gameplay instead of replacing it.
+- [x] The After-Action Report system is implemented before Academy chapters depend on it.
+- [x] Battle facts, battle analysis, and report UI remain separate.
+- [x] All player-facing explanations must be evidence-based.
+- [x] No battle analysis line may be shown unless a measurable condition triggered it.
+- [x] The Academy teaches only systems needed for the normal first campaign hour.
+- [x] The Academy does not teach custom Team E builders, advanced titan systems,
   specialized late-game mechanics, or optional feature showcases.
 - [ ] The phase ends only after blind first-hour testing succeeds.
 
@@ -104,25 +222,25 @@ Frozen work:
 
 ## 0.1 Declare The Phase
 
-- [ ] Record current version from `VERSION`.
-- [ ] Record current git commit.
-- [ ] Record current public release tag.
-- [ ] Add a note to release planning that the project is in Steam Candidate Feature Freeze.
-- [ ] Link this checklist from the 1.0 master checklist or release planning docs.
+- [x] Record current version from `VERSION`.
+- [x] Record current git commit.
+- [x] Record current public release tag.
+- [x] Add a note to release planning that the project is in Steam Candidate Feature Freeze.
+- [x] Link this checklist from the 1.0 master checklist or release planning docs.
 - [ ] Identify any already-started work that must be paused until after first-hour validation.
 - [ ] Identify any known P0/P1 bugs that must be fixed before Academy work can be tested.
 
 ## 0.2 Baseline Verification
 
-- [ ] Run `git status -sb`.
-- [ ] Run `git diff --check`.
-- [ ] Run the full test suite.
-- [ ] Run current release verification.
-- [ ] Run performance guardrails.
-- [ ] Run save/load soak.
-- [ ] Run campaign-transition fuzzing.
-- [ ] Run packaged-build validation.
-- [ ] Record failures as first-hour blockers or non-blocking follow-ups.
+- [x] Run `git status -sb`.
+- [x] Run `git diff --check`.
+- [x] Run the full test suite.
+- [x] Run current release verification.
+- [x] Run performance guardrails.
+- [x] Run save/load soak.
+- [x] Run campaign-transition fuzzing.
+- [x] Run packaged-build validation.
+- [x] Record failures as first-hour blockers or non-blocking follow-ups.
 
 ## 0.3 Current First-Hour Flow Audit
 
@@ -144,13 +262,13 @@ Frozen work:
 
 ## 0.4 Main Menu Entry Audit
 
-- [ ] Confirm whether `Command School` already exists as a menu option.
-- [ ] Decide whether to rename, replace, or supplement it with `New Commander` as a heading.
-- [ ] Add menu copy for `Commander's Academy` as the recommended first-time button.
+- [x] Confirm whether `Command School` already exists as a menu option.
+- [x] Decide whether to rename, replace, or supplement it with `New Commander` as a heading.
+- [x] Add menu copy for `Commander's Academy` as the recommended first-time button.
 - [ ] Add menu copy for normal `Campaign`.
-- [ ] Ensure experienced players can skip the Academy.
-- [ ] Ensure first-time players see the Academy as the recommended path.
-- [ ] Ensure `New Commander` and `Commander's Academy` do not appear as two competing choices.
+- [x] Ensure experienced players can skip the Academy.
+- [x] Ensure first-time players see the Academy as the recommended path.
+- [x] Ensure `New Commander` and `Commander's Academy` do not appear as two competing choices.
 
 Suggested menu presentation:
 
@@ -172,63 +290,63 @@ instrumentation should be added only when a specific analysis rule needs it.
 
 ## 1.1 Define BattleResult Ownership
 
-- [ ] Identify the tactical battle lifecycle entry point.
-- [ ] Identify the tactical victory/failure/withdrawal resolution path.
-- [ ] Identify campaign mission completion integration.
+- [x] Identify the tactical battle lifecycle entry point.
+- [x] Identify the tactical victory/failure/withdrawal resolution path.
+- [x] Identify campaign mission completion integration.
 - [ ] Identify where tactical resource rewards are currently awarded.
 - [ ] Identify where ship damage and losses are persisted.
 - [ ] Identify where campaign territory or faction consequences are applied.
-- [ ] Define the authoritative owner of `BattleResult`.
-- [ ] Ensure `BattleResult` can be generated for campaign battles.
-- [ ] Ensure `BattleResult` can be generated for custom battles where campaign data is absent.
-- [ ] Ensure `BattleResult` can be generated for Academy battles.
+- [x] Define the authoritative owner of `BattleResult`.
+- [x] Ensure `BattleResult` can be generated for campaign battles.
+- [x] Ensure `BattleResult` can be generated for custom battles where campaign data is absent.
+- [x] Ensure `BattleResult` can be generated for Academy battles.
 
 ## 1.2 Battle Identity And Context
 
-- [ ] Add battle ID.
-- [ ] Add game version.
-- [ ] Add save/schema version if relevant.
-- [ ] Add battle start timestamp.
-- [ ] Add battle end timestamp.
-- [ ] Add battle duration.
-- [ ] Add battle source: campaign, custom battle, Academy, test harness.
-- [ ] Add mission ID when available.
-- [ ] Add mission title when available.
-- [ ] Add campaign sector when available.
-- [ ] Add campaign subzone when available.
-- [ ] Add player faction.
-- [ ] Add enemy factions present.
-- [ ] Add difficulty preset or modifiers.
-- [ ] Add campaign seed when available.
+- [x] Add battle ID.
+- [x] Add game version.
+- [x] Add save/schema version if relevant.
+- [x] Add battle start timestamp.
+- [x] Add battle end timestamp.
+- [x] Add battle duration.
+- [x] Add battle source: campaign, custom battle, Academy, test harness.
+- [x] Add mission ID when available.
+- [x] Add mission title when available.
+- [x] Add campaign sector when available.
+- [x] Add campaign subzone when available.
+- [x] Add player faction.
+- [x] Add enemy factions present.
+- [x] Add difficulty preset or modifiers.
+- [x] Add campaign seed when available.
 
 ## 1.3 Required AAR V1 Fleet Facts
 
-- [ ] Record every friendly ship deployed.
-- [ ] Record every hostile ship deployed.
-- [ ] Record every allied non-player ship deployed.
-- [ ] Record ship UUID.
-- [ ] Record ship display name.
-- [ ] Record faction.
-- [ ] Record role/class.
-- [ ] Record whether ship is custom content.
-- [ ] Record starting hull.
-- [ ] Record ending hull.
-- [ ] Record starting shield.
-- [ ] Record ending shield.
-- [ ] Record destroyed state.
-- [ ] Record withdrew state.
-- [ ] Record repair estimate when available.
+- [x] Record every friendly ship deployed.
+- [x] Record every hostile ship deployed.
+- [x] Record every allied non-player ship deployed.
+- [x] Record ship UUID/stable AAR key where available.
+- [x] Record ship display name.
+- [x] Record faction.
+- [x] Record role/class.
+- [x] Record whether ship is custom content.
+- [x] Record starting hull.
+- [x] Record ending hull.
+- [x] Record starting shield.
+- [x] Record ending shield.
+- [x] Record destroyed state.
+- [x] Record withdrew state.
+- [x] Record repair estimate when available.
 
 ## 1.4 Required AAR V1 Combat Facts
 
 - [ ] Record kills by ship.
 - [ ] Record damage dealt by ship.
-- [ ] Record damage received by ship.
+- [x] Record damage received by ship.
 - [ ] Record missile shots fired.
 - [ ] Record missiles intercepted.
 - [ ] Record fighter/strike craft losses.
-- [ ] Record enemy ships destroyed.
-- [ ] Record enemy ships escaped.
+- [x] Record enemy ships destroyed.
+- [x] Record enemy ships escaped.
 
 ## 1.5 Optional Analysis Instrumentation
 
@@ -257,43 +375,43 @@ V1 on this entire list.
 
 ## 1.6 Required AAR V1 Mission And Strategic Facts
 
-- [ ] Record tactical result: victory, defeat, withdrawal, abort, timeout.
-- [ ] Record mission result: success, partial success, failure, not applicable.
+- [x] Record tactical result: victory, defeat, withdrawal, abort, timeout.
+- [x] Record mission result: success, partial success, failure, not applicable.
 - [ ] Record failure reason if known.
 - [ ] Record success reason if known.
-- [ ] Record friendly ships lost.
-- [ ] Record friendly ships heavily damaged.
-- [ ] Record friendly ships preserved by withdrawal.
-- [ ] Record salvage earned.
-- [ ] Record mission reward earned.
-- [ ] Record repair cost.
-- [ ] Record replacement cost if calculated.
-- [ ] Record resources spent.
+- [x] Record friendly ships lost.
+- [x] Record friendly ships heavily damaged.
+- [x] Record friendly ships preserved by withdrawal.
+- [x] Record salvage earned.
+- [x] Record mission reward earned.
+- [x] Record repair cost.
+- [x] Record replacement cost if calculated.
+- [x] Record resources spent.
 - [ ] Record territory changes.
 - [ ] Record faction reputation changes.
 - [ ] Record production, convoy, mining, or logistics consequences.
 - [ ] Record unlocked missions or follow-up events.
-- [ ] Record whether campaign state changed.
+- [x] Record whether campaign state changed.
 
 ## 1.7 Persistence, Serialization, And Testing
 
-- [ ] Distinguish full `BattleResult` from compact persistent battle history.
-- [ ] Distinguish transient `BattleResultTelemetry` from saved campaign history.
-- [ ] Do not persist the entire raw analytical dataset forever.
-- [ ] Create or define `PersistentBattleRecord` for retained campaign history.
-- [ ] Keep enough information to reopen recent AARs.
-- [ ] Keep enough information to preserve ship history.
-- [ ] Keep detailed instrumentation only in logs, telemetry, or bounded recent history unless required.
-- [ ] Define maximum retained battle history count.
-- [ ] Ensure old saves load without battle history.
-- [ ] Ensure new saves preserve recent battle history.
-- [ ] Add JSON or text export for debugging.
-- [ ] Add tests for campaign victory result generation.
-- [ ] Add tests for campaign defeat result generation.
-- [ ] Add tests for withdrawal result generation.
-- [ ] Add tests for custom battle result generation.
-- [ ] Add tests for missing campaign context.
-- [ ] Add tests for custom ships/weapons appearing in result facts.
+- [x] Distinguish full `BattleResult` from compact persistent battle history.
+- [x] Distinguish transient `BattleResultTelemetry` from saved campaign history.
+- [x] Do not persist the entire raw analytical dataset forever.
+- [x] Create or define `PersistentBattleRecord` for retained campaign history.
+- [x] Keep enough information to reopen recent AARs.
+- [x] Keep enough information to preserve ship history.
+- [x] Keep detailed instrumentation only in logs, telemetry, or bounded recent history unless required.
+- [x] Define maximum retained battle history count.
+- [x] Ensure old saves load without battle history.
+- [x] Ensure new saves preserve recent battle history.
+- [x] Add JSON or text export for debugging.
+- [x] Add tests for campaign victory result generation.
+- [x] Add tests for campaign defeat result generation.
+- [x] Add tests for withdrawal result generation.
+- [x] Add tests for custom battle result generation.
+- [x] Add tests for missing campaign context.
+- [x] Add tests for custom ships/weapons appearing in result facts.
 
 Recommended persistence flow:
 
@@ -311,15 +429,15 @@ Compact PersistentBattleRecord
 
 ## 2.1 Separation Of Responsibilities
 
-- [ ] Create or identify `BattleResult` as raw fact container.
-- [ ] Create `BattleAnalysisService` for interpretation.
-- [ ] Create `AfterActionReport` as display-ready report data.
-- [ ] Create or identify compact `PersistentBattleRecord` for save history.
-- [ ] Create renderer/UI panel for the report.
-- [ ] Keep tactical simulation from formatting report text directly.
-- [ ] Keep campaign state mutation outside report rendering.
-- [ ] Keep report UI read-only.
-- [ ] Add tests for fact-to-report conversion.
+- [x] Create or identify `BattleResult` as raw fact container.
+- [x] Create `BattleAnalysisService` for interpretation.
+- [x] Create `AfterActionReport` as display-ready report data.
+- [x] Create or identify compact `PersistentBattleRecord` for save history.
+- [x] Create renderer/UI panel for the report.
+- [x] Keep tactical simulation from formatting report text directly.
+- [x] Keep campaign state mutation outside report rendering.
+- [x] Keep report UI read-only.
+- [x] Add tests for fact-to-report conversion.
 
 Recommended flow:
 
@@ -343,16 +461,16 @@ Report UI
 
 ## 2.2 Report Summary
 
-- [ ] Show operation name.
-- [ ] Show tactical result.
-- [ ] Show mission result.
-- [ ] Show battle duration.
-- [ ] Show sector/location if available.
-- [ ] Show friendly force summary.
-- [ ] Show enemy force summary.
-- [ ] Show whether the player withdrew.
-- [ ] Show whether the enemy withdrew.
-- [ ] Show whether strategic consequences occurred.
+- [x] Show operation name.
+- [x] Show tactical result.
+- [x] Show mission result.
+- [x] Show battle duration.
+- [x] Show sector/location if available.
+- [x] Show friendly force summary.
+- [x] Show enemy force summary.
+- [x] Show whether the player withdrew.
+- [x] Show whether the enemy withdrew.
+- [x] Show whether strategic consequences occurred.
 
 Example:
 
@@ -366,79 +484,83 @@ Red control in Southern Corridor weakened.
 
 ## 2.3 Losses And Damage
 
-- [ ] Show friendly ships deployed.
-- [ ] Show friendly ships lost.
-- [ ] Show friendly ships heavily damaged.
-- [ ] Show friendly ships preserved by withdrawal.
-- [ ] Show enemy ships destroyed.
-- [ ] Show enemy ships escaped.
-- [ ] Show notable capital/titan losses.
-- [ ] Show custom Team E ships by player-facing name.
-- [ ] Show severe damage warnings for persistent ships.
-- [ ] Avoid overwhelming the player with every minor scratch.
+- [x] Show friendly ships deployed.
+- [x] Show friendly ships lost.
+- [x] Show friendly ships heavily damaged.
+- [x] Show friendly ships preserved by withdrawal.
+- [x] Show enemy ships destroyed.
+- [x] Show enemy ships escaped.
+- [x] Show notable capital/titan losses.
+- [x] Show custom Team E ships by player-facing name.
+- [x] Show severe damage warnings for persistent ships.
+- [x] Avoid overwhelming the player with every minor scratch.
 
 ## 2.4 Notable Actions
 
 - [ ] Highlight top friendly damage dealer.
 - [ ] Highlight top friendly kill count.
 - [ ] Highlight ship that intercepted the most missiles if available.
-- [ ] Highlight ship that absorbed heavy damage and survived.
+- [x] Highlight ship that absorbed heavy damage and survived.
 - [ ] Highlight ship that disabled or destroyed a capital ship.
-- [ ] Highlight named ship losses.
-- [ ] Highlight Academy training ships when relevant.
-- [ ] Keep notable actions short.
-- [ ] Avoid showing more than 3-5 notable actions by default.
+- [x] Highlight named ship losses.
+- [x] Highlight Academy training ships when relevant.
+- [x] Keep notable actions short.
+- [x] Avoid showing more than 3-5 notable actions by default.
 
 ## 2.5 Resource And Strategic Result
 
-- [ ] Show salvage gained.
-- [ ] Show mission reward.
-- [ ] Show repair cost.
-- [ ] Show replacement cost when meaningful.
-- [ ] Show net resource result.
+- [x] Show salvage gained.
+- [x] Show mission reward.
+- [x] Show repair cost.
+- [x] Show replacement cost when meaningful.
+- [x] Show net resource result.
 - [ ] Show territory captured, defended, or lost.
 - [ ] Show faction reputation changes.
 - [ ] Show unlocked reinforcements or routes.
-- [ ] Show follow-up mission consequences.
+- [x] Show follow-up mission consequences.
 - [ ] Show when an ignored objective expired or changed.
-- [ ] Keep strategic result visible even for partial success or withdrawal.
+- [x] Keep strategic result visible even for partial success or withdrawal.
 
 ## 2.6 Recommended Next Action
 
-- [ ] Recommend repair/refit after heavy damage.
-- [ ] Recommend replacing losses after ship destruction.
-- [ ] Recommend retreating from high strategic pressure if needed.
-- [ ] Recommend pressing advantage after clean victory.
+- [x] Recommend repair/refit after heavy damage.
+- [x] Recommend replacing losses after ship destruction.
+- [x] Recommend retreating from high strategic pressure if needed.
+- [x] Recommend pressing advantage after clean victory.
 - [ ] Recommend improving point defense after missile-heavy losses.
 - [ ] Recommend escorting carriers/capitals after isolation warnings.
 - [ ] Recommend pursuing escaped enemies when strategically relevant.
-- [ ] Recommend choosing a new mission after Academy chapter completion.
-- [ ] Do not recommend actions that are unavailable in the current mode.
+- [x] Recommend choosing a new mission after Academy chapter completion.
+- [x] Do not recommend actions that are unavailable in the current mode.
 
 # Phase 3 - Evidence-Based Battle Analysis
 
+Reconciliation note: Phase 3 includes both implemented V1 insight rules and
+candidate V2 analysis ideas. Candidate rows stay unchecked unless the necessary
+facts, thresholds, display copy, and tests exist.
+
 ## 3.1 Analysis Rules
 
-- [ ] Every insight has a named rule ID.
-- [ ] Every insight has measurable input facts.
-- [ ] Every insight has thresholds.
-- [ ] Every insight has a confidence score or priority.
-- [ ] Every insight has player-facing copy.
-- [ ] Every insight has a short debug explanation.
-- [ ] Insights are ranked before display.
-- [ ] Display at most 2-4 insights by default.
-- [ ] Avoid vague statements.
-- [ ] Avoid contradictory statements.
+- [x] Every insight has a named rule ID.
+- [x] Every insight has measurable input facts.
+- [x] Every insight has thresholds.
+- [x] Every insight has a confidence score or priority.
+- [x] Every insight has player-facing copy.
+- [x] Every insight has a short debug explanation.
+- [x] Insights are ranked before display.
+- [x] Display at most 2-4 insights by default.
+- [x] Avoid vague statements.
+- [x] Avoid contradictory statements.
 
 ## 3.2 Display Categories
 
-- [ ] Primary factor.
-- [ ] Secondary factor.
-- [ ] Warning.
-- [ ] Recommended next action.
+- [x] Primary factor.
+- [x] Secondary factor.
+- [x] Warning.
+- [x] Recommended next action.
 - [ ] Optional details/expanded view.
-- [ ] Use `Key Battle Factors` or similar wording instead of claiming perfect causality.
-- [ ] Reserve direct causal language for rules with very strong evidence.
+- [x] Use `Key Battle Factors` or similar wording instead of claiming perfect causality.
+- [x] Reserve direct causal language for rules with very strong evidence.
 
 Preferred shape:
 
@@ -458,20 +580,20 @@ Your carrier spent 43% of combat outside escort coverage.
 - [ ] Capital ships protected by escorts.
 - [ ] Enemy missile boats destroyed early.
 - [ ] High-value target eliminated.
-- [ ] Low friendly losses.
-- [ ] Successful withdrawal preserved the fleet.
+- [x] Low friendly losses.
+- [x] Successful withdrawal preserved the fleet.
 - [ ] Fighters/strike craft dealt meaningful damage with acceptable losses.
 - [ ] Repair costs stayed below mission value.
-- [ ] Mission objective completed before enemy escalation.
+- [x] Mission objective completed before enemy escalation.
 
 ## 3.4 Candidate Warning Insights
 
 - [ ] Insufficient point defense.
 - [ ] Capital ships outside escort coverage.
 - [ ] Carrier exposed outside escort coverage.
-- [ ] Enemy force escaped in large numbers.
+- [x] Enemy force escaped in large numbers.
 - [ ] Friendly fighter losses too high.
-- [ ] Repair costs exceeded rewards.
+- [x] Repair costs exceeded rewards.
 - [ ] Player ships spent too long outside weapon range.
 - [ ] Player ships spent too long without valid targets.
 - [ ] Fleet concentrated fire on low-value targets while major threats survived.
@@ -497,41 +619,41 @@ Your carrier spent 43% of combat outside escort coverage.
 - [ ] Test escort coverage warning.
 - [ ] Test enemy escape warning.
 - [ ] Test repair cost warning.
-- [ ] Test successful withdrawal praise.
+- [x] Test successful withdrawal praise.
 - [ ] Test defeat explanation priority.
-- [ ] Test insight cap of 2-4 visible items.
-- [ ] Test no insight shown when facts are insufficient.
-- [ ] Test custom battle report does not mention campaign-only actions.
+- [x] Test insight cap of 2-4 visible items.
+- [x] Test no insight shown when facts are insufficient.
+- [x] Test custom battle report does not mention campaign-only actions.
 
 # Phase 4 - AcademyDirector Framework
 
 ## 4.1 Director Scope
 
-- [ ] Create `AcademyDirector` or equivalent authority.
-- [ ] Director watches normal game state.
-- [ ] Director unlocks teaching steps.
-- [ ] Director displays hints.
-- [ ] Director injects curated missions/events.
-- [ ] Director records Academy progress.
-- [ ] Director never duplicates tactical simulation.
-- [ ] Director never directly rewrites unrelated campaign state.
-- [ ] Director can recover from out-of-order player actions.
-- [ ] Director can skip a completed impossible objective.
+- [x] Create `AcademyDirector` or equivalent authority.
+- [x] Director watches normal game state.
+- [x] Director unlocks teaching steps.
+- [x] Director displays hints.
+- [x] Director injects curated missions/events.
+- [x] Director records Academy progress.
+- [x] Director never duplicates tactical simulation.
+- [x] Director never directly rewrites unrelated campaign state.
+- [x] Director can recover from out-of-order player actions.
+- [x] Director can skip a completed impossible objective.
 
 ## 4.2 Academy State
 
-- [ ] Define Academy version.
-- [ ] Define Academy session ID.
-- [ ] Define current chapter.
-- [ ] Define current step.
-- [ ] Define completed steps.
-- [ ] Define failed or recovered steps.
-- [ ] Define hint display counts.
-- [ ] Define chapter start times.
-- [ ] Define chapter completion times.
-- [ ] Define Academy save path.
-- [ ] Define Academy completion flag.
-- [ ] Define graduation snapshot.
+- [x] Define Academy version.
+- [x] Define Academy session ID.
+- [x] Define current chapter.
+- [x] Define current step.
+- [x] Define completed steps.
+- [x] Define failed or recovered steps.
+- [x] Define hint display counts.
+- [x] Define chapter start times.
+- [x] Define chapter completion times.
+- [x] Define Academy save path.
+- [x] Define Academy completion flag.
+- [x] Define graduation snapshot.
 
 ## 4.3 Teaching Step States
 
@@ -573,16 +695,16 @@ Your carrier spent 43% of combat outside escort coverage.
 
 ## 4.6 Save/Load
 
-- [ ] Academy progress saves.
-- [ ] Academy progress reloads.
-- [ ] Current chapter saves.
-- [ ] Current step saves.
+- [x] Academy progress saves.
+- [x] Academy progress reloads.
+- [x] Current chapter saves.
+- [x] Current step saves.
 - [ ] Hints do not repeat incorrectly after load.
-- [ ] Already-completed steps remain completed after load.
+- [x] Already-completed steps remain completed after load.
 - [ ] Destroyed or damaged training ships retain state after load.
-- [ ] AAR history survives save/load if intended.
-- [ ] Graduation snapshot survives save/load.
-- [ ] Academy save does not corrupt normal campaign saves.
+- [x] AAR history survives save/load if intended.
+- [x] Graduation snapshot survives save/load.
+- [x] Academy save does not corrupt normal campaign saves.
 
 # Phase 5 - Commander Academy Prologue Chapters
 
@@ -830,28 +952,28 @@ Command Qualification awarded.
 
 ## 7.1 Telemetry Policy
 
-- [ ] Telemetry is local only.
-- [ ] No online analytics are added in this phase.
-- [ ] Telemetry path uses the user data directory.
-- [ ] Telemetry does not write into the install directory.
-- [ ] Telemetry can be disabled.
-- [ ] Telemetry contains no personal data.
-- [ ] Telemetry is safe to share manually for playtesting.
-- [ ] Telemetry file format is documented.
+- [x] Telemetry is local only.
+- [x] No online analytics are added in this phase.
+- [x] Telemetry path uses the user data directory.
+- [x] Telemetry does not write into the install directory.
+- [x] Telemetry can be disabled.
+- [x] Telemetry contains no personal data.
+- [x] Telemetry is safe to share manually for playtesting.
+- [x] Telemetry file format is documented.
 
 ## 7.2 Event Schema
 
 Required fields:
 
-- [ ] session ID;
-- [ ] game version;
-- [ ] Academy version;
-- [ ] timestamp;
-- [ ] event name;
-- [ ] chapter;
-- [ ] step if applicable;
-- [ ] elapsed time;
-- [ ] result if applicable.
+- [x] session ID;
+- [x] game version;
+- [x] Academy version;
+- [x] timestamp;
+- [x] event name;
+- [x] chapter;
+- [x] step if applicable;
+- [x] elapsed time;
+- [x] result if applicable.
 
 Example:
 
@@ -870,14 +992,14 @@ Example:
 
 ## 7.3 Progression Events
 
-- [ ] `academy_started`
-- [ ] `academy_chapter_started`
-- [ ] `academy_chapter_completed`
-- [ ] `academy_chapter_failed`
-- [ ] `academy_chapter_recovered`
-- [ ] `academy_abandoned`
-- [ ] `academy_completed`
-- [ ] `graduation_snapshot_created`
+- [x] `academy_started`
+- [x] `academy_chapter_started`
+- [x] `academy_chapter_completed`
+- [x] `academy_chapter_failed`
+- [x] `academy_chapter_recovered`
+- [x] `academy_abandoned`
+- [x] `academy_completed`
+- [x] `graduation_snapshot_created`
 - [ ] `graduation_fleet_imported`
 - [ ] `normal_campaign_started_after_academy`
 
@@ -898,32 +1020,37 @@ Example:
 
 ## 7.5 Hesitation And Confusion Signals
 
-- [ ] time in chapter.
+- [x] time in chapter.
 - [ ] time until first order.
 - [ ] time until target selected.
 - [ ] time before opening campaign map.
 - [ ] time spent in repair/refit screen.
-- [ ] hint display count.
-- [ ] hint repeat count.
+- [x] hint display count.
+- [x] hint repeat count.
 - [ ] invalid click count where available.
-- [ ] repeated failed objective attempts.
+- [x] repeated failed objective attempts.
 - [ ] long idle time during active instruction.
 - [ ] player opens menu during unresolved instruction.
 
 ## 7.6 Telemetry Review
 
-- [ ] Add a simple local telemetry summary tool or report.
-- [ ] Count Academy starts.
-- [ ] Count Academy completions.
-- [ ] Count abandonment by chapter.
-- [ ] Count repeated hints by chapter.
-- [ ] Count first retreat success.
-- [ ] Count first repair success.
-- [ ] Count average time in each chapter.
+- [x] Add a simple local telemetry summary tool or report.
+- [x] Count Academy starts.
+- [x] Count Academy completions.
+- [x] Count abandonment by chapter.
+- [x] Count repeated hints by chapter.
+- [x] Count first retreat success.
+- [x] Count first repair success.
+- [x] Count average time in each chapter.
 - [ ] Identify first-hour walls.
 - [ ] Promote reproducible confusion into UI or tutorial fixes.
 
 # Phase 8 - UI, Accessibility, And Presentation Polish
+
+Reconciliation note: the current Command School/Academy V1 walkthrough is
+covered end-to-end by automated tests. The chapter-numbered rows below describe
+the larger planned chapter presentation and remain unchecked where that exact
+chapter treatment has not been manually validated.
 
 ## 8.1 Progressive UI Exposure
 
@@ -940,71 +1067,77 @@ Example:
 
 ## 8.2 Text And Readability
 
-- [ ] Academy hints fit at 1280x720.
-- [ ] Academy hints fit at 1920x1080.
-- [ ] AAR screen fits at 1280x720.
-- [ ] AAR screen fits at 1920x1080.
-- [ ] AAR has readable hierarchy.
-- [ ] AAR does not show severe text overlap.
+- [x] Academy hints fit at 1280x720.
+- [x] Academy hints fit at 1920x1080.
+- [x] AAR screen fits at 1280x720.
+- [x] AAR screen fits at 1920x1080.
+- [x] AAR has readable hierarchy.
+- [x] AAR does not show severe text overlap.
 - [ ] AAR supports scaled HUD text.
 - [ ] AAR supports high-contrast HUD options.
-- [ ] AAR avoids tiny dense paragraphs.
+- [x] AAR avoids tiny dense paragraphs.
 - [ ] Mission-choice copy is short and scannable.
 
 ## 8.3 Controls
 
-- [ ] Academy can be completed with keyboard/mouse.
-- [ ] All mandatory controls are accessible.
-- [ ] Skip current hint is available.
-- [ ] Replay hint/archive is available.
-- [ ] Pause/menu behavior is safe during Academy.
-- [ ] Retreat command is clearly reachable.
-- [ ] Repair/refit commands are clearly reachable.
-- [ ] Mission choice command is clearly reachable.
-- [ ] No mandatory action requires debug tools.
+- [x] Academy can be completed with keyboard/mouse.
+- [x] All mandatory controls are accessible.
+- [x] Skip current hint is available.
+- [x] Replay hint/archive is available.
+- [x] Pause/menu behavior is safe during Academy.
+- [x] Retreat command is clearly reachable.
+- [x] Repair/refit commands are clearly reachable.
+- [x] Mission choice command is clearly reachable.
+- [x] No mandatory action requires debug tools.
 
 ## 8.4 Audio And Visual Polish
 
-- [ ] Academy prompts use existing UI audio consistently.
+- [x] Academy prompts use existing UI audio consistently.
 - [ ] AAR opening/closing uses existing UI audio consistently.
 - [ ] No fallback weapon audio appears during Academy.
 - [ ] Important Academy battle events are audible but not spammy.
 - [ ] Visual highlights do not hide ship sprites.
 - [ ] Ship/turret visuals remain readable during Academy.
-- [ ] Reduced flash setting is honored.
-- [ ] Reduced screen shake setting is honored.
+- [x] Reduced flash setting is honored.
+- [x] Reduced screen shake setting is honored.
 
 # Phase 9 - Automated Coverage And Validation
 
 ## 9.1 BattleResult Tests
 
-- [ ] Campaign victory emits BattleResult.
-- [ ] Campaign defeat emits BattleResult.
-- [ ] Campaign withdrawal emits BattleResult.
-- [ ] Custom battle emits BattleResult.
-- [ ] Academy battle emits BattleResult.
-- [ ] Missing campaign context is handled.
-- [ ] Custom Team E ship appears correctly.
-- [ ] Custom weapon contribution does not crash result generation.
+- [x] Campaign victory emits BattleResult.
+- [x] Campaign defeat emits BattleResult.
+- [x] Campaign withdrawal emits BattleResult.
+- [x] Custom battle emits BattleResult.
+- [x] Academy battle emits BattleResult.
+- [x] Missing campaign context is handled.
+- [x] Custom Team E ship appears correctly.
+- [x] Custom weapon contribution does not crash result generation.
 
 ## 9.2 AAR Tests
 
-- [ ] Report generation succeeds from minimal BattleResult.
-- [ ] Report generation succeeds from full campaign BattleResult.
-- [ ] Report shows correct tactical result.
-- [ ] Report shows correct mission result.
-- [ ] Report shows losses correctly.
-- [ ] Report shows resources correctly.
-- [ ] Report shows strategic consequence when present.
-- [ ] Report omits campaign-only lines in custom battle.
-- [ ] Report insight count is capped.
-- [ ] Report recommendations are valid for current mode.
+- [x] Report generation succeeds from minimal BattleResult.
+- [x] Report generation succeeds from full campaign BattleResult.
+- [x] Report shows correct tactical result.
+- [x] Report shows correct mission result.
+- [x] Report shows losses correctly.
+- [x] Report shows resources correctly.
+- [x] Report shows strategic consequence when present.
+- [x] Report omits campaign-only lines in custom battle.
+- [x] Report insight count is capped.
+- [x] Report recommendations are valid for current mode.
 
 ## 9.3 Academy Tests
 
-- [ ] Academy starts from main menu.
-- [ ] Academy saves progress.
-- [ ] Academy reloads progress.
+Reconciliation note: `CommandSchoolOverworldExpansionTest` now proves the
+current tutorial checklist can be completed end-to-end through supported
+game/UI actions. The unchecked chapter-specific rows remain open because they
+refer to the planned six-chapter Academy structure, not only the existing V1
+Command School lesson flow.
+
+- [x] Academy starts from main menu.
+- [x] Academy saves progress.
+- [x] Academy reloads progress.
 - [ ] Chapter 1 can complete.
 - [ ] Chapter 2 can complete.
 - [ ] Chapter 3 teaches withdrawal as the intended success path.
@@ -1012,10 +1145,10 @@ Example:
 - [ ] Chapter 3 can complete through withdrawal with required ships preserved.
 - [ ] Chapter 4 can complete after damage.
 - [ ] Chapter 5 can complete with either mission choice.
-- [ ] Chapter 6 creates graduation snapshot.
-- [ ] Academy completion persists.
-- [ ] Academy can be restarted.
-- [ ] Academy can be skipped by starting normal campaign.
+- [x] Chapter 6 creates graduation snapshot.
+- [x] Academy completion persists.
+- [x] Academy can be restarted.
+- [x] Academy can be skipped by starting normal campaign.
 
 ## 9.4 Recovery Tests
 
@@ -1033,13 +1166,16 @@ Example:
 - [ ] Linux packaged Academy launch succeeds.
 - [ ] macOS packaged Academy launch succeeds when available.
 - [ ] Clean install does not require repo files.
-- [ ] Academy save path uses user data directory.
-- [ ] Telemetry path uses user data directory.
+- [x] Academy save path uses user data directory.
+- [x] Telemetry path uses user data directory.
 - [ ] Graduation import works from packaged build.
 - [ ] AAR assets load from packaged build.
 - [ ] No missing assets in Academy.
 
 # Phase 10 - Blind Playtesting
+
+Reconciliation note: this entire phase is manual evidence. Do not check these
+rows from automated tests or source inspection alone.
 
 ## 10.1 Tester Setup
 
@@ -1202,17 +1338,17 @@ Official reference: https://partner.steamgames.com/doc/store/releasing
 - [ ] Known issues are finalized.
 - [ ] System requirements are finalized.
 - [ ] Save compatibility policy is finalized.
-- [ ] Windows build passes.
+- [x] Windows build passes.
 - [ ] Linux build passes.
 - [ ] macOS build passes if supported for Steam.
 - [ ] Clean install smoke test passes.
-- [ ] Current release verification passes.
+- [x] Current release verification passes.
 - [ ] First-hour Academy acceptance passes.
 - [ ] AAR acceptance passes.
-- [ ] Full tests pass.
-- [ ] Performance guardrails pass.
-- [ ] Save/load soak passes.
-- [ ] Campaign-transition fuzzing passes.
+- [x] Full tests pass.
+- [x] Performance guardrails pass.
+- [x] Save/load soak passes.
+- [x] Campaign-transition fuzzing passes.
 
 ## 12.3 Steam Page Support Materials
 

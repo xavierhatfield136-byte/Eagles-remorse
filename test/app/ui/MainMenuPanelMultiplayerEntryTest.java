@@ -91,14 +91,14 @@ class MainMenuPanelMultiplayerEntryTest {
     }
 
     @Test
-    void tutorialEntryUsesPlainTutorialLabel() {
+    void tutorialEntryUsesAcademyLabel() {
         MainMenuPanel panel = menu();
 
         try {
             JButton tutorial = (JButton) findByName(panel, "tutorialStartButton");
 
             assertNotNull(tutorial);
-            assertEquals("Tutorial", tutorial.getText());
+            assertEquals("Commander's Academy", tutorial.getText());
         } finally {
             panel.stopBackgroundTimerForTests();
         }

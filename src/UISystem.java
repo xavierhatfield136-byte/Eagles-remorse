@@ -29,6 +29,7 @@ public final class UISystem {
     private UISystem(){}
 
     private static boolean fleetHubEditingLocked(GameContext ctx) {
+        if (ctx != null && ctx.config != null && ctx.config.mode == GameMode.TUTORIAL) return false;
         return CampaignSystem.isCampaignActive(ctx) && !CampaignSystem.usesPersistentFleetShop(ctx);
     }
 

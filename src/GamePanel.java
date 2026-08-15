@@ -63,6 +63,7 @@ public class GamePanel extends JPanel implements ActionListener {
         FirstHourOnboardingSystem.init(ctx);
         TacticalCombatDepthSystem.init(ctx);
         Renderer.prewarmAssetCaches(ctx.config.mode);
+        Renderer.prewarmShipHardpointAssets(ctx.ships);
         AssetLoadGuard.markGameplayBegun();
 
         // Input

@@ -600,12 +600,12 @@ class MultiplayerLobbyPanelTest {
             assertEventually(host::startEnabledForTests, Duration.ofSeconds(5));
             hostStart.doClick();
 
-            assertEventually(host::activeGamePanelForTests, Duration.ofSeconds(5),
+            assertEventually(host::matchPanelLaunchedForTests, Duration.ofSeconds(5),
                     () -> "host=" + host.statusTextForTests() + " client=" + client.statusTextForTests());
-            assertEventually(client::activeGamePanelForTests, Duration.ofSeconds(5),
+            assertEventually(client::matchPanelLaunchedForTests, Duration.ofSeconds(5),
                     () -> "host=" + host.statusTextForTests() + " client=" + client.statusTextForTests());
-            assertEquals(1L, host.pendingMatchStartTickForTests());
-            assertEquals(1L, client.pendingMatchStartTickForTests());
+            assertEquals(1L, host.lastLaunchedMatchStartTickForTests());
+            assertEquals(1L, client.lastLaunchedMatchStartTickForTests());
         } finally {
             client.shutdown();
             host.shutdown();

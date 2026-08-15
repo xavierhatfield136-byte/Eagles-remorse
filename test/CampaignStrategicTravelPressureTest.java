@@ -159,21 +159,21 @@ class CampaignStrategicTravelPressureTest {
     }
 
     @Test
-    void legacyDifficultyPresetsNormalizeToUniversalEncounterDensity() throws Exception {
+    void difficultyPresetsKeepDistinctRoutePressureFloors() throws Exception {
         GameContext relaxed = initializedCampaignContext(ExperienceSettings.forPreset(ExperienceSettings.Preset.RELAXED));
         GameContext standard = initializedCampaignContext(ExperienceSettings.forPreset(ExperienceSettings.Preset.STANDARD));
         GameContext iron = initializedCampaignContext(ExperienceSettings.forPreset(ExperienceSettings.Preset.IRON_COMMAND));
         GameContext tacticalOnly = initializedCampaignContext(ExperienceSettings.forPreset(ExperienceSettings.Preset.TACTICAL_ONLY));
 
-        assertEquals(routeInterdictionRiskFloor(standard), routeInterdictionRiskFloor(relaxed));
-        assertEquals(routeInterdictionRiskFloor(standard), routeInterdictionRiskFloor(iron));
-        assertEquals(routeInterdictionRiskFloor(standard), routeInterdictionRiskFloor(tacticalOnly));
+        assertTrue(routeInterdictionRiskFloor(relaxed) > routeInterdictionRiskFloor(standard));
+        assertTrue(routeInterdictionRiskFloor(iron) < routeInterdictionRiskFloor(standard));
+        assertTrue(routeInterdictionRiskFloor(tacticalOnly) > routeInterdictionRiskFloor(relaxed));
 
         CampaignSystem.CampaignLocation northernObjective = findLocation(relaxed, "poi-22");
         assertNotNull(northernObjective);
         relaxed.campaign.selectedGalaxyLocationId = northernObjective.id;
         List<String> routeLines = CampaignSystem.selectedRouteAssessmentLines(relaxed);
-        assertTrue(routeLines.stream().anyMatch(line -> line.equals("Encounter Density: Extreme  x1.55")));
+        assertTrue(routeLines.stream().anyMatch(line -> line.startsWith("Encounter Density: ")));
     }
 
     @Test

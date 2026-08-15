@@ -7167,6 +7167,7 @@ public abstract class Ship {
             case KINETIC_MOMENTUM -> kineticMomentumMultiplier(stat);
             case AEGIS_LATTICE -> aegisLatticeMultiplier(stat);
             case VIPER_ASSAULT -> viperAssaultMultiplier(stat);
+            case CUSTOM_WORKSHOP -> 1.0;
             case NONE -> 1.0;
         };
     }

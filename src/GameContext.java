@@ -230,6 +230,7 @@ public class GameContext {
     // Campaign progression (CAMPAIGN_OPS)
     public CampaignSystem.CampaignState campaign = null;
     public CampaignUnlockProfile campaignUnlockProfile = null;
+    public final BattleResultRecorder battleResultRecorder = new BattleResultRecorder();
 
     // Last Stand progression
     public double lastStandElapsed = 0.0;

@@ -184,6 +184,7 @@ public final class GameSimulationRuntime {
             }
             syncPlayerWarpHudState();
         } finally {
+            ctx.battleResultRecorder.update(ctx);
             if (isAuthoritativeMultiplayerHost()) {
                 evaluateAndPublishMultiplayerVictory(authoritativeHostTick);
                 publishMultiplayerSnapshot(authoritativeHostTick);

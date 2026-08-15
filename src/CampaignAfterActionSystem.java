@@ -78,7 +78,13 @@ final class CampaignAfterActionSystem {
         ArrayList<String> out = new ArrayList<>();
         String location = campaignAfterActionLocationLabel(st);
         String objective = CampaignSystem.trimmedOrFallback(st.objectiveLabel, "Command the fleet");
-        out.add("Battle Report: " + location + "  |  Objective: " + objective);
+        AfterActionReport normalizedReport = ctx.battleResultRecorder.latestReport();
+        if (normalizedReport != null) {
+            out.addAll(normalizedReport.toDisplayLines());
+            out.add("Objective: " + objective);
+        } else {
+            out.add("Battle Report: " + location + "  |  Objective: " + objective);
+        }
         if (st.objectivePhaseLabel != null && !st.objectivePhaseLabel.isBlank()) {
             out.add("Battle State: " + st.objectivePhaseLabel.trim());
         }
@@ -95,8 +101,11 @@ final class CampaignAfterActionSystem {
         out.addAll(campaignForceAfterActionLines(ctx, st, 3));
         out.add("Friendly Fleet: " + campaignAfterActionFleetDamageLabel(st));
         out.add("Resources: credits " + Math.max(0, ctx.credits)
-                + "  ore " + CampaignSystem.currentCampaignOre(ctx)
-                + "  fleet " + CampaignSystem.campaignFleetStrainReadout(ctx));
+                + "  ore " + Math.max(0, ctx.player == null ? CampaignSystem.currentCampaignOre(ctx) : ctx.player.cargo)
+                + "  fuel " + Math.max(0, st.campaignFuel)
+                + "  supplies " + Math.max(0, st.campaignSupplies)
+                + "  ammo " + Math.max(0, st.campaignAmmo)
+                + "  salvage " + Math.max(0, st.campaignSalvage));
         out.add("Reputation: " + CampaignSystem.campaignReputationReadout(ctx));
         out.add("Intel: " + CampaignSystem.campaignIntelReadout(ctx)
                 + "  |  Exposure " + CampaignSystem.campaignExposureReadout(ctx));
@@ -303,10 +312,12 @@ final class CampaignAfterActionSystem {
         String resources = firstLineWithPrefix(reportLines, "Resources: ");
         String consequence = firstLineWithPrefix(reportLines, "Follow-On: ");
         if (consequence.isBlank()) consequence = firstLineWithPrefix(reportLines, "Campaign Impact: ");
+        if (consequence.isBlank()) consequence = firstLineWithPrefix(reportLines, "Strategic Effect: ");
         String losses = firstLineWithPrefix(reportLines, "Friendly Fleet: ");
         String title = "Battle Report: " + CampaignSystem.trimmedOrFallback(location, "Unknown Theater");
         String nextAction = campaignAfterActionNextAction(st);
-        String why = campaignWhyThisMatters(st, consequence);
+        String why = firstLineWithPrefix(reportLines, "Key Battle Factor: ");
+        if (why.isBlank()) why = campaignWhyThisMatters(st, consequence);
         CampaignSystem.AfterActionReport snapshot = new CampaignSystem.AfterActionReport(
                 st.nextAfterActionReportId,
                 title,

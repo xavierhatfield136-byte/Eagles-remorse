@@ -33,7 +33,8 @@ public final class ShipIdentityRegistry {
         COMMAND_NET,
         KINETIC_MOMENTUM,
         AEGIS_LATTICE,
-        VIPER_ASSAULT
+        VIPER_ASSAULT,
+        CUSTOM_WORKSHOP
     }
 
     public static final class FactionTrait {
@@ -99,6 +100,11 @@ public final class ShipIdentityRegistry {
             "Viper Assault",
             "Hull-first assault groups keep salvos coming and spool for jumps under pressure."
     );
+    private static final FactionTrait TEAM_E_CUSTOM_WORKSHOP = new FactionTrait(
+            FactionTraitId.CUSTOM_WORKSHOP,
+            "Custom Workshop",
+            "Player-authored Team E hulls keep their local custom definitions and generated loadout identity."
+    );
 
     private static final RoleBonus NO_ROLE_BONUS = new RoleBonus(
             IdentityStat.NONE,
@@ -116,7 +122,7 @@ public final class ShipIdentityRegistry {
             case ENEMY -> RED_KINETIC_MOMENTUM;
             case TEAM_C -> GREEN_AEGIS_LATTICE;
             case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> YELLOW_VIPER_ASSAULT;
-            case TEAM_E -> NONE_TRAIT;
+            case TEAM_E -> TEAM_E_CUSTOM_WORKSHOP;
         };
     }
 

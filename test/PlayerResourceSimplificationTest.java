@@ -24,17 +24,17 @@ class PlayerResourceSimplificationTest {
     }
 
     @Test
-    void transportRepairSupportDoesNotSpendOrRequireSupplies() {
+    void transportRepairSupportConsumesCampaignSupplies() {
         GameContext ctx = context();
         ctx.campaign = new CampaignSystem.CampaignState();
         ctx.campaign.enabled = true;
-        ctx.campaign.campaignSupplies = 0;
+        ctx.campaign.campaignSupplies = 25;
 
         CampaignSystem.reportTransportRepairSupport(ctx, 1);
 
         assertTrue(ctx.campaign.transportRepairSupportActive);
-        assertTrue(CampaignSystem.consumeTransportRepairSupport(ctx, 999.0, 10.0));
-        assertEquals(0, ctx.campaign.campaignSupplies);
+        assertTrue(CampaignSystem.consumeTransportRepairSupport(ctx, 1.0, 10.0));
+        assertEquals(15, ctx.campaign.campaignSupplies);
     }
 
     private static GameContext context() {

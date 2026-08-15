@@ -5,7 +5,7 @@ import java.util.Queue;
 
 /** In-memory host/client transport used before direct LAN sockets exist. */
 public final class MultiplayerLoopbackTransport {
-    public static final int HEARTBEAT_TIMEOUT_TICKS = MultiplayerRulesV1.AUTHORITATIVE_TICK_RATE * 3;
+    public static final int HEARTBEAT_TIMEOUT_TICKS = MultiplayerRulesV1.AUTHORITATIVE_TICK_RATE * 8;
 
     public enum Endpoint {
         HOST,

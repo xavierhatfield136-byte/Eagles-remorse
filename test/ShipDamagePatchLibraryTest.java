@@ -96,6 +96,30 @@ class ShipDamagePatchLibraryTest {
     }
 
     @Test
+    void shipPartPrewarmIncludesHealthyMultipartSprites() {
+        ShipPartLibrary.clearCachesForTest();
+        FleetShip ship = new FleetShip(ShipRole.LIGHT_CRUISER, Faction.ENEMY, 180.0, 140.0);
+        ship.hp = ship.hpMax;
+
+        BufferedImage canvas = new BufferedImage(420, 300, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = canvas.createGraphics();
+        try {
+            ShipPartLibrary.prewarmDamageCachesForShips(List.of(ship));
+            int prewarmedDecodes = ShipPartLibrary.imageDecodeCount();
+            assertTrue(prewarmedDecodes > 0);
+
+            Renderer.drawShips(g2, List.of(ship));
+
+            assertTrue(ShipPartLibrary.imageDecodeCount() == prewarmedDecodes,
+                    "prewarmed fleet sprites must include the healthy multipart variant used by render");
+        } finally {
+            g2.dispose();
+            canvas.flush();
+            ShipPartLibrary.clearCachesForTest();
+        }
+    }
+
+    @Test
     void healthyAuthoredShipsUseAlbedoInsteadOfMultipartPieces() {
         ShipPartLibrary.clearCachesForTest();
         FleetShip ship = new FleetShip(ShipRole.HAULER, Faction.ALLY, 160.0, 120.0);

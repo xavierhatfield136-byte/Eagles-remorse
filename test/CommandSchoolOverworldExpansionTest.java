@@ -138,6 +138,36 @@ class CommandSchoolOverworldExpansionTest {
     }
 
     @Test
+    void bridgeLessonCanSwapPlayerIntoCarrierThroughLoadoutPanel() throws Exception {
+        GameContext ctx = tutorialContext();
+        SpawnSystem.initWorld(ctx);
+        Object tutorialState = tutorialState(ctx);
+        setLesson(ctx, tutorialState, "BRIDGE_SYSTEMS");
+
+        Ship base = ctx.ships.stream()
+                .filter(ship -> ship != null && "Tutorial Base".equals(ship.name))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(base);
+        BaseUpgrades upgrades = ctx.baseUpgrades.get(base);
+        assertNotNull(upgrades);
+        upgrades.hangarLv = Math.max(upgrades.hangarLv, 3);
+        ctx.credits = Math.max(ctx.credits, 2600);
+
+        UISystem.toggleShop(ctx);
+        assertTrue(ctx.ui.shopOpen);
+        assertFalse(CampaignSystem.usesPersistentFleetShop(ctx),
+                "tutorial tactical school must use flagship hull swap, not campaign fleet commissioning");
+        UISystem.performHullSwapByRole(ctx, ShipRole.CARRIER);
+        TutorialSystem.update(ctx, GameContext.DT);
+
+        assertEquals(ShipRole.CARRIER, ctx.player.role);
+        assertTrue(ctx.player.isCarrier);
+        assertTrue(stateBool(tutorialState, "swappedToCarrier"),
+                "bridge lesson should recognize the normal loadout carrier swap");
+    }
+
+    @Test
     void sampleOverworldUsesRealSelectionTravelAndArrivalState() {
         GameContext ctx = tutorialContext();
         SpawnSystem.initWorld(ctx);
@@ -157,6 +187,164 @@ class CommandSchoolOverworldExpansionTest {
 
         assertEquals(CampaignSystem.COMMAND_SCHOOL_TRADE_HUB_ID, ctx.campaign.currentGalaxyLocationId);
         assertFalse(ctx.campaign.galaxyTravel.traveling);
+    }
+
+    @Test
+    void plotMovementLessonRecognizesHubCourseAfterImmediateEngage() throws Exception {
+        GameContext ctx = tutorialContext();
+        SpawnSystem.initWorld(ctx);
+        Object tutorialState = tutorialState(ctx);
+        CampaignSystem.returnCommandSchoolToOverworld(ctx, "test overmap");
+        setLesson(ctx, tutorialState, "PLOT_MOVEMENT");
+        CampaignSystem.CampaignLocation hub = location(ctx, CampaignSystem.COMMAND_SCHOOL_TRADE_HUB_ID);
+        assertNotNull(hub);
+
+        assertTrue(CampaignSystem.selectCampaignLocation(ctx, hub.x, hub.y));
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "PLOT_COURSE"));
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "ENGAGE_COURSE"));
+        assertEquals("ENGAGE_COURSE", ctx.campaign.commandSchoolLastActionId);
+
+        TutorialSystem.update(ctx, GameContext.DT);
+
+        assertTrue(stateBool(tutorialState, "plottedTrainingCourse"),
+                "plot step should survive immediate Engage overwriting the last tutorial action");
+        assertTrue(stateBool(tutorialState, "engagedTrainingCourse"));
+    }
+
+    @Test
+    void plotMovementLessonRecognizesHubCourseWhenAlreadyInsideHubZone() throws Exception {
+        GameContext ctx = tutorialContext();
+        SpawnSystem.initWorld(ctx);
+        Object tutorialState = tutorialState(ctx);
+        CampaignSystem.returnCommandSchoolToOverworld(ctx, "test overmap");
+        setLesson(ctx, tutorialState, "PLOT_MOVEMENT");
+        CampaignSystem.CampaignLocation hub = location(ctx, CampaignSystem.COMMAND_SCHOOL_TRADE_HUB_ID);
+        assertNotNull(hub);
+        ctx.campaign.playerGalaxyX = hub.x;
+        ctx.campaign.playerGalaxyY = hub.y;
+        ctx.campaign.currentGalaxyLocationId = "";
+        ctx.campaign.dockedGalaxyLocationId = "";
+
+        assertTrue(CampaignSystem.selectCampaignLocation(ctx, hub.x, hub.y));
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "PLOT_COURSE"));
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "ENGAGE_COURSE"));
+
+        TutorialSystem.update(ctx, GameContext.DT);
+
+        assertTrue(stateBool(tutorialState, "plottedTrainingCourse"),
+                "plot step should accept the selected hub course even when Engage resolves as already docked");
+        assertTrue(stateBool(tutorialState, "engagedTrainingCourse"));
+        assertTrue(stateBool(tutorialState, "reachedTrainingHub"));
+    }
+
+    @Test
+    void commandSchoolTutorialChecklistCanBeCompletedThroughSupportedActions() throws Exception {
+        GameContext ctx = tutorialContext();
+        SpawnSystem.initWorld(ctx);
+        Object tutorialState = tutorialState(ctx);
+
+        assertLesson(tutorialState, "FLIGHT_BASICS");
+        movePlayerTo(ctx, stateDouble(tutorialState, "alphaX"), stateDouble(tutorialState, "alphaY"));
+        TutorialSystem.update(ctx, GameContext.DT);
+        assertTrue(TutorialSystem.handleStrategicMapClick(ctx,
+                stateDouble(tutorialState, "betaX"),
+                stateDouble(tutorialState, "betaY"),
+                false));
+        movePlayerTo(ctx, stateDouble(tutorialState, "betaX"), stateDouble(tutorialState, "betaY"));
+        TutorialSystem.update(ctx, 1.0);
+        assertLesson(tutorialState, "TARGETING_AND_SENSORS");
+
+        UISystem.addPing(ctx, stateDouble(tutorialState, "weaponsX"), stateDouble(tutorialState, "weaponsY"), 2.0);
+        Ship drone = shipById(ctx, stateInt(tutorialState, "combatTargetId"));
+        assertNotNull(drone);
+        drone.hp = Math.max(0, drone.hpMax - 1);
+        UISystem.cycleXrayFilterMode(ctx, 1);
+        ctx.ui.xrayFocusedRoom = ShipRoomLayout.RoomId.ENGINES;
+        TutorialSystem.update(ctx, 1.0);
+        assertLesson(tutorialState, "LOGISTICS_AND_REFIT");
+
+        movePlayerTo(ctx, stateDouble(tutorialState, "miningX"), stateDouble(tutorialState, "miningY"));
+        ctx.miningKeyDown = true;
+        for (int i = 0; i < 8 && !stateBool(tutorialState, "minedOre"); i++) {
+            EconomySystem.update(ctx, 1.0);
+            TutorialSystem.update(ctx, GameContext.DT);
+        }
+        ctx.miningKeyDown = false;
+        assertTrue(stateBool(tutorialState, "minedOre"));
+        Ship base = shipById(ctx, stateInt(tutorialState, "homeBaseId"));
+        assertNotNull(base);
+        movePlayerTo(ctx, base.x, base.y);
+        ctx.campaign.oreLedger.storedOre = Math.max(ctx.campaign.oreLedger.storedOre, 600);
+        base.oreStockpile = Math.max(base.oreStockpile, 600);
+        ctx.ui.baseMenuOpen = true;
+        UISystem.tryUpgradeBase(ctx, 5);
+        TutorialSystem.update(ctx, 1.0);
+        assertLesson(tutorialState, "BRIDGE_SYSTEMS");
+
+        BaseUpgrades upgrades = ctx.baseUpgrades.get(base);
+        assertNotNull(upgrades);
+        upgrades.hangarLv = Math.max(upgrades.hangarLv, 3);
+        ctx.credits = Math.max(ctx.credits, 2600);
+        UISystem.toggleShop(ctx);
+        UISystem.performHullSwapByRole(ctx, ShipRole.CARRIER);
+        TutorialSystem.update(ctx, 1.0);
+        UISystem.applyPowerPreset(ctx, Ship.PowerPreset.ATTACK);
+        UISystem.toggleCrewStations(ctx);
+        UISystem.applyCaptainPreset(ctx, 3);
+        TutorialSystem.update(ctx, 1.0);
+        for (int i = 0; i < 8 && !stateBool(tutorialState, "fireSuppressed"); i++) {
+            UISystem.suppressHottestFire(ctx);
+            TutorialSystem.update(ctx, 0.25);
+        }
+        assertTrue(stateBool(tutorialState, "fireSuppressed"));
+        TutorialSystem.update(ctx, 1.0);
+        assertLesson(tutorialState, "CARRIER_AND_WARP");
+
+        UISystem.toggleFlightDeck(ctx);
+        TutorialSystem.update(ctx, GameContext.DT);
+        UISystem.toggleFlightDeck(ctx);
+        UISystem.tryCarrierLaunch(ctx);
+        TutorialSystem.update(ctx, GameContext.DT);
+        UISystem.tryCarrierToggleMode(ctx);
+        TutorialSystem.update(ctx, GameContext.DT);
+        assertTrue(CampaignSystem.completeSafeMissionExit(ctx));
+        TutorialSystem.update(ctx, 1.0);
+        assertTrue(stateBool(tutorialState, "openedFlightDeck"), "flight deck open did not register");
+        assertTrue(stateBool(tutorialState, "launchedWing"), "carrier launch did not register");
+        assertTrue(stateBool(tutorialState, "carrierModeChanged")
+                || stateBool(tutorialState, "carrierAutoLaunchChanged"), "carrier behavior change did not register");
+        assertTrue(stateBool(tutorialState, "withdrewToOverworld"), "withdraw did not return to the overworld");
+        assertLesson(tutorialState, "SITE_SELECTION");
+        travelLessonSelect(ctx, CampaignSystem.COMMAND_SCHOOL_TRADE_HUB_ID);
+        TutorialSystem.update(ctx, 1.0);
+        assertLesson(tutorialState, "PLOT_MOVEMENT");
+
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "PLOT_COURSE"));
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "ENGAGE_COURSE"));
+        runCampaignTravel(ctx);
+        TutorialSystem.update(ctx, 1.0);
+        assertLesson(tutorialState, "SCAN_AND_INTEL");
+
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "TRAFFIC_AUDIT"));
+        TutorialSystem.update(ctx, 1.0);
+        assertLesson(tutorialState, "RESOURCE_SITE");
+
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "PLOT_COURSE"));
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "ENGAGE_COURSE"));
+        runCampaignTravel(ctx);
+        TutorialSystem.update(ctx, 1.0);
+        assertLesson(tutorialState, "FLEET_ORGANIZATION");
+
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "FLEET_COMMIT_NOW"));
+        TutorialSystem.update(ctx, 1.0);
+        assertLesson(tutorialState, "OVERWORLD_TO_MISSION");
+
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "PLOT_COURSE"));
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "ENGAGE_COURSE"));
+        runCampaignTravel(ctx);
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "ENTER_SITE"));
+        TutorialSystem.update(ctx, 1.0);
+        assertLesson(tutorialState, "COMPLETE");
     }
 
     @Test
@@ -462,6 +650,12 @@ class CommandSchoolOverworldExpansionTest {
         return field.getDouble(state);
     }
 
+    private static int stateInt(Object state, String fieldName) throws Exception {
+        Field field = state.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return field.getInt(state);
+    }
+
     private static boolean stateBool(Object state, String fieldName) throws Exception {
         Field field = state.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
@@ -476,6 +670,47 @@ class CommandSchoolOverworldExpansionTest {
     private static int expectedMapY(GameContext ctx, double worldY, Rectangle map) {
         double ny = (worldY - UISystem.strategicMapWorldMinY(ctx)) / UISystem.strategicMapViewHeight(ctx);
         return map.y + (int) Math.round(ny * map.height);
+    }
+
+    private static Ship shipById(GameContext ctx, int id) {
+        for (Ship ship : ctx.ships) {
+            if (ship != null && ship.id == id) return ship;
+        }
+        return null;
+    }
+
+    private static void movePlayerTo(GameContext ctx, double x, double y) {
+        ctx.player.x = x;
+        ctx.player.y = y;
+        ctx.player.vx = 0.0;
+        ctx.player.vy = 0.0;
+    }
+
+    private static void travelLessonSelect(GameContext ctx, String locationId) {
+        CampaignSystem.CampaignLocation location = location(ctx, locationId);
+        assertNotNull(location);
+        assertTrue(CampaignSystem.selectCampaignLocation(ctx, location.x, location.y));
+    }
+
+    private static void runCampaignTravel(GameContext ctx) {
+        for (int i = 0; i < 60 && ctx.campaign.galaxyTravel.traveling; i++) {
+            CampaignSystem.update(ctx, 1.0);
+        }
+        assertFalse(ctx.campaign.galaxyTravel.traveling, "training route did not finish");
+    }
+
+    private static void assertLesson(Object state, String lessonName) throws Exception {
+        assertEquals(lessonName, currentLessonName(state));
+    }
+
+    private static String currentLessonName(Object state) throws Exception {
+        Field lessonIndex = state.getClass().getDeclaredField("lessonIndex");
+        lessonIndex.setAccessible(true);
+        int idx = lessonIndex.getInt(state);
+        Class<?> lessonClass = Class.forName("TutorialSystem$LessonId");
+        Object[] lessons = lessonClass.getEnumConstants();
+        idx = Math.max(0, Math.min(lessons.length - 1, idx));
+        return ((Enum<?>) lessons[idx]).name();
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})

@@ -1,4 +1,5 @@
 import app.config.GameMode;
+import app.persistence.AcademyProgressStore;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
@@ -11,6 +12,7 @@ import java.awt.RenderingHints;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.UUID;
 import java.util.WeakHashMap;
 
 public final class TutorialSystem {
@@ -84,6 +86,7 @@ public final class TutorialSystem {
     }
 
     private static final class TutorialState {
+        String academySessionId = UUID.randomUUID().toString();
         Faction playerFaction;
         Faction hostileFaction;
         int homeBaseId = -1;
@@ -181,6 +184,13 @@ public final class TutorialSystem {
         st.playerFaction = (playerFaction == null) ? Faction.ALLY : playerFaction;
         st.hostileFaction = defaultHostileFaction(st.playerFaction);
         STATES.put(ctx, st);
+        AcademyProgressStore.markStepStarted(st.academySessionId, "Academy", "start");
+        AcademyProgressStore.recordEvent(st.academySessionId,
+                "academy_started",
+                "Academy",
+                "start",
+                0.0,
+                "started");
         CampaignSystem.initCommandSchoolOverworld(ctx, st.playerFaction);
         enterLesson(ctx, st, LessonId.FLIGHT_BASICS, true);
     }
@@ -195,6 +205,10 @@ public final class TutorialSystem {
         LessonId lesson = currentLesson(st);
         if (lesson == LessonId.COMPLETE) return;
         st.skippedLessons.add(lesson);
+        AcademyProgressStore.markStepRecovered(st.academySessionId,
+                academyChapterLabel(lesson),
+                academyStepLabel(lesson),
+                "skipped");
         enterLesson(ctx, st, nextLesson(lesson), true);
     }
 
@@ -231,6 +245,13 @@ public final class TutorialSystem {
             if (!lessonComplete(ctx, st, lesson)) {
                 return;
             }
+            AcademyProgressStore.markStepCompleted(st.academySessionId, academyChapterLabel(lesson), academyStepLabel(lesson));
+            AcademyProgressStore.recordEvent(st.academySessionId,
+                    "academy_chapter_completed",
+                    academyChapterLabel(lesson),
+                    academyStepLabel(lesson),
+                    st.lessonElapsedSec,
+                    "complete");
             enterLesson(ctx, st, nextLesson(lesson), true);
             refreshPersistentProgress(ctx, st);
             handleLessonSideEffects(ctx, st);
@@ -590,15 +611,12 @@ public final class TutorialSystem {
         CampaignSystem.CampaignState campaign = (ctx == null) ? null : ctx.campaign;
         if (campaign != null && campaign.commandSchoolTraining) {
             st.overworldMapReviewed |= ctx.ui != null && ctx.ui.mapOpen && st.lessonElapsedSec >= 0.75;
-            st.selectedTrainingSite |= CampaignSystem.COMMAND_SCHOOL_TRADE_HUB_ID.equals(campaign.selectedGalaxyLocationId);
-            st.plottedTrainingCourse |= "PLOT_COURSE".equals(campaign.commandSchoolLastActionId)
-                    && CampaignSystem.COMMAND_SCHOOL_TRADE_HUB_ID.equals(campaign.selectedGalaxyLocationId);
+            st.selectedTrainingSite |= commandSchoolHubSelected(campaign);
+            st.plottedTrainingCourse |= commandSchoolHubCoursePlotted(campaign);
             st.engagedTrainingCourse |= campaign.galaxyTravel.traveling
                     || "ENGAGE_COURSE".equals(campaign.commandSchoolLastActionId);
-            st.reachedTrainingHub |= CampaignSystem.COMMAND_SCHOOL_TRADE_HUB_ID.equals(campaign.currentGalaxyLocationId)
-                    || CampaignSystem.COMMAND_SCHOOL_TRADE_HUB_ID.equals(campaign.dockedGalaxyLocationId);
-            st.selectedTrainingContact |= CampaignSystem.selectedCampaignContactHostile(ctx)
-                    && CampaignSystem.selectedCampaignContactLabel(ctx).toUpperCase(java.util.Locale.US).contains("DRONE");
+            st.reachedTrainingHub |= commandSchoolAtTrainingHub(campaign);
+            st.selectedTrainingContact |= commandSchoolTrainingContactSelected(ctx);
             st.trackedTrainingContact |= isTrainingReconAction(campaign.commandSchoolLastActionId);
             st.reachedResourceSite |= CampaignSystem.COMMAND_SCHOOL_RESOURCE_SITE_ID.equals(campaign.currentGalaxyLocationId)
                     || CampaignSystem.COMMAND_SCHOOL_RESOURCE_SITE_ID.equals(campaign.dockedGalaxyLocationId);
@@ -606,7 +624,8 @@ public final class TutorialSystem {
                     && (st.lessonElapsedSec >= 1.0 || ctx.ui != null && ctx.ui.campaignHubMenu.active);
             st.changedFleetCommitment |= campaign.commandSchoolLastActionId != null
                     && campaign.commandSchoolLastActionId.startsWith("FLEET_COMMIT_");
-            st.enteredTrainingMission |= campaign.galaxyEncounterActive
+            st.enteredTrainingMission |= currentLesson(st) == LessonId.OVERWORLD_TO_MISSION
+                    && campaign.galaxyEncounterActive
                     && campaign.galaxyAmbientEncounterActive
                     && CampaignSystem.COMMAND_SCHOOL_RED_SITE_ID.equals(campaign.activeGalaxyEncounterLocationId)
                     && !campaign.strategicOvermapMode;
@@ -660,6 +679,50 @@ public final class TutorialSystem {
         };
     }
 
+    private static boolean commandSchoolHubSelected(CampaignSystem.CampaignState campaign) {
+        return campaign != null
+                && CampaignSystem.COMMAND_SCHOOL_TRADE_HUB_ID.equals(campaign.selectedGalaxyLocationId);
+    }
+
+    private static boolean commandSchoolTravelingToHub(CampaignSystem.CampaignState campaign) {
+        return campaign != null
+                && campaign.galaxyTravel != null
+                && campaign.galaxyTravel.traveling
+                && CampaignSystem.COMMAND_SCHOOL_TRADE_HUB_ID.equals(campaign.galaxyTravel.destinationId);
+    }
+
+    private static boolean commandSchoolAtTrainingHub(CampaignSystem.CampaignState campaign) {
+        return campaign != null
+                && (CampaignSystem.COMMAND_SCHOOL_TRADE_HUB_ID.equals(campaign.currentGalaxyLocationId)
+                || CampaignSystem.COMMAND_SCHOOL_TRADE_HUB_ID.equals(campaign.dockedGalaxyLocationId));
+    }
+
+    private static boolean commandSchoolHubCoursePlotted(CampaignSystem.CampaignState campaign) {
+        if (campaign == null) return false;
+        String action = campaign.commandSchoolLastActionId;
+        if ("PLOT_COURSE".equals(action) && commandSchoolHubSelected(campaign)) return true;
+        if (commandSchoolTravelingToHub(campaign)) return true;
+        return "ENGAGE_COURSE".equals(action)
+                && (commandSchoolHubSelected(campaign) || commandSchoolAtTrainingHub(campaign));
+    }
+
+    private static boolean commandSchoolTrainingContactSelected(GameContext ctx) {
+        CampaignSystem.CampaignState campaign = (ctx == null) ? null : ctx.campaign;
+        if (ctx == null || ctx.ui == null || campaign == null || !CampaignSystem.selectedCampaignContactHostile(ctx)) {
+            return false;
+        }
+        String label = CampaignSystem.selectedCampaignContactLabel(ctx).toUpperCase(java.util.Locale.US);
+        if (label.contains("DRONE")) return true;
+        CampaignSystem.CampaignLocation red = trainingLocation(ctx, CampaignSystem.COMMAND_SCHOOL_RED_SITE_ID);
+        if (red == null
+                || !Double.isFinite(ctx.ui.selectedCampaignContactX)
+                || !Double.isFinite(ctx.ui.selectedCampaignContactY)) {
+            return false;
+        }
+        return GameMath.dist2(ctx.ui.selectedCampaignContactX, ctx.ui.selectedCampaignContactY, red.x, red.y)
+                <= 260.0 * 260.0;
+    }
+
     private static void handleLessonSideEffects(GameContext ctx, TutorialState st) {
         LessonId lesson = currentLesson(st);
         if (lesson == LessonId.OVERWORLD_MAP_READING) {
@@ -694,6 +757,7 @@ public final class TutorialSystem {
             if (ctx.ui != null) ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.FLEET;
         } else if (lesson == LessonId.OVERWORLD_TO_MISSION) {
             ensureCommandSchoolOverworld(ctx);
+            if (ctx.ui != null) ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.NAV;
             if (!CampaignSystem.COMMAND_SCHOOL_RED_SITE_ID.equals(ctx.campaign.selectedGalaxyLocationId)) {
                 selectTrainingLocation(ctx, CampaignSystem.COMMAND_SCHOOL_RED_SITE_ID);
             }
@@ -768,6 +832,13 @@ public final class TutorialSystem {
         st.lessonIndex = lesson.ordinal();
         st.lessonElapsedSec = 0.0;
         st.pingTimer = 0.0;
+        AcademyProgressStore.markStepStarted(st.academySessionId, academyChapterLabel(lesson), academyStepLabel(lesson));
+        AcademyProgressStore.recordEvent(st.academySessionId,
+                "academy_chapter_started",
+                academyChapterLabel(lesson),
+                academyStepLabel(lesson),
+                0.0,
+                "started");
 
         switch (lesson) {
             case OVERWORLD_MAP_READING -> {
@@ -808,6 +879,7 @@ public final class TutorialSystem {
             }
             case OVERWORLD_TO_MISSION -> {
                 ensureCommandSchoolOverworld(ctx);
+                if (ctx.ui != null) ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.NAV;
                 selectTrainingLocation(ctx, CampaignSystem.COMMAND_SCHOOL_RED_SITE_ID);
                 st.tacticalSandboxPrepared = false;
                 if (announce) EventSystem.showBanner(ctx, "OVERWORLD SCHOOL 8: ENTER MISSION", 2.4);
@@ -860,9 +932,44 @@ public final class TutorialSystem {
             case COMPLETE -> {
                 ctx.ui.waypointX = Double.NaN;
                 ctx.ui.waypointY = Double.NaN;
+                AcademyProgressStore.markCompleted(st.academySessionId, graduationSnapshot(ctx, st));
+                AcademyProgressStore.recordEvent(st.academySessionId,
+                        "academy_completed",
+                        academyChapterLabel(lesson),
+                        academyStepLabel(lesson),
+                        0.0,
+                        "complete");
                 EventSystem.showBanner(ctx, "TUTORIAL COMPLETE", 3.0);
             }
         }
+    }
+
+    private static String academyChapterLabel(LessonId lesson) {
+        if (lesson == null) return "Academy";
+        if (lesson == LessonId.COMPLETE) return "Graduation";
+        return isOverworldLesson(lesson) ? "Overworld School" : "Tactical School";
+    }
+
+    private static String academyStepLabel(LessonId lesson) {
+        return lesson == null ? "unknown" : lesson.name().toLowerCase().replace('_', '-');
+    }
+
+    private static String graduationSnapshot(GameContext ctx, TutorialState st) {
+        int live = 0;
+        int damaged = 0;
+        if (ctx != null && ctx.ships != null && st != null) {
+            for (Ship ship : ctx.ships) {
+                if (ship == null || ship.faction == null || !ship.faction.isFriendlyTo(st.playerFaction)) continue;
+                if (!ship.alive || ship.dying || ship.hp <= 0) continue;
+                live++;
+                double hpFrac = ship.hpMax <= 0 ? 0.0 : ship.hp / (double) ship.hpMax;
+                double shieldFrac = ship.shieldMax <= 1e-6 ? 1.0 : ship.shield / ship.shieldMax;
+                if (hpFrac < 0.80 || shieldFrac < 0.65) damaged++;
+            }
+        }
+        return "version=" + AcademyProgressStore.ACADEMY_VERSION
+                + ";liveFriendly=" + live
+                + ";damagedFriendly=" + damaged;
     }
 
     private static String lessonName(LessonId lesson) {
@@ -1024,8 +1131,8 @@ public final class TutorialSystem {
             }
             case BRIDGE_SYSTEMS -> {
                 items.add(new ChecklistItem(
-                        "[TAB] Swap your hull to a carrier.",
-                        "Use the loadout panel at base and switch into a carrier hull.",
+                        "[TAB] Open loadout, then Capital > Carrier.",
+                        "Open the loadout panel at base, choose the Capital hull band, and swap into the Carrier.",
                         st.swappedToCarrier));
                 items.add(new ChecklistItem(
                         "[O or Y] Change one power state or preset.",
@@ -1109,6 +1216,7 @@ public final class TutorialSystem {
         ctx.campaign.selectedGalaxyLocationId = location.id;
         ctx.campaign.selectedFreeGalaxyTargetX = Double.NaN;
         ctx.campaign.selectedFreeGalaxyTargetY = Double.NaN;
+        CampaignSystem.clearSelectedCampaignContact(ctx);
         if (ctx.ui != null) {
             ctx.ui.mapOpen = true;
             ctx.ui.strategicMapFocusX = location.x;

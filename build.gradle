@@ -125,9 +125,9 @@ test {
         delete(layout.buildDirectory.dir("test-user-data"))
     }
     // Simulation tests retain decoded visual assets and static effect state between classes.
-    // Keep workers short-lived and sized for multipart sprite decode coverage.
-    forkEvery = 3
-    maxHeapSize = "2048m"
+    // Recycle periodically without churning through hundreds of short-lived Windows JVMs.
+    forkEvery = 25
+    maxHeapSize = "4096m"
 }
 
 tasks.register("currentReleaseVerification", Test) {
@@ -141,8 +141,8 @@ tasks.register("currentReleaseVerification", Test) {
     doFirst {
         delete(layout.buildDirectory.dir("current-release-test-user-data"))
     }
-    forkEvery = 3
-    maxHeapSize = "2048m"
+    forkEvery = 25
+    maxHeapSize = "4096m"
     filter {
         includeTestsMatching "CampaignSensorSuiteTest"
         includeTestsMatching "PlayerResourceSimplificationTest"
@@ -176,8 +176,8 @@ tasks.register("currentReleaseVerificationHeadless", Test) {
     doFirst {
         delete(layout.buildDirectory.dir("current-release-headless-test-user-data"))
     }
-    forkEvery = 3
-    maxHeapSize = "2048m"
+    forkEvery = 25
+    maxHeapSize = "4096m"
     filter {
         includeTestsMatching "CampaignSensorSuiteTest"
         includeTestsMatching "PlayerResourceSimplificationTest"
@@ -574,6 +574,14 @@ tasks.register("phase10Accessibility", JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = "Phase10AccessibilityAcceptance"
     args("--strict", "--report=build/reports/phase10_accessibility_acceptance.json")
+}
+
+tasks.register("academyTelemetrySummary", JavaExec) {
+    group = "verification"
+    description = "Print a local Commander Academy telemetry summary from the user data JSONL file."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "app.persistence.AcademyTelemetrySummary"
 }
 
 tasks.register("phase11ReleaseContract", JavaExec) {

@@ -9,29 +9,32 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CampaignDifficultyOutcomeSeparationTest {
     @Test
-    void legacyDifficultyPresetsNormalizeToOneHardCampaignProfile() throws Exception {
+    void difficultyPresetsKeepDistinctStrategicAttritionProfiles() throws Exception {
         GameContext relaxed = campaign(65001L, ExperienceSettings.Preset.RELAXED);
         GameContext standard = campaign(65001L, ExperienceSettings.Preset.STANDARD);
         GameContext iron = campaign(65001L, ExperienceSettings.Preset.IRON_COMMAND);
         GameContext tacticalOnly = campaign(65001L, ExperienceSettings.Preset.TACTICAL_ONLY);
 
-        assertTrue(routeInterdictionRiskFloor(relaxed) == routeInterdictionRiskFloor(standard));
-        assertTrue(routeInterdictionRiskFloor(iron) == routeInterdictionRiskFloor(standard));
-        assertTrue(routeInterdictionRiskFloor(tacticalOnly) == routeInterdictionRiskFloor(standard));
+        assertTrue(routeInterdictionRiskFloor(relaxed) > routeInterdictionRiskFloor(standard),
+                "Relaxed should raise the risk floor so fewer routes become interdicted");
+        assertTrue(routeInterdictionRiskFloor(iron) < routeInterdictionRiskFloor(standard),
+                "Iron Command should lower the risk floor so more routes become interdicted");
+        assertTrue(routeInterdictionRiskFloor(tacticalOnly) > routeInterdictionRiskFloor(relaxed),
+                "Tactical Only should suppress strategic route pressure");
 
         int relaxedLoss = runLongRouteAndResourceLoss(relaxed);
         int standardLoss = runLongRouteAndResourceLoss(standard);
         int ironLoss = runLongRouteAndResourceLoss(iron);
         int tacticalLoss = runLongRouteAndResourceLoss(tacticalOnly);
 
-        assertTrue(relaxedLoss == standardLoss, "Relaxed should normalize to the same campaign attrition");
-        assertTrue(ironLoss == standardLoss, "Iron should normalize to the same campaign attrition");
-        assertTrue(tacticalLoss == standardLoss, "Tactical Only should no longer suppress strategic attrition");
+        assertTrue(relaxedLoss < standardLoss, "Relaxed should reduce campaign attrition");
+        assertTrue(ironLoss > standardLoss, "Iron Command should increase campaign attrition");
+        assertTrue(tacticalLoss == 0, "Tactical Only should suppress strategic attrition");
 
         String relaxedRecovery = String.join("\n", CampaignSystem.campaignDifficultyTelemetryLines(relaxed));
         String ironRecovery = String.join("\n", CampaignSystem.campaignDifficultyModifierLines(iron));
         assertTrue(relaxedRecovery.contains("one ordinary mistake remains recoverable"));
-        assertTrue(ironRecovery.contains("Travel attrition: x1.32"));
+        assertTrue(ironRecovery.contains("Travel attrition: x1.45"));
     }
 
     @Test

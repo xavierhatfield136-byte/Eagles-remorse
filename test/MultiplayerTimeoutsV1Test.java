@@ -20,5 +20,8 @@ class MultiplayerTimeoutsV1Test {
         assertTrue(MultiplayerTimeoutsV1.MATCH_READ_TIMEOUT_MS > 0);
         assertTrue(MultiplayerTimeoutsV1.MATCH_LOADING_TIMEOUT_MS
                 >= MultiplayerTimeoutsV1.HANDSHAKE_TIMEOUT_MS);
+        assertTrue(MultiplayerTimeoutsV1.LOBBY_HEARTBEAT_TIMEOUT_TICKS
+                >= MultiplayerRulesV1.AUTHORITATIVE_TICK_RATE
+                * ((MultiplayerTimeoutsV1.MATCH_LOADING_TIMEOUT_MS / 1_000) + 1));
     }
 }

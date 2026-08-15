@@ -271,6 +271,11 @@ public final class EconomySystem {
         if (ctx.command != null && ctx.command.alliedFleetCommand == GameContext.FleetCommand.MINE) return false;
         if (miner.minerHomeBase != ctx.player) return false;
         if (miner.faction == null || ctx.player.faction == null || !miner.faction.isFriendlyTo(ctx.player.faction)) return false;
+        if (miner.cargo > 0
+                && (miner.minerState == Ship.MinerState.RETURN_TO_BASE
+                || miner.minerState == Ship.MinerState.DEPOSIT)) {
+            return false;
+        }
 
         int slot = Math.floorMod(miner.id, 6);
         double side = (slot % 2 == 0) ? -1.0 : 1.0;

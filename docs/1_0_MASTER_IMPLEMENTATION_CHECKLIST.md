@@ -4,6 +4,8 @@ Date created: 2026-06-23
 Status: Active
 Authority: `1_0_OWNER_DECISIONS_AND_IMPLEMENTATION_ROADMAP.md`
 
+First-hour/Steam candidate feature-freeze tracker: `FIRST_HOUR_EXPERIENCE.md`.
+
 ## Core Goal
 
 Deliver Eagles Remorse 1.0 as a free public Windows release centered on deep

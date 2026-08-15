@@ -59,7 +59,7 @@ public final class SpawnSystem {
         }
 
         if (ctx.config.mode == GameMode.TUTORIAL) {
-            TutorialSystem.init(ctx, configuredPlayerFaction(ctx));
+            AcademyDirector.start(ctx, configuredPlayerFaction(ctx));
             return;
         }
 

@@ -461,8 +461,8 @@ class RendererHoverTooltipTest {
 
         assertTrue((canvas.getRGB(5, 5) & 0x00FFFFFF) != 0, "FPS view should use the simple performance background, not pure black");
         assertFalse(Renderer.shouldDrawPerformanceToken(ctx, ship), "legacy token gate remains disabled; FPS view uses tactical outlines directly");
-        assertEquals(0.0, Renderer.frameShipSkinMs(), 0.0001,
-                "FPS view should not touch baked hull skin rendering for ship silhouettes");
+        assertTrue(Renderer.frameShipSkinMs() > 0.0,
+                "FPS view should keep baked hull skin rendering for nearby/front readable ship silhouettes");
 
         boolean foundShipPixel = false;
         for (int y = 70; y <= 150 && !foundShipPixel; y++) {

@@ -57,7 +57,7 @@ class CampaignPhaseFiveDifficultyAttritionTest {
         String resources = String.join("\n", CampaignSystem.campaignResourceTrendLines(ctx));
         String strikes = String.join("\n", CampaignSystem.campaignStrikeAvailability(ctx).stream()
                 .map(brief -> brief.strikeName + " " + brief.resourceCost + " " + brief.replenishment)
-                .toList());
+                .toList()).toLowerCase(java.util.Locale.US);
         String manager = String.join("\n", CampaignSystem.campaignResourceManagerLines(ctx));
 
         assertTrue(resources.contains("2-JUMP FORECAST"));
@@ -65,7 +65,7 @@ class CampaignPhaseFiveDifficultyAttritionTest {
         assertTrue(resources.contains("fleet strain"));
         assertTrue(resources.contains("full armor/systems require a repair hub"));
         assertTrue(strikes.contains("ammo"));
-        assertTrue(strikes.contains("per-battle cooldowns"));
+        assertTrue(strikes.contains("cooldowns also recover"));
         assertTrue(manager.contains("Credits:"));
         assertTrue(manager.contains("Ore"));
     }

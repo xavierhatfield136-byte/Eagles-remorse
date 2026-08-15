@@ -70,6 +70,8 @@ public final class MultiplayerLobbyPanel extends JPanel {
     private volatile GamePanel activeGamePanel;
     private volatile boolean returnedToSetup;
     private volatile MultiplayerLanTransportV1.ConnectedPeer lastResumedPeerForTests;
+    private volatile boolean matchPanelLaunched;
+    private volatile long lastLaunchedMatchStartTick;
 
     public MultiplayerLobbyPanel(MultiplayerLaunchConfig launch, Runnable exitToMenu, Runnable toggleFullscreen) {
         this(launch, exitToMenu, toggleFullscreen, true);
@@ -285,7 +287,7 @@ public final class MultiplayerLobbyPanel extends JPanel {
             } catch (IOException ex) {
                 if (ex instanceof SocketTimeoutException) {
                     heartbeatTick += timeoutTickAdvance;
-                    if (connectedPeer.markDisconnectedIfTimedOut(heartbeatTick)) {
+                    if (!matchLaunching && connectedPeer.markDisconnectedIfTimedOut(heartbeatTick)) {
                         setNetworkStatus("Client timed out");
                         peer = null;
                         lobby.setReady(MultiplayerRulesV1.CLIENT_SLOT_ID, false);
@@ -382,7 +384,7 @@ public final class MultiplayerLobbyPanel extends JPanel {
             } catch (IOException ex) {
                 if (ex instanceof SocketTimeoutException) {
                     heartbeatTick += timeoutTickAdvance;
-                    if (connectedPeer.markDisconnectedIfTimedOut(heartbeatTick)) {
+                    if (!matchLaunching && connectedPeer.markDisconnectedIfTimedOut(heartbeatTick)) {
                         returnClientToSetupFromNetwork("Host timed out");
                         return;
                     }
@@ -597,7 +599,9 @@ public final class MultiplayerLobbyPanel extends JPanel {
         ctx.multiplayerInGameSession = MultiplayerInGameDuelSession.fromConnectedPeer(matchLaunch, matchPeer);
         pendingGameContext = null;
         matchLoadingDeadlineNs = 0L;
+        lastLaunchedMatchStartTick = pendingMatchStartTick;
         activeGamePanel = new GamePanel(ctx, () -> returnFromActiveMatch(ctx), toggleFullscreen);
+        matchPanelLaunched = true;
         removeAll();
         setLayout(new BorderLayout());
         add(activeGamePanel, BorderLayout.CENTER);
@@ -811,6 +815,10 @@ public final class MultiplayerLobbyPanel extends JPanel {
         return activeGamePanel != null;
     }
 
+    boolean matchPanelLaunchedForTests() {
+        return matchPanelLaunched || activeGamePanel != null;
+    }
+
     Thread workerForTests() {
         return worker;
     }
@@ -825,6 +833,10 @@ public final class MultiplayerLobbyPanel extends JPanel {
 
     long pendingMatchStartTickForTests() {
         return pendingMatchStartTick;
+    }
+
+    long lastLaunchedMatchStartTickForTests() {
+        return lastLaunchedMatchStartTick;
     }
 
     void beginMatchLoadingTimeoutForTests(long deadlineNs) {

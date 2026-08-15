@@ -66,6 +66,7 @@ public final class PerformanceGuardrailHarness {
             ctx.ui.hudDetail = GameContext.HudDetail.MINIMAL;
         }
         warmupSimulationAndRender(ctx, viewportW, viewportH, Math.min(60, Math.max(12, ticks / 6)));
+        Renderer.prewarmShipHardpointAssets(ctx.ships);
         AssetLoadGuard.resetForTest();
         PerformanceGuardrails.applyExperienceSettings(ctx.config.experience);
         PerformanceGuardrails.update(ctx);

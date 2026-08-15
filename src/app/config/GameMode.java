@@ -4,7 +4,7 @@ package app.config;
  * High-level game modes.
  */
 public enum GameMode {
-    TUTORIAL("Tutorial"),
+    TUTORIAL("Commander's Academy"),
     CAMPAIGN_OPS("Campaign Ops"),
     FLEET("Fleet"),
     LAST_STAND("Last Stand"),

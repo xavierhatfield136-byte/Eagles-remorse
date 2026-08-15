@@ -86,7 +86,7 @@ final class CampaignHubPresenter {
             }
             case TRADE -> {
                 lines.add("Request Trade");
-                lines.add("Market exchange can buy ore or sell fleet ore for credits.");
+                lines.add("Market exchange can buy stores or sell salvage/ore for credits.");
                 lines.add("Selected ore sale: " + quote.selectedOre + " / " + quote.availableOre
                         + " ore  |  Payout: " + quote.payoutCredits + " credits");
                 lines.add("Market Bias: " + (profile.alignment == CampaignSystem.HubAlignment.YELLOW
@@ -96,10 +96,11 @@ final class CampaignHubPresenter {
                 ShipRole role = quote.role;
                 FleetBuildingSystem.HullProfile hull = FleetBuildingSystem.hullProfile(role);
                 lines.add("Purchase Ships");
+                lines.add("Station hulls are not for sale through campaign shipyards.");
                 lines.add("Current Yard Offer: " + role.name());
                 lines.add("Seller: " + CampaignSystem.factionBoardName(location.ownerFaction)
                         + "  |  delivered hull keeps seller doctrine and skin.");
-                lines.add("Fleet Ore pays purchases; Yard Ore feeds local faction construction.");
+                lines.add("Fleet Ore pays player purchases; Yard Ore feeds local faction construction.");
                 lines.add("Fleet Ore: " + CampaignSystem.currentCampaignOre(ctx) + "  |  Yard Ore: " + Math.max(0, location.oreStockpile)
                         + "  |  Required Fleet Ore: " + quote.oreCost);
                 lines.add("Role: " + hull.battlefieldRole + "  |  Counter: " + hull.counter + "  |  Weakness: " + hull.weakness);
@@ -109,14 +110,14 @@ final class CampaignHubPresenter {
                         + " Fleet Ore");
             }
             case SUPPLY -> {
-                lines.add("Buy Ore");
-                lines.add("Converts credits into fleet ore for repairs, refits, and commissions.");
-                lines.add("Ore Focus: " + (profile.alignment == CampaignSystem.HubAlignment.GREEN
-                        ? "military fabrication stock" : "civilian industrial cargo"));
+                lines.add("Request Replenishment");
+                lines.add("Requests delivered fuel, supplies, ammo, and repair stores for the fleet.");
+                lines.add("Replenishment Focus: " + (profile.alignment == CampaignSystem.HubAlignment.GREEN
+                        ? "military readiness stock" : "civilian industrial cargo"));
             }
             case STRIKE_REARM -> {
                 lines.add("Service Strikes");
-                lines.add("Clears torpedo and bomber cooldowns and reduces nuclear cooldown when active.");
+                lines.add("Rearms torpedoes, readies carrier sorties, and reduces atomic cooldown when active.");
                 lines.add("Cost: " + quote.creditCost + " credits  |  " + quote.oreCost + " ore");
             }
             case FUEL -> {
@@ -154,7 +155,12 @@ final class CampaignHubPresenter {
                                         CampaignSystem.CampaignLocation location,
                                         CampaignSystem.HubService service) {
         if (service == null) return "SERVICE";
-        return service.label.toUpperCase(Locale.US);
+        return switch (service) {
+            case REPAIR -> "REQUEST SUPPORT";
+            case TRADE -> "REQUEST TRADE";
+            case SUPPLY -> "REQUEST REPLENISHMENT";
+            default -> service.label.toUpperCase(Locale.US);
+        };
     }
 
     static String hubServiceActionDetail(GameContext ctx,
@@ -262,7 +268,7 @@ final class CampaignHubPresenter {
         return switch (service) {
             case REPAIR, REFIT -> "Request support";
             case TRADE, SALVAGE, FUEL -> "Request trade";
-            case SUPPLY -> "Buy ore";
+            case SUPPLY -> "Request replenishment";
             case STRIKE_REARM -> "Service strike cooldowns";
             case CONTRACTS, INTEL -> "Bounty / job board";
             case SHIPYARD -> "Purchase ships";
