@@ -654,9 +654,7 @@ public class Player extends Ship {
         }
 
         double searchRange = switch (role) {
-            case ANTI_HEAVY -> 1100.0;
-            case ANTI_LIGHT -> Math.hypot(ctx.WORLD_W, ctx.WORLD_H);
-            case ANTI_MEDIUM -> 1600.0;
+            case ANTI_HEAVY, ANTI_LIGHT, ANTI_MEDIUM -> TargetingSystem.COMBAT_TARGETING_RANGE;
             case INTERCEPT -> 820.0;
         };
         Ship target = TargetingSystem.findClosestEnemyToPoint(ctx, this, x, y, searchRange);

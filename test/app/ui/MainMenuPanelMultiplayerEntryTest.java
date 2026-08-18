@@ -29,6 +29,7 @@ class MainMenuPanelMultiplayerEntryTest {
     void clearFeatureOverride() {
         System.clearProperty("game.feature.multiplayer_custom_battle");
         System.clearProperty("game.feature.multiplayer_custom_missions");
+        System.clearProperty("game.dev.menu");
     }
 
     @Test
@@ -64,14 +65,14 @@ class MainMenuPanelMultiplayerEntryTest {
     }
 
     @Test
-    void mainMenuExposesTeamEShipCreatorEntry() {
+    void mainMenuExposesShipyardEntry() {
         MainMenuPanel panel = menu();
 
         try {
             JButton shipyard = (JButton) findByName(panel, "customShipCreatorButton");
 
             assertNotNull(shipyard);
-            assertEquals("Team E Shipyard", shipyard.getText());
+            assertEquals("Shipyard", shipyard.getText());
         } finally {
             panel.stopBackgroundTimerForTests();
         }
@@ -127,7 +128,7 @@ class MainMenuPanelMultiplayerEntryTest {
             assertNotNull(findByName(panel, "multiplayerEntryPanel"));
             assertNotNull(findByName(panel, "multiplayerHostBattleButton"));
             assertNotNull(findByName(panel, "multiplayerJoinBattleButton"));
-            assertNotNull(findByName(panel, "multiplayerDiagnosticsButton"));
+            assertNull(findByName(panel, "multiplayerDiagnosticsButton"));
             assertNotNull(findByName(panel, "multiplayerDirectAddressField"));
             assertNotNull(findByName(panel, "multiplayerPlayerNameField"));
             assertNotNull(findByName(panel, "multiplayerMissionSelector"));
@@ -285,6 +286,7 @@ class MainMenuPanelMultiplayerEntryTest {
     @Test
     void multiplayerDiagnosticsButtonStartsHarnessLaunchConfig() {
         System.setProperty("game.feature.multiplayer_custom_battle", "true");
+        System.setProperty("game.dev.menu", "true");
         AtomicReference<GameConfig> launched = new AtomicReference<>();
         MainMenuPanel panel = menu(launched);
 

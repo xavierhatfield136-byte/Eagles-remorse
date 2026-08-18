@@ -4396,7 +4396,6 @@ public final class AISystem {
         gunRange = gunRange * gunRangeRoleMul(s.role) * rangeMul;
         missileRange = missileRange * missileRangeRoleMul(s.role) * rangeMul;
         double sustainedRange = sustainedEngagementRangeForTarget(ctx, s, target);
-        boolean openingMissileStandoff = openingMissileStandoffRange(ctx, s, target) > 0.0;
 
         ArrayList<Integer> mainGunIndices = null;
         int mainGunCount = 0;
@@ -4488,10 +4487,6 @@ public final class AISystem {
 
                 // --- GUN turrets ---
                 boolean ciwsStyle = Turret.usesCiwsPelletsAgainst(s, t, target);
-                if (!ciwsStyle && openingMissileStandoff
-                        && dist > effectiveGunRangeForTarget(s, t, target, gunRange) * 1.04) {
-                    continue;
-                }
                 double allowedGunRange = gunFireAuthorityRange(ctx, s, t, target, gunRange);
                 if (dist > allowedGunRange) continue;
                 if (!ciwsStyle) {
@@ -6006,9 +6001,11 @@ public final class AISystem {
         if (seeker != null && seeker.turrets != null) {
             for (Turret turret : seeker.turrets) {
                 if (turret == null) continue;
-                double turretRange = (seeker.role == ShipRole.BASE || seeker.role == ShipRole.STATIC_TURRET)
+                double turretRange = (turret.kind == Turret.Kind.GUN || isOffensiveMissileTurret(turret))
+                        ? STANDARD_PROSECUTION_RANGE
+                        : ((seeker.role == ShipRole.BASE || seeker.role == ShipRole.STATIC_TURRET)
                         ? ((turret.kind == Turret.Kind.MISSILE) ? 1400.0 : 900.0)
-                        : ((turret.kind == Turret.Kind.MISSILE) ? 900.0 : 520.0);
+                        : ((turret.kind == Turret.Kind.MISSILE) ? 900.0 : 520.0));
                 maxRange = Math.max(maxRange, turretRange * rangeMul * 1.12);
             }
         }

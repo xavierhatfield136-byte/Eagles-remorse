@@ -22,7 +22,7 @@ public final class Phase10AccessibilityAcceptance {
                 flow("main-menu", "Navigate the main menu without a mouse",
                         "Swing focus traversal with visible focus ring; Enter/Space activates focused buttons."),
                 flow("start-campaign", "Start a campaign without a mouse",
-                        "Focus Campaign Ops or Launch Mission from the menu and press Enter."),
+                        "Focus Open World Campaign or Launch Mission from the menu and press Enter."),
                 flow("strategic-tabs", "Navigate strategic command tabs",
                         "Open map with M; command-board tab chips expose NAV/FLEET/RESOURCES/STRIKES and actions.",
                         "toggleMap"),

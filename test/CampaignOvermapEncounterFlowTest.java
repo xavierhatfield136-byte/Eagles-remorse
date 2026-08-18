@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.awt.Canvas;
 import java.awt.Rectangle;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -306,23 +307,24 @@ class CampaignOvermapEncounterFlowTest {
     }
 
     @Test
-    void campaignForceEncounterPullsVisibleFleetsInsidePlayerSensorBubbleOnly() throws Exception {
+    void campaignForceEncounterPullsVisibleFleetsInsideHalfPlayerSensorRadiusOnly() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         st.selectedGalaxyLocationId = "";
         st.playerGalaxyX = 2500.0;
         st.playerGalaxyY = 2500.0;
         double sensorRange = CampaignSystem.playerCampaignSensorRange(ctx);
+        double hardJoinRange = sensorRange * 0.5;
 
         Object primary = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
                 "Regression Red Primary Contact", "Red base lane", "primary intercept",
                 st.playerGalaxyX + 40.0, st.playerGalaxyY);
         Object nearby = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.STRIKE_DETACHMENT, Faction.ENEMY,
                 "Regression Red Nearby Reinforcement", "Red base lane", "join sensor battle",
-                st.playerGalaxyX + Math.min(900.0, sensorRange - 240.0), st.playerGalaxyY + 80.0);
+                st.playerGalaxyX + Math.min(900.0, hardJoinRange - 120.0), st.playerGalaxyY + 80.0);
         Object distant = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.STRIKE_DETACHMENT, Faction.ENEMY,
                 "Regression Red Distant Reinforcement", "Red base lane", "too far to join",
-                st.playerGalaxyX + sensorRange + 420.0, st.playerGalaxyY);
+                st.playerGalaxyX + hardJoinRange + 160.0, st.playerGalaxyY);
         for (Object force : List.of(primary, nearby, distant)) {
             setBoolean(force, "simulationActive", true);
             setDouble(force, "strength", 70.0);
@@ -341,9 +343,9 @@ class CampaignOvermapEncounterFlowTest {
         assertTrue(hasTacticalShipForCampaignForce(st, getInt(primary, "id")),
                 "the primary force should spawn into the tactical battle");
         assertTrue(hasTacticalShipForCampaignForce(st, getInt(nearby, "id")),
-                "visible fleets inside the player sensor circle should join the same battle");
+                "visible fleets inside half the player sensor circle should join the same battle");
         assertFalse(hasTacticalShipForCampaignForce(st, getInt(distant, "id")),
-                "fleets outside the player sensor circle must not be pulled into combat");
+                "fleets outside half the player sensor circle must not be pulled into combat");
     }
 
     @Test
@@ -384,25 +386,29 @@ class CampaignOvermapEncounterFlowTest {
         for (Object force : nearbyForces) {
             if (hasTacticalShipForCampaignForce(st, getInt(force, "id"))) joined++;
         }
-        assertTrue(joined <= 7, "sensor bubble battles should cap hostile reinforcements");
+        assertTrue(joined <= 2, "sensor bubble battles should cap hostile reinforcements");
         assertTrue(joined < nearbyForces.size(), "the cap should prevent every nearby fleet from being dragged in");
     }
 
     @Test
-    void friendlySensorBubbleJoinerMustBePhysicallyCloseToThePlayerContact() throws Exception {
+    void friendlySensorBubbleJoinersUseHalfPlayerSensorRadius() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         st.selectedGalaxyLocationId = "";
         st.playerGalaxyX = 2500.0;
         st.playerGalaxyY = 2500.0;
+        double hardJoinRange = CampaignSystem.playerCampaignSensorRange(ctx) * 0.5;
 
         Object primary = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
                 "Regression Red Primary For Friendly Pull", "Red base lane", "primary intercept",
                 st.playerGalaxyX + 40.0, st.playerGalaxyY);
+        Object nearbyFriendly = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.TEAM_C,
+                "Regression Green Nearby Support Pull", "Green support lane", "should join nearby contact",
+                st.playerGalaxyX + Math.min(900.0, hardJoinRange - 120.0), st.playerGalaxyY + 20.0);
         Object distantFriendly = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.TEAM_C,
                 "Regression Green Distant Support Pull", "Green support lane", "should not teleport into contact",
-                st.playerGalaxyX + 980.0, st.playerGalaxyY + 20.0);
-        for (Object force : List.of(primary, distantFriendly)) {
+                st.playerGalaxyX + hardJoinRange + 160.0, st.playerGalaxyY + 20.0);
+        for (Object force : List.of(primary, nearbyFriendly, distantFriendly)) {
             setBoolean(force, "simulationActive", true);
             setDouble(force, "strength", 70.0);
             setDouble(force, "readiness", 80.0);
@@ -412,14 +418,147 @@ class CampaignOvermapEncounterFlowTest {
             setObject(force, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
         }
         addPoolRecord(st, Faction.ENEMY, ShipRole.PATROL, getInt(primary, "id"), "Primary Patrol");
+        addPoolRecord(st, Faction.TEAM_C, ShipRole.FRIGATE, getInt(nearbyFriendly, "id"), "Nearby Green Frigate");
         addPoolRecord(st, Faction.TEAM_C, ShipRole.FRIGATE, getInt(distantFriendly, "id"), "Distant Green Frigate");
 
         assertTrue(launchCampaignForceEncounter(ctx, st, primary));
 
         assertTrue(hasTacticalShipForCampaignForce(st, getInt(primary, "id")),
                 "the primary hostile force should still spawn into the tactical battle");
+        assertTrue(hasTacticalShipForCampaignForce(st, getInt(nearbyFriendly, "id")),
+                "friendly green forces inside half the player's detection radius should join the battle");
         assertFalse(hasTacticalShipForCampaignForce(st, getInt(distantFriendly, "id")),
-                "friendly forces outside the physical response radius must not be pulled in by broad allied intel");
+                "friendly forces outside half the player's detection radius must not be pulled into combat");
+    }
+
+    @Test
+    void friendlyBaseDefenseInsideHalfSensorRadiusJoinsForceEncounter() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.selectedGalaxyLocationId = "";
+        st.playerGalaxyX = 2500.0;
+        st.playerGalaxyY = 2500.0;
+
+        Object primary = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Regression Red Contact Beside Green Station", "Red base lane", "primary intercept",
+                st.playerGalaxyX + 40.0, st.playerGalaxyY);
+        Object stationDefense = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.BASE_DEFENSE, Faction.TEAM_C,
+                "Regression Green Station Defense", "Green station base", "standing friendly station support",
+                st.playerGalaxyX + 80.0, st.playerGalaxyY);
+        for (Object force : List.of(primary, stationDefense)) {
+            setBoolean(force, "simulationActive", true);
+            setDouble(force, "strength", 82.0);
+            setDouble(force, "readiness", 85.0);
+            setDouble(force, "contactConfidence", 0.95);
+            setDouble(force, "lastKnownAgeSec", 0.0);
+            setBoolean(force, "visibleToPlayer", true);
+            setObject(force, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+        }
+        addPoolRecord(st, Faction.ENEMY, ShipRole.PATROL, getInt(primary, "id"), "Primary Station Raider");
+        addPoolRecord(st, Faction.TEAM_C, ShipRole.BASE, getInt(stationDefense, "id"), "Green Station Control");
+        addPoolRecord(st, Faction.TEAM_C, ShipRole.STATIC_TURRET, getInt(stationDefense, "id"), "Green Station Turret");
+
+        assertTrue(launchCampaignForceEncounter(ctx, st, primary));
+
+        assertTrue(hasTacticalShipForCampaignForce(st, getInt(primary, "id")),
+                "the primary hostile force should still spawn into the tactical battle");
+        assertTrue(hasTacticalShipForCampaignForce(st, getInt(stationDefense, "id")),
+                "friendly station/base defenses inside half the player's detection radius should join the battle");
+    }
+
+    @Test
+    void greenStationEmergencySupportSupplementsBlueAgainstDoomstack() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.selectedGalaxyLocationId = "";
+        st.playerGalaxyX = 2500.0;
+        st.playerGalaxyY = 2500.0;
+        double hardJoinRange = CampaignSystem.playerCampaignSensorRange(ctx) * 0.5;
+
+        CampaignSystem.CampaignLocation station = new CampaignSystem.CampaignLocation(
+                "regression-green-emergency-station",
+                "Green Emergency Station",
+                st.playerGalaxyX + 120.0,
+                st.playerGalaxyY,
+                CampaignSystem.CampaignLocationType.REPAIR_SITE,
+                0.0f,
+                false,
+                0,
+                "Green coalition support radius",
+                CampaignSystem.HubService.REPAIR);
+        station.ownerFaction = Faction.TEAM_C;
+        station.facilityType = CampaignSystem.CampaignFacilityType.REPAIR_YARD;
+        station.strategicValue = 5;
+        station.defenseStrength = 90.0;
+        station.stationServiceState = "online";
+        station.stationDamageState = "intact";
+        st.galaxyMainPois.add(station);
+
+        Object primary = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
+                "Regression Red Misrated Doomstack", "Red base lane", "misrated level three doomstack",
+                st.playerGalaxyX + 40.0, st.playerGalaxyY);
+        Object stationReserve = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.BASE_DEFENSE, Faction.TEAM_C,
+                "Regression Green Emergency Reserve", "Green station reserve", "supplement blue against red mass",
+                st.playerGalaxyX + hardJoinRange + 260.0, st.playerGalaxyY + 80.0);
+        for (Object force : List.of(primary, stationReserve)) {
+            setBoolean(force, "simulationActive", true);
+            setDouble(force, "strength", 92.0);
+            setDouble(force, "readiness", 88.0);
+            setDouble(force, "contactConfidence", 0.95);
+            setDouble(force, "lastKnownAgeSec", 0.0);
+            setBoolean(force, "visibleToPlayer", true);
+            setObject(force, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+        }
+        for (int i = 0; i < 14; i++) {
+            addPoolRecord(st, Faction.ENEMY,
+                    i % 4 == 0 ? ShipRole.FRIGATE : ShipRole.MISSILE_BOAT,
+                    getInt(primary, "id"),
+                    "Misrated Doomstack Red " + i);
+        }
+        addPoolRecord(st, Faction.TEAM_C, ShipRole.BASE, getInt(stationReserve, "id"), "Emergency Station Control");
+        addPoolRecord(st, Faction.TEAM_C, ShipRole.FRIGATE, getInt(stationReserve, "id"), "Emergency Green Frigate");
+        addPoolRecord(st, Faction.TEAM_C, ShipRole.CIWS_CORVETTE, getInt(stationReserve, "id"), "Emergency Green Screen");
+
+        assertTrue(launchCampaignForceEncounter(ctx, st, primary));
+
+        assertTrue(hasTacticalShipForCampaignForce(st, getInt(primary, "id")),
+                "the misrated hostile doomstack should spawn into the tactical battle");
+        assertTrue(hasTacticalShipForCampaignForce(st, getInt(stationReserve, "id")),
+                "green station emergency reserves outside the half-sensor join radius should still supplement blue");
+    }
+
+    @Test
+    void generatedForceEncounterIgnoresHistoricalKillsWhenCheckingCompletion() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.selectedGalaxyLocationId = "";
+        st.playerGalaxyX = 2500.0;
+        st.playerGalaxyY = 2500.0;
+        st.kills = 40;
+        st.lastDetectedKillCount = 40;
+        st.campaignKills = 40;
+
+        Object primary = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
+                "Regression Red Historical Kill Contact", "Red base lane", "must not instantly end",
+                st.playerGalaxyX + 500.0, st.playerGalaxyY);
+        setBoolean(primary, "simulationActive", true);
+        setDouble(primary, "strength", 82.0);
+        setDouble(primary, "readiness", 85.0);
+        setDouble(primary, "contactConfidence", 0.95);
+        setDouble(primary, "lastKnownAgeSec", 0.0);
+        setBoolean(primary, "visibleToPlayer", true);
+        setObject(primary, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+        addPoolRecord(st, Faction.ENEMY, ShipRole.FRIGATE, getInt(primary, "id"), "Historical Kill Red Frigate");
+        addPoolRecord(st, Faction.ENEMY, ShipRole.MISSILE_BOAT, getInt(primary, "id"), "Historical Kill Red Boat");
+
+        assertTrue(launchCampaignForceEncounter(ctx, st, primary));
+        CampaignSystem.update(ctx, 0.25);
+
+        assertTrue(st.galaxyEncounterActive,
+                "generated force encounters should not auto-complete from kills earned before the fight");
+        assertFalse(st.objectiveSecured,
+                "fresh generated encounters should wait for current hostile losses before extraction opens");
+        assertEquals(0.0, st.objectiveProgress, 0.001);
     }
 
     @Test
@@ -865,6 +1004,51 @@ class CampaignOvermapEncounterFlowTest {
     }
 
     @Test
+    void engageContactActionForLiveEnemyFleetOpensBriefingPromptBeforeBattle() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.playerGalaxyX = 2600.0;
+        st.playerGalaxyY = 2600.0;
+        ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.NAV;
+
+        Object hostile = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Regression Red Action Briefing", "direct contact", "test action opens briefing",
+                st.playerGalaxyX + 80.0, st.playerGalaxyY);
+        setBoolean(hostile, "simulationActive", true);
+        setDouble(hostile, "strength", 55.0);
+        setDouble(hostile, "contactConfidence", 0.9);
+        setDouble(hostile, "lastKnownAgeSec", 0.0);
+        setBoolean(hostile, "visibleToPlayer", true);
+        setObject(hostile, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+        addPoolRecord(st, Faction.ENEMY, ShipRole.PATROL, getInt(hostile, "id"), "Action Briefing Patrol");
+
+        CampaignSystem.selectCampaignContactTarget(ctx,
+                "Regression Red Action Briefing",
+                "EXACT LIVE CONTACT",
+                "Tracked",
+                st.playerGalaxyX + 80.0,
+                st.playerGalaxyY,
+                true,
+                true);
+
+        CampaignSystem.CampaignAction engage = CampaignSystem.campaignVisibleActions(ctx).stream()
+                .filter(action -> "ENGAGE_CONTACT".equals(action.id))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(engage);
+        assertTrue(engage.enabled, "live hostile fleets should expose the pre-battle briefing action");
+
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "ENGAGE_CONTACT"));
+
+        assertTrue(ctx.ui.strategicEncounterPrompt.active);
+        assertEquals(UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_FORCE, ctx.ui.strategicEncounterPrompt.kind);
+        assertEquals(getInt(hostile, "id"), ctx.ui.strategicEncounterPrompt.campaignForceId);
+        assertFalse(ctx.ui.campaignEncounterLoading.active,
+                "engage contact should stop at the briefing menu instead of starting tactical loading");
+        assertTrue(st.strategicOvermapMode);
+    }
+
+    @Test
     void engagingShiplessForceRunsImmediateGhostSweepBeforePrompt() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
@@ -1114,6 +1298,14 @@ class CampaignOvermapEncounterFlowTest {
         assertTrue(CampaignSystem.setPendingEncounterInsertionRange(ctx, "FAR"));
         assertEquals("FAR", ctx.ui.strategicEncounterPrompt.insertionRange);
 
+        KeyEvent cPress = new KeyEvent(new Canvas(), KeyEvent.KEY_PRESSED,
+                System.currentTimeMillis(), 0, KeyEvent.VK_C, 'C');
+        assertFalse(GameplayActions.tryHandleStrategicEncounterHotkey(ctx, cPress),
+                "C should not bypass the pre-battle briefing and insertion range choice");
+        assertTrue(ctx.ui.strategicEncounterPrompt.active);
+        assertFalse(ctx.ui.campaignEncounterLoading.active);
+        assertEquals("FAR", ctx.ui.strategicEncounterPrompt.insertionRange);
+
         assertTrue(CampaignSystem.takeCommandOfPendingStrategicEncounter(ctx));
         assertEquals("FAR", st.pendingCampaignEncounterInsertionRange);
         assertTrue(ctx.ui.campaignEncounterLoading.active);
@@ -1123,6 +1315,63 @@ class CampaignOvermapEncounterFlowTest {
         assertFalse(ctx.ui.campaignEncounterLoading.active);
         assertFalse(st.strategicOvermapMode);
         assertTrue(st.galaxyEncounterActive);
+    }
+
+    @Test
+    void selectedDeploymentPointCreatesSeparatedFleetBattleStandoff() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.playerGalaxyX = 2500.0;
+        st.playerGalaxyY = 2700.0;
+
+        Object hostile = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
+                "Regression Red Deployment Map Fight", "direct contact", "test deployment map fleet fight",
+                st.playerGalaxyX + 820.0, st.playerGalaxyY + 40.0);
+        setBoolean(hostile, "simulationActive", true);
+        setDouble(hostile, "strength", 96.0);
+        setDouble(hostile, "contactConfidence", 0.95);
+        setDouble(hostile, "lastKnownAgeSec", 0.0);
+        setBoolean(hostile, "visibleToPlayer", true);
+        setObject(hostile, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+        addPoolRecord(st, Faction.ENEMY, ShipRole.CARRIER, getInt(hostile, "id"), "Deployment Carrier");
+        addPoolRecord(st, Faction.ENEMY, ShipRole.FRIGATE, getInt(hostile, "id"), "Deployment Escort");
+
+        CampaignSystem.selectCampaignContactTarget(ctx,
+                "Regression Red Deployment Map Fight",
+                "EXACT LIVE CONTACT",
+                "Tracked",
+                st.playerGalaxyX + 820.0,
+                st.playerGalaxyY + 40.0,
+                true,
+                true);
+
+        assertTrue(CampaignSystem.engageSelectedCampaignContact(ctx));
+        assertTrue(CampaignSystem.setPendingEncounterDeploymentPoint(ctx, 0.38, 0.16));
+        assertEquals("CLOSE", ctx.ui.strategicEncounterPrompt.insertionRange);
+        assertEquals(0.38, ctx.ui.strategicEncounterPrompt.deploymentX, 0.001);
+        assertEquals(0.16, ctx.ui.strategicEncounterPrompt.deploymentY, 0.001);
+
+        assertTrue(CampaignSystem.takeCommandOfPendingStrategicEncounter(ctx));
+        assertEquals(0.38, st.pendingCampaignEncounterDeploymentX, 0.001);
+        assertEquals(0.16, st.pendingCampaignEncounterDeploymentY, 0.001);
+
+        CampaignSystem.update(ctx, 1.2);
+
+        assertFalse(ctx.ui.campaignEncounterLoading.active);
+        assertFalse(st.strategicOvermapMode);
+        assertTrue(st.galaxyEncounterActive);
+        List<Ship> enemies = ctx.ships.stream()
+                .filter(ship -> ship != null && ship.faction == Faction.ENEMY && ship.alive && !ship.dying)
+                .toList();
+        assertFalse(enemies.isEmpty());
+        double nearestEnemy = enemies.stream()
+                .mapToDouble(ship -> Math.hypot(ship.x - ctx.player.x, ship.y - ctx.player.y))
+                .min()
+                .orElse(0.0);
+        double enemyCenterX = enemies.stream().mapToDouble(ship -> ship.x).average().orElse(ctx.player.x);
+        assertTrue(ctx.player.x < enemyCenterX, "player deployment should remain on the friendly side of hostile contacts");
+        assertTrue(nearestEnemy >= 1100.0, "enemy fleets should start outside immediate brawl range");
+        assertNoInitialShipOverlaps(ctx);
     }
 
     @Test
@@ -1436,6 +1685,21 @@ class CampaignOvermapEncounterFlowTest {
             if (mappedForceId != null && mappedForceId == forceId) return true;
         }
         return false;
+    }
+
+    private static void assertNoInitialShipOverlaps(GameContext ctx) {
+        for (int i = 0; i < ctx.ships.size(); i++) {
+            Ship a = ctx.ships.get(i);
+            if (a == null || !a.alive || a.dying) continue;
+            for (int j = i + 1; j < ctx.ships.size(); j++) {
+                Ship b = ctx.ships.get(j);
+                if (b == null || !b.alive || b.dying) continue;
+                double min = Math.max(60.0, a.radius + b.radius + 20.0);
+                double dist = Math.hypot(a.x - b.x, a.y - b.y);
+                assertTrue(dist >= min,
+                        "ships should not begin overlapped: " + a.name + " / " + b.name + " distance=" + dist + " min=" + min);
+            }
+        }
     }
 
     private static void invokeTrackActiveTacticalForce(CampaignSystem.CampaignState st, Object force) throws Exception {

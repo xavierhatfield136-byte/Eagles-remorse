@@ -5,7 +5,7 @@ package app.config;
  */
 public enum GameMode {
     TUTORIAL("Commander's Academy"),
-    CAMPAIGN_OPS("Campaign Ops"),
+    CAMPAIGN_OPS("Open World Campaign"),
     FLEET("Fleet"),
     LAST_STAND("Last Stand"),
     RESOURCE_RUSH("Resource Rush"),

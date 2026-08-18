@@ -379,7 +379,7 @@ LAUNCH INVALID
 
 ## Builder Integration
 
-- [x] Add a `Custom Weapons` or `Weapon Lab` entry from the Team E Shipyard.
+- [x] Add a `Custom Weapons` or `Weapon Lab` entry from the Shipyard.
 - [x] Let players create weapons before creating a ship.
 - [ ] Let players create a weapon while editing a ship.
 - [x] Let each ship weapon slot choose:

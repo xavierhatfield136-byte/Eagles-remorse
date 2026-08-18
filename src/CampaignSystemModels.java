@@ -3521,6 +3521,8 @@ class CampaignSystemModels {
         public boolean manualEncounterCommitInProgress = false;
         public int pendingCampaignForceEncounterId = 0;
         public String pendingCampaignEncounterInsertionRange = "MODERATE";
+        public double pendingCampaignEncounterDeploymentX = 0.25;
+        public double pendingCampaignEncounterDeploymentY = 0.50;
         public double pendingCampaignEncounterLoadingSec = 0.0;
         public double factionDirectorAccumulatorSec = 0.0;
         public String redDirectorBrief = "Red director awaiting theater picture";

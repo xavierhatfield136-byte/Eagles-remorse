@@ -161,7 +161,7 @@ Purpose: expand onboarding so a new player learns both the in-game tactical cont
 
 ## Open Design Decisions
 
-- [x] Should overworld lessons appear only in Campaign Ops, or should Command School include a simulated campaign map? Decision: Campaign Ops briefing owns overworld lessons; Command School remains tactical.
+- [x] Should overworld lessons appear only in Open World Campaign, or should Command School include a simulated campaign map? Decision: Open World Campaign briefing owns overworld lessons; Command School remains tactical.
 - [x] Should commissioning be taught with a free/discounted tutorial hull to avoid economy grind? Decision: teach commissioning through briefing and existing campaign shipyard economy, not a separate free Command School hull.
 - [x] Should reputation be taught through a forced choice, a passive explainer, or both? Decision: passive briefing first, consequences through real campaign choices.
 - [x] Should ally support lessons use Green only first, then introduce Yellow leverage later? Decision: teach both identities together in the Allies beat.

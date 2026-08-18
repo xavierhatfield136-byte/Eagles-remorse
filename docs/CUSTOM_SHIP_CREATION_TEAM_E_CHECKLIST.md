@@ -398,7 +398,7 @@ Tests:
 
 ## Milestone 4: Builder V1
 
-- [x] Add Team E Shipyard main-menu entry.
+- [x] Add Shipyard main-menu entry.
 - [x] Add import PNG action.
 - [x] Add name field.
 - [x] Add uploaded ship class selector or field.

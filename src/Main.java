@@ -99,7 +99,7 @@ public class Main {
             CampaignCheckpointStore.Checkpoint recovered = CampaignCheckpointStore.recoverLatestAutosave();
             if (recovered == null) {
                 return MainMenuPanel.ResumeCampaignState.unavailable(
-                        "No checkpoint saved yet. Clear a sector in Campaign Ops to unlock resume."
+                        "No active campaign. Begin a campaign to establish your fleet."
                                 + slotStatusSuffix());
             }
             return MainMenuPanel.ResumeCampaignState.available(

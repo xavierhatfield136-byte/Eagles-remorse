@@ -998,7 +998,7 @@ public final class TutorialSystem {
             case SITE_SELECTION ->
                     "Select a major site and learn what the sidebar tells you: owner, services, threat, and whether the site can be entered.";
             case PLOT_MOVEMENT ->
-                    "Practice plotting and engaging a course. The sample route is safe and uses the same travel feedback as Campaign Ops.";
+                    "Practice plotting and engaging a course. The sample route is safe and uses the same travel feedback as Open World Campaign.";
             case SCAN_AND_INTEL ->
                     "Practice hostile-contact selection and tracking. Intel quality tells you what is known, uncertain, or worth avoiding.";
             case RESOURCE_SITE ->
@@ -1020,7 +1020,7 @@ public final class TutorialSystem {
             case CARRIER_AND_WARP ->
                     "Try the carrier deck, then use Withdraw to leave the safe zone and open the route map.";
             case COMPLETE ->
-                    "Every tutorial lesson is complete. You can keep practicing here or start Campaign Ops with the same controls.";
+                    "Every tutorial lesson is complete. You can keep practicing here or start Open World Campaign with the same controls.";
         };
     }
 

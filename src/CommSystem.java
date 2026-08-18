@@ -250,6 +250,7 @@ public final class CommSystem {
     public static int selectedOreSaleCredits(GameContext ctx) {
         if (ctx == null || ctx.ui == null || !ctx.ui.commTradeMenu.active) return 0;
         Ship target = shipById(ctx, ctx.ui.commTradeMenu.targetId);
+        if (target == null) target = resolveHailTarget(ctx);
         TradeCounterparty counterparty = counterpartyFor(ctx, target);
         return expectedOreSaleCredits(ctx, tradeQuantity(ctx), tradePayoutMulFor(ctx, target, counterparty));
     }
@@ -694,8 +695,45 @@ public final class CommSystem {
                     !coolingDown && contractCost > 0 && ctx != null && ctx.credits >= contractCost
                             && nearestContractHostile(ctx, target, 5200.0) != null));
         }
+        addServiceTradeOptions(ctx, target, counterparty, coolingDown, options);
         options.add(tradeOption("CANCEL", TAB_SERVICES, "Close channel", "Leave the trade menu without exchanging cargo.", true));
         return options;
+    }
+
+    private static void addServiceTradeOptions(GameContext ctx, Ship target, TradeCounterparty counterparty,
+                                               boolean coolingDown,
+                                               List<UiState.CommTradeOption> options) {
+        CampaignSystem.CampaignState st = CampaignSystem.state(ctx);
+        if (ctx == null || ctx.config == null || ctx.config.mode != GameMode.CAMPAIGN_OPS || st == null || options == null) {
+            return;
+        }
+        int oreCost = serviceCreditCost(counterparty, "ORE");
+        int oreAmount = serviceResourceAmount(counterparty, "ORE");
+        options.add(tradeOption("BUY_SERVICE_ORE", TAB_SERVICES,
+                "Buy ore shipment",
+                "Purchase +" + oreAmount + " ore for " + oreCost + " credits.",
+                !coolingDown && ctx.credits >= oreCost));
+
+        int repairCost = serviceCreditCost(counterparty, "REPAIR");
+        boolean repairNeeded = playerNeedsCommRepair(ctx) || CampaignSystem.damagedPersistentFleetCount(ctx, st) > 0;
+        options.add(tradeOption("BUY_SERVICE_REPAIR", TAB_SERVICES,
+                "Repair Blue ships",
+                repairNeeded
+                        ? "Spend " + repairCost + " credits to restore the flagship and damaged fleet hulls."
+                        : "No damaged Blue hulls are reporting through this channel.",
+                !coolingDown && repairNeeded && ctx.credits >= repairCost));
+
+        CampaignSystem.PersistentFleetEntry recovery = recoverablePersistentFleetEntry(st);
+        int recoveryCreditCost = serviceCreditCost(counterparty, "RECOVER");
+        int recoveryOreCost = serviceOreCost("RECOVER");
+        options.add(tradeOption("BUY_SERVICE_RECOVER", TAB_SERVICES,
+                "Recover lost ship",
+                recovery == null
+                        ? "No lost Blue hull is available for recovery."
+                        : "Recover " + CampaignSystem.displayPersistentFleetEntryName(recovery)
+                        + " for " + recoveryCreditCost + " credits and " + recoveryOreCost + " ore.",
+                !coolingDown && recovery != null && ctx.credits >= recoveryCreditCost
+                        && CampaignSystem.currentCampaignOre(ctx) >= recoveryOreCost));
     }
 
     private static UiState.CommTradeOption tradeOption(String id, String tab, String label, String detail, boolean enabled) {
@@ -715,6 +753,10 @@ public final class CommSystem {
         return ctx.ui.commTradeMenu.options.get(idx);
     }
 
+    private static boolean tradeTargetStillAvailable(Ship target) {
+        return target != null && target.alive && !target.dying && target.hp > 0;
+    }
+
     public static boolean chooseTradeMenuOption(GameContext ctx, int optionIndex) {
         if (ctx == null || ctx.ui == null || !ctx.ui.commTradeMenu.active) return false;
         if (optionIndex < 0 || optionIndex >= ctx.ui.commTradeMenu.options.size()) return false;
@@ -724,6 +766,7 @@ public final class CommSystem {
             return true;
         }
         Ship target = shipById(ctx, ctx.ui.commTradeMenu.targetId);
+        if (target == null) target = resolveHailTarget(ctx);
         String optionId = option.id == null ? "" : option.id.trim();
         ctx.ui.commTradeMenu.selectedIndex = optionIndex;
         if ("CANCEL".equals(optionId)) {
@@ -731,7 +774,7 @@ public final class CommSystem {
             EventSystem.showBanner(ctx, "TRADE CHANNEL CLOSED", 0.8);
             return true;
         }
-        if (target == null || !isHailable(ctx, target)) {
+        if (!tradeTargetStillAvailable(target)) {
             ctx.ui.clearCommTradeMenu();
             EventSystem.showBanner(ctx, "TRADE CONTACT LOST", 1.1);
             return true;
@@ -772,6 +815,9 @@ public final class CommSystem {
             default -> {
                 if (optionId != null && optionId.startsWith("BUY_SHIP_")) {
                     yield buyShipTradeOutcome(ctx, target, optionId.substring("BUY_SHIP_".length()));
+                }
+                if (optionId != null && optionId.startsWith("BUY_SERVICE_")) {
+                    yield serviceTradeOutcome(ctx, target, optionId.substring("BUY_SERVICE_".length()), counterparty);
                 }
                 yield outcome("Trade channel closed.");
             }
@@ -833,6 +879,148 @@ public final class CommSystem {
         return outcome("Shipyard commission accepted. " + role.name().replace('_', ' ')
                         + " joins your persistent fleet roster.",
                 "SHIP PURCHASED -" + Math.max(0, creditsBefore - ctx.credits) + "C");
+    }
+
+    private static CommOutcome serviceTradeOutcome(GameContext ctx, Ship target, String serviceId,
+                                                   TradeCounterparty counterparty) {
+        CampaignSystem.CampaignState st = CampaignSystem.state(ctx);
+        if (ctx == null || ctx.config == null || ctx.config.mode != GameMode.CAMPAIGN_OPS || st == null) return null;
+        String service = (serviceId == null) ? "" : serviceId.trim().toUpperCase(Locale.US);
+        int cost = serviceCreditCost(counterparty, service);
+        if (cost <= 0) return null;
+        if (ctx.credits < cost) {
+            return outcome("Service desk needs " + cost + " credits before they can release that order.",
+                    "SERVICE UNFUNDED");
+        }
+        int amount = serviceResourceAmount(counterparty, service);
+        switch (service) {
+            case "ORE" -> {
+                ctx.credits -= cost;
+                CampaignSystem.grantCampaignOre(ctx, amount);
+                putCommActionCooldown(ctx, target, TRADE_COOLDOWN_SECONDS);
+                return outcome("Ore shipment transferred to Blue stores. Ore +" + amount + ".",
+                        "ORE PURCHASED -" + cost + "C");
+            }
+            case "REPAIR" -> {
+                if (!playerNeedsCommRepair(ctx) && CampaignSystem.damagedPersistentFleetCount(ctx, st) <= 0) {
+                    return outcome("Service crews report no damaged Blue hulls on this channel.",
+                            "REPAIR UNNEEDED");
+                }
+                ctx.credits -= cost;
+                int repaired = applyCommFieldRepairs(ctx, st);
+                putCommActionCooldown(ctx, target, TRADE_COOLDOWN_SECONDS);
+                return outcome("Field crews patched the flagship and " + repaired + " fleet record"
+                                + (repaired == 1 ? "" : "s") + ".",
+                        "FIELD REPAIRS -" + cost + "C");
+            }
+            case "RECOVER" -> {
+                CampaignSystem.PersistentFleetEntry recovery = recoverablePersistentFleetEntry(st);
+                int oreCost = serviceOreCost("RECOVER");
+                if (recovery == null) {
+                    return outcome("No lost Blue hull is available for recovery through this channel.",
+                            "RECOVERY UNAVAILABLE");
+                }
+                if (CampaignSystem.currentCampaignOre(ctx) < oreCost) {
+                    return outcome("Recovery crews need " + oreCost + " ore for hull patching and tow rigging.",
+                            "RECOVERY NEEDS ORE");
+                }
+                if (!CampaignSystem.spendCampaignOre(ctx, oreCost)) {
+                    return outcome("Recovery crews could not draw ore from Blue stores.",
+                            "RECOVERY UNAVAILABLE");
+                }
+                ctx.credits -= cost;
+                recovery.destroyed = false;
+                recovery.activeShipId = -1;
+                recovery.hullConditionFrac = MathUtil.clamp(Math.max(recovery.hullConditionFrac, 0.45), 0.0, 1.0);
+                recovery.shieldConditionFrac = MathUtil.clamp(Math.max(recovery.shieldConditionFrac, 0.20), 0.0, 1.0);
+                CampaignSystem.appendPersistentServiceHistory(recovery, "COMMS HULL RECOVERY");
+                putCommActionCooldown(ctx, target, TRADE_COOLDOWN_SECONDS);
+                return outcome(CampaignSystem.displayPersistentFleetEntryName(recovery)
+                                + " recovered to the Blue fleet roster.",
+                        "SHIP RECOVERED -" + cost + "C -" + oreCost + "O");
+            }
+            default -> {
+                return null;
+            }
+        }
+    }
+
+    private static int serviceCreditCost(TradeCounterparty counterparty, String serviceId) {
+        String service = (serviceId == null) ? "" : serviceId.trim().toUpperCase(Locale.US);
+        int base = switch (service) {
+            case "ORE" -> 125;
+            case "REPAIR" -> 150;
+            case "RECOVER" -> 260;
+            default -> 0;
+        };
+        if (base <= 0) return 0;
+        double mul = switch (counterparty) {
+            case FRIENDLY -> 0.90;
+            case ALLIED -> 1.00;
+            case NEUTRAL -> 1.20;
+            case NEUTRAL_UNDER_FIRE -> 1.45;
+        };
+        return GameContext.scaleCreditEarnings((int) Math.round(base * mul));
+    }
+
+    private static int serviceResourceAmount(TradeCounterparty counterparty, String serviceId) {
+        String service = (serviceId == null) ? "" : serviceId.trim().toUpperCase(Locale.US);
+        int base = switch (service) {
+            case "ORE" -> 90;
+            default -> 0;
+        };
+        if (base <= 0) return 0;
+        if (counterparty == TradeCounterparty.NEUTRAL_UNDER_FIRE) return Math.max(1, (int) Math.round(base * 0.75));
+        return base;
+    }
+
+    private static int serviceOreCost(String serviceId) {
+        String service = (serviceId == null) ? "" : serviceId.trim().toUpperCase(Locale.US);
+        return switch (service) {
+            case "RECOVER" -> 70;
+            default -> 0;
+        };
+    }
+
+    private static CampaignSystem.PersistentFleetEntry recoverablePersistentFleetEntry(CampaignSystem.CampaignState st) {
+        if (st == null) return null;
+        CampaignSystem.PersistentFleetEntry best = null;
+        for (CampaignSystem.PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || !entry.destroyed || entry.role == null || entry.role.isTitanOrMothership()) continue;
+            if (best == null || entry.slotId > best.slotId) best = entry;
+        }
+        return best;
+    }
+
+    private static boolean playerNeedsCommRepair(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return false;
+        boolean hull = ctx.player.hpMax > 0 && ctx.player.hp < ctx.player.hpMax;
+        boolean shield = ctx.player.shieldMax > 0.0 && ctx.player.shield < ctx.player.shieldMax;
+        return hull || shield;
+    }
+
+    private static int applyCommFieldRepairs(GameContext ctx, CampaignSystem.CampaignState st) {
+        if (ctx != null && ctx.player != null) {
+            ctx.player.hp = Math.min(ctx.player.hpMax,
+                    Math.max(ctx.player.hp, ctx.player.hp + Math.max(1, (int) Math.round(ctx.player.hpMax * 0.30))));
+            if (ctx.player.shieldMax > 0.0) {
+                ctx.player.shield = MathUtil.clamp(ctx.player.shield + Math.max(8.0, ctx.player.shieldMax * 0.35),
+                        0.0, ctx.player.shieldMax);
+            }
+        }
+        if (st == null) return 0;
+        int repaired = 0;
+        for (CampaignSystem.PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || entry.destroyed) continue;
+            double hullBefore = MathUtil.clamp(entry.hullConditionFrac, 0.0, 1.0);
+            double shieldBefore = MathUtil.clamp(entry.shieldConditionFrac, 0.0, 1.0);
+            if (hullBefore >= 0.995 && shieldBefore >= 0.995) continue;
+            entry.hullConditionFrac = MathUtil.clamp(Math.max(hullBefore, hullBefore + 0.22), 0.0, 1.0);
+            entry.shieldConditionFrac = MathUtil.clamp(Math.max(shieldBefore, shieldBefore + 0.28), 0.0, 1.0);
+            CampaignSystem.appendPersistentServiceHistory(entry, "COMMS FIELD REPAIR");
+            repaired++;
+        }
+        return repaired;
     }
 
     private static ShipRole parseShipRole(String roleName) {

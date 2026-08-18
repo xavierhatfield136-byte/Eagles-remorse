@@ -75,6 +75,41 @@ class MissileRoleBehaviorTest {
     }
 
     @Test
+    void playerOffensiveSecondaryMissilesAcquireTargetsAtThreeThousandMeters() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 7000, 4200, true, 2222L, false));
+        Player player = new Player(ShipRole.FRIGATE, 1000.0, 2100.0);
+        player.faction = Faction.ALLY;
+        player.turrets.clear();
+        ctx.player = player;
+
+        Turret heavyRack = new Turret(Turret.Kind.MISSILE, 0.0, 0.0);
+        heavyRack.primary = false;
+        heavyRack.missileRole = Turret.MissileRole.ANTI_HEAVY;
+        heavyRack.angle = 0.0;
+        heavyRack.setReady();
+        player.addTurret(heavyRack);
+
+        Ship target = new FleetShip(ShipRole.CRUISER, Faction.ENEMY,
+                player.x + TargetingSystem.COMBAT_TARGETING_RANGE - 40.0,
+                player.y);
+        ctx.ships.add(player);
+        ctx.ships.add(target);
+        ctx.entityQuery.rebuild(ctx);
+
+        assertSame(target, TargetingSystem.findClosestEnemyToPoint(ctx, player, player.x, player.y,
+                        TargetingSystem.COMBAT_TARGETING_RANGE),
+                "targeting should acquire the hostile inside the 3,000m combat envelope");
+
+        Method selectSecondary = Player.class.getDeclaredMethod(
+                "selectSecondaryMissileTarget", GameContext.class, Turret.class, Ship.class);
+        selectSecondary.setAccessible(true);
+        Ship acquired = (Ship) selectSecondary.invoke(player, ctx, heavyRack, null);
+
+        assertSame(target, acquired,
+                "player offensive secondary racks should choose visible hostiles inside the combat envelope");
+    }
+
+    @Test
     void blueFastMissilesLaunchAtControlledSpeedForPlayerAndAllies() {
         Ship target = new FleetShip(ShipRole.FIGHTER, Faction.ENEMY, 600.0, 0.0);
         double originalBlueFastSpeed = Math.min(

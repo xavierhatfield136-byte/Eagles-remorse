@@ -97,6 +97,35 @@ class CampaignMapClarityMilestoneOneTest {
     }
 
     @Test
+    void galaxyMapHeavyLayersAreExplicitOverlayChoices() {
+        GameContext ctx = initializedCampaignContext();
+        ctx.campaign.strategicOvermapMode = true;
+
+        ctx.campaign.selectedStrategicOverlayId = "CONTROL";
+        assertEquals("GENERAL", Renderer.galaxyOverlayModeLabel(ctx));
+        assertFalse(Renderer.galaxyRouteLayerVisible(ctx));
+        assertFalse(Renderer.galaxySensorLayerVisible(ctx));
+        assertFalse(Renderer.galaxyWarArrowLayerVisible(ctx));
+        assertFalse(Renderer.galaxyFleetArrowLayerVisible(ctx));
+        assertFalse(Renderer.galaxyControlHaloFullDetail(ctx));
+
+        ctx.campaign.selectedStrategicOverlayId = "ROUTES";
+        assertEquals("LOGISTICS", Renderer.galaxyOverlayModeLabel(ctx));
+        assertTrue(Renderer.galaxyRouteLayerVisible(ctx));
+        assertTrue(Renderer.galaxyFleetArrowLayerVisible(ctx));
+
+        ctx.campaign.selectedStrategicOverlayId = "INTEL";
+        assertEquals("INTEL", Renderer.galaxyOverlayModeLabel(ctx));
+        assertTrue(Renderer.galaxySensorLayerVisible(ctx));
+        assertTrue(Renderer.galaxyControlHaloFullDetail(ctx));
+
+        ctx.campaign.selectedStrategicOverlayId = "HOSTILE_ROUTES";
+        assertEquals("WAR", Renderer.galaxyOverlayModeLabel(ctx));
+        assertTrue(Renderer.galaxyWarArrowLayerVisible(ctx));
+        assertTrue(Renderer.galaxyFleetArrowLayerVisible(ctx));
+    }
+
+    @Test
     void hiddenRealFleetPersistsButDoesNotRender() throws Exception {
         GameContext ctx = initializedCampaignContext();
         invokeForceSimulation(ctx, 0.2);

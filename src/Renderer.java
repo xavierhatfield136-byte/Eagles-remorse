@@ -1607,7 +1607,7 @@ public class Renderer {
                     ? (fleetHub
                         ? "Safe exit is only available during a live mission. In the fleet hub, use the normal menu exit."
                         : "Safe exit retreats to the strategic map whenever you are ready to leave the live mission.")
-                    : "Safe campaign extraction is only available during Campaign Ops missions.";
+                    : "Safe campaign extraction is only available during Open World Campaign missions.";
             case 6 -> "Formation control. Choose how player-owned escorts arrange around the Mothership.";
             case 7 -> "Communication panel. Review nearby hailable contacts, hail ships, request trade, ask for escort support, warn enemies, or mark a contact.";
             default -> "";
@@ -7683,8 +7683,8 @@ public class Renderer {
                     "Auto-resolve keeps the route moving. Taking command breaks the interception in tactical combat.";
             case INSTALLATION_THREAT ->
                     "Auto-resolve keeps the installation open. Taking command clears the hostile contact inside the harbor approach.";
-            case CAMPAIGN_FORCE ->
-                    "1 close  |  2 moderate  |  3 far  |  C take command  |  A auto-resolve";
+                case CAMPAIGN_FORCE ->
+                    "1 close  |  2 moderate  |  3 far  |  Enter take command  |  A auto-resolve";
             case CAMPAIGN_BATTLE ->
                     "F follow fleet  |  J join battle  |  I ignore  |  S offer support  |  O observe";
             case TASK_FORCE ->
@@ -7697,6 +7697,7 @@ public class Renderer {
         if (prompt.location != null && !prompt.location.isBlank()) infoLineCount++;
         if (prompt.strengthReadout != null && !prompt.strengthReadout.isBlank()) infoLineCount++;
         int briefingRows = forceBriefing ? strategicEncounterBriefingVisibleRows(viewH) : 0;
+        int deploymentHeight = forceBriefing ? strategicEncounterDeploymentMapHeight() : 0;
         int briefingHeight = forceBriefing ? 44 + briefingRows * strategicEncounterBriefingRowHeight()
                 + ((prompt.insertionDetail == null || prompt.insertionDetail.isBlank()) ? 0 : 18)
                 + 30 : 0;
@@ -7705,6 +7706,7 @@ public class Renderer {
                 + Math.max(0, infoLineCount) * 18
                 + Math.max(1, bodyLines.size()) * 18
                 + Math.max(1, footerLines.size()) * 14
+                + deploymentHeight
                 + briefingHeight;
         y = Math.max(36, Math.min(Math.max(36, viewH - h - 36), viewH / 2 - h / 2));
         drawHudPanelFrame(g2, x, y, w, h, frameTitle, new Color(255, 206, 122, 230), ThemeArt.HUD_SPECIAL_FRAME);
@@ -7747,7 +7749,9 @@ public class Renderer {
         }
 
         if (forceBriefing) {
-            int briefingY = bodyY + 10;
+            Rectangle deploymentMap = new Rectangle(inner.x, bodyY + 10, inner.width, strategicEncounterDeploymentMapHeight() - 18);
+            drawStrategicDeploymentMap(g2, prompt, deploymentMap);
+            int briefingY = deploymentMap.y + deploymentMap.height + 12;
             int gutter = 22;
             int colW = Math.max(160, (inner.width - gutter) / 2);
             Rectangle friendlyPane = new Rectangle(inner.x, briefingY, colW, 26 + briefingRows * strategicEncounterBriefingRowHeight());
@@ -7777,7 +7781,7 @@ public class Renderer {
                 chipY += 30;
             }
             drawHudStatusChip(g2, "A AUTO-RESOLVE", inner.x, chipY, 132, 22, new Color(132, 196, 255, 224), true);
-            drawHudStatusChip(g2, "C TAKE COMMAND", inner.x + 146, chipY, 142, 22, new Color(255, 206, 122, 224), true);
+            drawHudStatusChip(g2, "ENTER COMMAND", inner.x + 146, chipY, 142, 22, new Color(255, 206, 122, 224), true);
             if (!CampaignSystem.hasValidStrategicEncounterResponder(ctx)) {
                 drawHudStatusChip(g2, "D DISMISS STALE", inner.x + 302, chipY, 132, 22,
                         new Color(255, 146, 122, 224), true);
@@ -10963,14 +10967,14 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         // Title + help
         g2.setFont(new Font("Consolas", Font.BOLD, galaxyMode ? 18 : 16));
         g2.setColor(cleanSectorMap ? new Color(236, 244, 250, 235) : new Color(255, 255, 255, 225));
-        g2.drawString(galaxyMode ? "GALACTIC ROUTE MAP" : "STRATEGIC MAP", r.x + 18, r.y + 28);
+        g2.drawString(galaxyMode ? "GALACTIC WAR MAP" : "STRATEGIC MAP", r.x + 18, r.y + 28);
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.setColor(cleanSectorMap ? new Color(196, 212, 224, 210) : new Color(255, 255, 255, 170));
                 g2.drawString(sectorized
                         ? "LMB: route warp   MMB: recenter   RMB: sector ping   wheel/Ctrl+/-: zoom   1/2/3: compact/standard/expanded"
                         : (galaxyMode
-                        ? "LMB: select destination or free course   Double-click/T: burn engines   H: hold course   RMB: ping   wheel/Ctrl+/-: zoom"
+                        ? galaxyMapHelpLine(ctx)
                         : (CampaignSystem.usesMissionSubzones(ctx)
                         ? "LMB: set local course or select contact   Command Bay: visible actions   RMB: local ping   wheel/Ctrl+/-: zoom   tabs: mission/fleet/resources/contacts"
                         : "LMB: waypoint   MMB: recenter   RMB: ping   wheel/Ctrl+/-: zoom   Sensor power reveals anomalies")),
@@ -10980,7 +10984,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 ? buildSectorMapHeader(loadedSector, currentSector, selectedSector,
                 (ctx == null || ctx.ui == null) ? null : ctx.ui.tacticalSectorScalePreset)
                 : bannerTopLine;
-        if (mapHeader != null && !mapHeader.isBlank()) {
+        if (galaxyMode) {
+            drawGalaxyOverlayCommandBar(g2, ctx, r.x + 190, r.y + 10, Math.max(260, r.width - 390));
+        } else if (mapHeader != null && !mapHeader.isBlank()) {
             g2.setColor(cleanSectorMap ? new Color(174, 214, 240, 225) : new Color(140, 200, 255, 200));
             g2.drawString(mapHeader, r.x + 190, r.y + 28);
         }
@@ -11015,18 +11021,29 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         if (galaxyMode) {
             drawGalaxyBackdrop(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
-            drawCampaignLocationControlHalos(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
+            drawCampaignLocationControlHalos(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH,
+                    galaxyControlHaloFullDetail(ctx));
             drawCampaignTerritoryOverlay(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
-            drawCampaignBattleScars(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
-            drawCampaignRouteNetwork(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
+            if (galaxyWarHistoryLayerVisible(ctx)) {
+                drawCampaignBattleScars(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
+            }
+            if (galaxyRouteLayerVisible(ctx)) {
+                drawCampaignRouteNetwork(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
+            }
             drawSelectedTerritoryEdges(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
-            drawPlayerCampaignSensorRange(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
-            drawCampaignInvasionArrows(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
-            drawCampaignFleetMovementArrows(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
+            if (galaxySensorLayerVisible(ctx)) {
+                drawPlayerCampaignSensorRange(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
+            }
+            if (galaxyWarArrowLayerVisible(ctx)) {
+                drawCampaignInvasionArrows(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
+            }
+            if (galaxyFleetArrowLayerVisible(ctx)) {
+                drawCampaignFleetMovementArrows(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
+            }
             drawCampaignTravelPath(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
         } else {
             drawTacticalMissionMapEntityLayer(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH,
-                    ships, asteroids, salvage, fog, (player == null) ? null : player.faction);
+                    ships, asteroids, salvage, null, (player == null) ? null : player.faction);
             if (salvage != null) {
                 g2.setColor(new Color(255, 255, 255, 120));
                 for (Salvage s : salvage) {
@@ -11036,10 +11053,6 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     g2.fillOval(p.x - 1, p.y - 1, 3, 3);
                 }
             }
-            if (fog != null) {
-                drawStrategicFogOverlay(g2, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH, fog);
-                drawSensorInterestSignals(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
-            }
             if (!sectorized && CampaignSystem.usesMissionSubzones(ctx)) {
                 drawLocalOperatingAreaOnMap(g2, m, ctx, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
             }
@@ -11047,6 +11060,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         drawStrategicLandmarkMarkers(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
         drawStrategicSupportMarkers(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
         drawStrategicObjectiveMarkers(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
+        if (galaxyMode) {
+            drawGalaxySelectedMapFocus(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
+        }
         drawCampaignStrikeCinematic(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
 
         if (!galaxyMode && !Double.isNaN(waypointX) && !Double.isNaN(waypointY)) {
@@ -11110,10 +11126,6 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
         g2.setColor(cleanSectorMap ? new Color(190, 216, 232, 205) : new Color(140, 200, 255, 176));
         g2.drawString(String.format(java.util.Locale.US, "MAP ZOOM %.2fx", mapZoom), r.x + r.width - 178, r.y + 28);
-        if (galaxyMode) {
-            g2.setColor(new Color(255, 224, 170, 190));
-            g2.drawString("EARTH DIRECTION: NORTH", r.x + 240, r.y + 28);
-        }
     }
 
     private static void drawCleanMissionMapShell(Graphics2D g2, Rectangle rect) {
@@ -11140,6 +11152,82 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setColor(new Color(255, 255, 255, 24));
         g2.drawLine(rect.x + 2, rect.y + 2, rect.x + Math.max(2, rect.width - 3), rect.y + 2);
         g2.setPaint(oldPaint);
+    }
+
+    private static String galaxyMapHelpLine(GameContext ctx) {
+        return "LMB select course/contact   Double-click/T burn engines   H hold course   Overlay: "
+                + galaxyOverlayModeLabel(ctx);
+    }
+
+    private static void drawGalaxyOverlayCommandBar(Graphics2D g2, GameContext ctx, int x, int y, int width) {
+        if (g2 == null) return;
+        String active = galaxyOverlayModeLabel(ctx);
+        String[] labels = {"GENERAL", "WAR", "FLEETS", "LOGISTICS", "INTEL"};
+        int gap = 8;
+        int chipW = Math.max(58, Math.min(108, (width - gap * (labels.length - 1)) / labels.length));
+        int cursorX = x;
+        Font oldFont = g2.getFont();
+        g2.setFont(new Font("Consolas", Font.BOLD, 10));
+        for (String label : labels) {
+            boolean selected = label.equals(active);
+            Color accent = selected ? new Color(132, 236, 194, 226) : new Color(156, 192, 218, 168);
+            g2.setColor(new Color(8, 14, 22, selected ? 172 : 94));
+            g2.fillRoundRect(cursorX, y, chipW, 20, 9, 9);
+            g2.setColor(withAlpha(accent, selected ? 232 : 150));
+            g2.drawRoundRect(cursorX, y, chipW, 20, 9, 9);
+            int tx = cursorX + Math.max(6, (chipW - g2.getFontMetrics().stringWidth(label)) / 2);
+            g2.drawString(label, tx, y + 14);
+            cursorX += chipW + gap;
+        }
+        g2.setFont(oldFont);
+    }
+
+    static String strategicMapOverlayId(GameContext ctx) {
+        String overlay = (ctx == null || ctx.campaign == null) ? "" : ctx.campaign.selectedStrategicOverlayId;
+        if (overlay == null || overlay.isBlank()) return "CONTROL";
+        return overlay.trim().toUpperCase(Locale.US);
+    }
+
+    static String galaxyOverlayModeLabel(GameContext ctx) {
+        String overlay = strategicMapOverlayId(ctx);
+        if (overlay.equals("DANGER") || overlay.equals("HOSTILE_ROUTES") || overlay.equals("MISSIONS")) return "WAR";
+        if (overlay.equals("FLEETS")) return "FLEETS";
+        if (overlay.equals("ROUTES") || overlay.equals("LOGISTICS") || overlay.equals("TRADE")) return "LOGISTICS";
+        if (overlay.equals("INTEL") || overlay.equals("SENSORS") || overlay.equals("FACILITIES")) return "INTEL";
+        return "GENERAL";
+    }
+
+    static boolean galaxyRouteLayerVisible(GameContext ctx) {
+        String overlay = strategicMapOverlayId(ctx);
+        return overlay.equals("ROUTES") || overlay.equals("LOGISTICS") || overlay.equals("TRADE");
+    }
+
+    static boolean galaxyControlHaloFullDetail(GameContext ctx) {
+        String overlay = strategicMapOverlayId(ctx);
+        return overlay.equals("DANGER") || overlay.equals("FACILITIES") || overlay.equals("MISSIONS")
+                || overlay.equals("INTEL") || overlay.equals("SENSORS");
+    }
+
+    static boolean galaxySensorLayerVisible(GameContext ctx) {
+        String overlay = strategicMapOverlayId(ctx);
+        return overlay.equals("INTEL") || overlay.equals("SENSORS");
+    }
+
+    static boolean galaxyWarArrowLayerVisible(GameContext ctx) {
+        String overlay = strategicMapOverlayId(ctx);
+        return overlay.equals("DANGER") || overlay.equals("HOSTILE_ROUTES") || overlay.equals("MISSIONS");
+    }
+
+    static boolean galaxyFleetArrowLayerVisible(GameContext ctx) {
+        String overlay = strategicMapOverlayId(ctx);
+        return overlay.equals("FLEETS") || overlay.equals("HOSTILE_ROUTES") || overlay.equals("LOGISTICS")
+                || overlay.equals("ROUTES");
+    }
+
+    static boolean galaxyWarHistoryLayerVisible(GameContext ctx) {
+        String overlay = strategicMapOverlayId(ctx);
+        return overlay.equals("DANGER") || overlay.equals("MISSIONS") || overlay.equals("FLEETS")
+                || overlay.equals("INTEL");
     }
 
     private static void drawTacticalMissionMapEntityLayer(Graphics2D g2,
@@ -11319,10 +11407,12 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static void drawCampaignLocationControlHalos(Graphics2D g2, GameContext ctx, Rectangle mapRect,
                                                          double worldMinX, double worldMinY,
-                                                         double worldW, double worldH) {
+                                                         double worldW, double worldH,
+                                                         boolean fullDetail) {
         if (g2 == null || ctx == null || mapRect == null) return;
         List<CampaignSystem.CampaignLocation> pois = CampaignSystem.mainCampaignLocations(ctx);
         if (pois.isEmpty()) return;
+        CampaignSystem.CampaignLocation selected = CampaignSystem.selectedCampaignLocation(ctx);
         Composite oldComposite = g2.getComposite();
         Stroke oldStroke = g2.getStroke();
         for (CampaignSystem.CampaignLocation location : pois) {
@@ -11332,6 +11422,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     ? CampaignSystem.CampaignControlVisualState.UNKNOWN
                     : view.control;
             if (control == CampaignSystem.CampaignControlVisualState.UNKNOWN) continue;
+            boolean selectedSite = selected != null && location.id != null && location.id.equals(selected.id);
+            if (!fullDetail && !selectedSite && !location.primaryMission) continue;
             int px = strategicMapPixelX(mapRect, worldMinX, worldW, location.x);
             int py = strategicMapPixelY(mapRect, worldMinY, worldH, location.y);
             int radius = campaignControlHaloRadius(location, control);
@@ -11343,6 +11435,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 case YELLOW -> 0.065f;
                 case UNKNOWN -> 0.045f;
             };
+            if (!fullDetail && selectedSite) fillAlpha *= 0.72f;
             g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, fillAlpha));
             g2.setColor(controlColor);
             g2.fillOval(px - radius, py - radius, radius * 2, radius * 2);
@@ -11357,6 +11450,77 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 g2.drawOval(px - radius - 8, py - radius - 8, (radius + 8) * 2, (radius + 8) * 2);
             }
         }
+        g2.setComposite(oldComposite);
+        g2.setStroke(oldStroke);
+    }
+
+    private static void drawGalaxySelectedMapFocus(Graphics2D g2, GameContext ctx, Rectangle mapRect,
+                                                   double worldMinX, double worldMinY,
+                                                   double worldW, double worldH) {
+        if (g2 == null || ctx == null || ctx.ui == null || mapRect == null) return;
+        double wx = Double.NaN;
+        double wy = Double.NaN;
+        String tag = "";
+        Color accent = new Color(132, 224, 255, 230);
+        if (CampaignSystem.hasSelectedCampaignContactTarget(ctx)
+                && Double.isFinite(ctx.ui.selectedCampaignContactX)
+                && Double.isFinite(ctx.ui.selectedCampaignContactY)) {
+            wx = ctx.ui.selectedCampaignContactX;
+            wy = ctx.ui.selectedCampaignContactY;
+            tag = ctx.ui.selectedCampaignContactHostile ? "HOSTILE TRACK" : "TRACKED CONTACT";
+            accent = ctx.ui.selectedCampaignContactHostile
+                    ? new Color(255, 108, 102, 234)
+                    : new Color(132, 224, 255, 226);
+        } else {
+            CampaignSystem.CampaignLocation selected = CampaignSystem.selectedCampaignLocation(ctx);
+            if (selected != null) {
+                wx = selected.x;
+                wy = selected.y;
+                tag = selected.primaryMission ? "MISSION SITE" : "SELECTED SITE";
+                CampaignSystem.CampaignLocationControlView view = CampaignSystem.campaignLocationControlView(ctx, selected);
+                accent = view == null ? hubAccent(selected, 230) : campaignControlColor(view.control, 232);
+            }
+        }
+        if (!Double.isFinite(wx) || !Double.isFinite(wy)) return;
+        if (!strategicMapWorldPointVisible(wx, wy, worldMinX, worldMinY, worldW, worldH, 120.0)) return;
+        int px = MathUtil.clamp(strategicMapPixelX(mapRect, worldMinX, worldW, wx),
+                mapRect.x + 12, mapRect.x + mapRect.width - 12);
+        int py = MathUtil.clamp(strategicMapPixelY(mapRect, worldMinY, worldH, wy),
+                mapRect.y + 12, mapRect.y + mapRect.height - 12);
+
+        Stroke oldStroke = g2.getStroke();
+        Composite oldComposite = g2.getComposite();
+        Font oldFont = g2.getFont();
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.88f));
+        g2.setStroke(new BasicStroke(2.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(withAlpha(accent, 226));
+        int radius = 25;
+        int arm = 10;
+        g2.drawLine(px - radius, py - radius, px - radius + arm, py - radius);
+        g2.drawLine(px - radius, py - radius, px - radius, py - radius + arm);
+        g2.drawLine(px + radius, py - radius, px + radius - arm, py - radius);
+        g2.drawLine(px + radius, py - radius, px + radius, py - radius + arm);
+        g2.drawLine(px - radius, py + radius, px - radius + arm, py + radius);
+        g2.drawLine(px - radius, py + radius, px - radius, py + radius - arm);
+        g2.drawLine(px + radius, py + radius, px + radius - arm, py + radius);
+        g2.drawLine(px + radius, py + radius, px + radius, py + radius - arm);
+
+        double pulse = 0.55 + 0.45 * Math.sin(animationTimeSeconds() * 4.4);
+        g2.setColor(withAlpha(accent, (int) Math.round(90 + pulse * 70)));
+        g2.drawOval(px - radius - 5, py - radius - 5, (radius + 5) * 2, (radius + 5) * 2);
+        if (!tag.isBlank()) {
+            g2.setFont(new Font("Consolas", Font.BOLD, 10));
+            FontMetrics fm = g2.getFontMetrics();
+            int tw = fm.stringWidth(tag);
+            int tx = MathUtil.clamp(px - tw / 2, mapRect.x + 6, mapRect.x + mapRect.width - tw - 6);
+            int ty = MathUtil.clamp(py + radius + 18, mapRect.y + 18, mapRect.y + mapRect.height - 6);
+            g2.setColor(new Color(4, 8, 14, 174));
+            g2.fillRoundRect(tx - 5, ty - 12, tw + 10, 16, 8, 8);
+            g2.setColor(withAlpha(accent, 232));
+            g2.drawRoundRect(tx - 5, ty - 12, tw + 10, 16, 8, 8);
+            g2.drawString(tag, tx, ty);
+        }
+        g2.setFont(oldFont);
         g2.setComposite(oldComposite);
         g2.setStroke(oldStroke);
     }
@@ -12727,7 +12891,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             int rows = (int) Math.ceil(section.actions.size() / (double) columns);
             height += galaxySectionHeaderHeight() + rows * galaxySectionRowHeight() + galaxySectionFooterGap();
         }
-        return Math.max(206, Math.min(286, height));
+        return Math.max(172, Math.min(236, height));
     }
 
     private static int drawGalaxyCommandContent(Graphics2D g2, GameContext ctx, CampaignSystem.CampaignLocation selected,
@@ -12861,9 +13025,49 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         for (CampaignSystem.CampaignActionCategory category : order) {
             ArrayList<CampaignSystem.CampaignAction> sectionActions = grouped.get(category);
             if (sectionActions == null || sectionActions.isEmpty()) continue;
-            out.add(new CampaignActionSection(category, galaxyActionSectionLabel(category), sectionActions));
+            out.add(new CampaignActionSection(category, galaxyActionSectionLabel(category),
+                    sampleActions(prioritizeGalaxySectionActions(category, sectionActions),
+                            galaxyActionSectionActionLimit(category))));
         }
         return out;
+    }
+
+    private static List<CampaignSystem.CampaignAction> prioritizeGalaxySectionActions(
+            CampaignSystem.CampaignActionCategory category,
+            List<CampaignSystem.CampaignAction> actions) {
+        if (actions == null || actions.size() <= 1) return actions == null ? List.of() : actions;
+        ArrayList<CampaignSystem.CampaignAction> sorted = new ArrayList<>(actions);
+        sorted.sort(Comparator.comparingInt(action -> galaxyActionPriority(category, action)));
+        return sorted;
+    }
+
+    private static int galaxyActionPriority(CampaignSystem.CampaignActionCategory category,
+                                            CampaignSystem.CampaignAction action) {
+        if (action == null || action.id == null) return 100;
+        String id = action.id.toUpperCase(Locale.US);
+        if (category == CampaignSystem.CampaignActionCategory.NAVIGATION) {
+            if (id.equals("SET_WAYPOINT")) return 0;
+            if (id.equals("PLOT_COURSE")) return 1;
+            if (id.equals("BOOKMARK")) return 2;
+            if (id.equals("NEXT_THEATER") || id.equals("PREV_THEATER")) return 3;
+        } else if (category == CampaignSystem.CampaignActionCategory.SENSORS) {
+            if (id.equals("SIGNAL_SWEEP")) return 0;
+            if (id.equals("TRACK_TARGET") || id.equals("FOCUSED_TRACK")) return 1;
+            if (id.equals("TRAFFIC_AUDIT")) return 2;
+        } else if (category == CampaignSystem.CampaignActionCategory.SERVICES) {
+            if (id.equals("OPEN_SHIPYARD") || id.equals("OPEN_TRADE")) return 0;
+            if (id.equals("OPEN_REPAIR") || id.equals("OPEN_RECOVERY")) return 1;
+        }
+        return 10;
+    }
+
+    static int galaxyActionSectionActionLimit(CampaignSystem.CampaignActionCategory category) {
+        if (category == null) return 2;
+        return switch (category) {
+            case NAVIGATION -> 4;
+            case SERVICES -> 3;
+            case STRIKES, SUPPORT, POSTURE, SITE_RESOLUTION, SENSORS -> 2;
+        };
     }
 
     private static void drawGalaxyNoActionsState(Graphics2D g2, int x, int y, int width, int height) {
@@ -13749,6 +13953,13 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                                                                           int mouseY) {
         if (ctx == null || ctx.ui == null || !ctx.ui.strategicEncounterPrompt.active) return null;
         UiState.StrategicEncounterPrompt prompt = ctx.ui.strategicEncounterPrompt;
+        Rectangle deployment = strategicEncounterDeploymentMapRect(ctx, viewW, viewH);
+        if (deployment != null && deployment.contains(mouseX, mouseY)) {
+            double fx = MathUtil.clamp((mouseX - deployment.x) / (double) Math.max(1, deployment.width), 0.05, 0.42);
+            double fy = MathUtil.clamp((mouseY - deployment.y) / (double) Math.max(1, deployment.height), 0.14, 0.86);
+            return new CampaignHubClickTarget(CampaignHubClickTarget.Kind.STRATEGIC_ENCOUNTER, "",
+                    String.format(Locale.US, "DEPLOY:%.4f:%.4f", fx, fy));
+        }
         Rectangle[] chips = strategicEncounterChipRects(ctx, viewW, viewH);
         if (prompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_BATTLE) {
             String[] actions = {"JOIN", "IGNORE"};
@@ -13795,7 +14006,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 case INSTALLATION_THREAT ->
                         "Auto-resolve keeps the installation open. Taking command clears the hostile contact inside the harbor approach.";
                 case CAMPAIGN_FORCE ->
-                        "1 close  |  2 moderate  |  3 far  |  C take command  |  A auto-resolve";
+                        "1 close  |  2 moderate  |  3 far  |  Enter take command  |  A auto-resolve";
                 case CAMPAIGN_BATTLE ->
                         "J join battle  |  I ignore";
                 case TASK_FORCE ->
@@ -13809,10 +14020,12 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (prompt.location != null && !prompt.location.isBlank()) infoLineCount++;
         if (prompt.strengthReadout != null && !prompt.strengthReadout.isBlank()) infoLineCount++;
         int briefingRows = forceBriefing ? strategicEncounterBriefingVisibleRows(viewH) : 0;
+        int deploymentHeight = forceBriefing ? strategicEncounterDeploymentMapHeight() : 0;
         int briefingHeight = forceBriefing ? 44 + briefingRows * strategicEncounterBriefingRowHeight()
                 + ((prompt.insertionDetail == null || prompt.insertionDetail.isBlank()) ? 0 : 18)
                 + 30 : 0;
-        int h = 154 + titleLines * 24 + infoLineCount * 18 + bodyLines * 18 + footerLines * 14 + briefingHeight;
+        int h = 154 + titleLines * 24 + infoLineCount * 18 + bodyLines * 18 + footerLines * 14
+                + deploymentHeight + briefingHeight;
         y = Math.max(36, Math.min(Math.max(36, viewH - h - 36), viewH / 2 - h / 2));
         Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
         int chipY = y + h - (forceBriefing ? 86 : 58);
@@ -13837,6 +14050,172 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 new Rectangle(inner.x + 146, chipY, 142, 22),
                 new Rectangle(inner.x + 302, chipY, 132, 22)
         };
+    }
+
+    private static int strategicEncounterDeploymentMapHeight() {
+        return 142;
+    }
+
+    private static Rectangle strategicEncounterDeploymentMapRect(GameContext ctx, int viewW, int viewH) {
+        if (ctx == null || ctx.ui == null || !ctx.ui.strategicEncounterPrompt.active) return null;
+        UiState.StrategicEncounterPrompt prompt = ctx.ui.strategicEncounterPrompt;
+        if (prompt.kind != UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_FORCE) return null;
+        int w = Math.min(920, Math.max(560, viewW - 120));
+        int x = (viewW - w) / 2;
+        BufferedImage metricsImage = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D metrics = metricsImage.createGraphics();
+        Font titleFont = new Font("Consolas", Font.BOLD, 20);
+        Font bodyFont = new Font("Consolas", Font.PLAIN, 15);
+        Font footerFont = new Font("Consolas", Font.PLAIN, 12);
+        int titleLines = 1;
+        int bodyLines = 1;
+        int footerLines = 1;
+        try {
+            titleLines = Math.max(1, wrapHudText(metrics.getFontMetrics(titleFont), prompt.title, w - 52).size());
+            bodyLines = Math.max(1, wrapHudMultilineText(metrics.getFontMetrics(bodyFont), prompt.body, w - 52).size());
+            footerLines = Math.max(1, wrapHudText(metrics.getFontMetrics(footerFont),
+                    "1 close  |  2 moderate  |  3 far  |  Enter take command  |  A auto-resolve", w - 52).size());
+        } finally {
+            metrics.dispose();
+        }
+        int infoLineCount = 0;
+        if (prompt.location != null && !prompt.location.isBlank()) infoLineCount++;
+        if (prompt.strengthReadout != null && !prompt.strengthReadout.isBlank()) infoLineCount++;
+        int rows = strategicEncounterBriefingVisibleRows(viewH);
+        int briefingHeight = 44 + rows * strategicEncounterBriefingRowHeight()
+                + ((prompt.insertionDetail == null || prompt.insertionDetail.isBlank()) ? 0 : 18)
+                + 30;
+        int h = 154 + titleLines * 24 + infoLineCount * 18 + bodyLines * 18 + footerLines * 14
+                + strategicEncounterDeploymentMapHeight() + briefingHeight;
+        int y = Math.max(36, Math.min(Math.max(36, viewH - h - 36), viewH / 2 - h / 2));
+        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
+        int infoY = inner.y + 24 + titleLines * 24 + 2;
+        if (prompt.location != null && !prompt.location.isBlank()) infoY += 18;
+        if (prompt.strengthReadout != null && !prompt.strengthReadout.isBlank()) infoY += 20;
+        return new Rectangle(inner.x, infoY + 4 + bodyLines * 18 + 10,
+                inner.width, strategicEncounterDeploymentMapHeight() - 18);
+    }
+
+    private static void drawStrategicDeploymentMap(Graphics2D g2, UiState.StrategicEncounterPrompt prompt, Rectangle rect) {
+        if (g2 == null || prompt == null || rect == null) return;
+        g2.setColor(new Color(8, 15, 26, 210));
+        g2.fillRoundRect(rect.x, rect.y, rect.width, rect.height, 10, 10);
+        int friendlyW = (int) Math.round(rect.width * 0.42);
+        int enemyX = rect.x + (int) Math.round(rect.width * 0.58);
+        int enemyW = rect.x + rect.width - enemyX;
+        g2.setColor(new Color(63, 157, 210, 78));
+        g2.fillRoundRect(rect.x, rect.y, friendlyW, rect.height, 10, 10);
+        g2.setColor(new Color(210, 91, 84, 74));
+        g2.fillRoundRect(enemyX, rect.y, enemyW, rect.height, 10, 10);
+        int hostileCount = deploymentAssetCount(prompt, false);
+        Rectangle hostileZone = new Rectangle(
+                enemyX + 20,
+                rect.y + 30,
+                Math.max(90, enemyW - 40),
+                Math.max(46, rect.height - 58)
+        );
+        g2.setColor(new Color(255, 84, 72, 34));
+        g2.fillRoundRect(hostileZone.x, hostileZone.y, hostileZone.width, hostileZone.height, 8, 8);
+        g2.setColor(new Color(255, 116, 98, 185));
+        g2.drawRoundRect(hostileZone.x, hostileZone.y, hostileZone.width, hostileZone.height, 8, 8);
+        g2.setColor(new Color(220, 230, 245, 40));
+        g2.drawLine(rect.x + friendlyW, rect.y + 8, rect.x + friendlyW, rect.y + rect.height - 8);
+        g2.drawLine(enemyX, rect.y + 8, enemyX, rect.y + rect.height - 8);
+        g2.setFont(new Font("Consolas", Font.BOLD, 11));
+        g2.setColor(new Color(142, 211, 246, 220));
+        g2.drawString("FRIENDLY DEPLOY", rect.x + 10, rect.y + 16);
+        g2.setColor(new Color(185, 195, 210, 190));
+        g2.drawString("MANEUVER SPACE", rect.x + friendlyW + 12, rect.y + 16);
+        g2.setColor(new Color(255, 154, 138, 220));
+        g2.drawString("HOSTILE CONTACTS", enemyX + 10, rect.y + 16);
+        g2.setFont(new Font("Consolas", Font.BOLD, 10));
+        g2.setColor(new Color(255, 184, 164, 235));
+        g2.drawString("RED START FORMATION", hostileZone.x + 10, hostileZone.y + 16);
+        g2.drawString("RED UNITS: " + hostileCount, hostileZone.x + 10, hostileZone.y + hostileZone.height - 10);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 10));
+        g2.setColor(new Color(115, 232, 156, 205));
+        g2.drawString("GREEN SUPPORT LEFT FLANK", rect.x + 10, rect.y + rect.height - 10);
+        g2.setColor(new Color(255, 155, 132, 205));
+        g2.drawString("RED SPAWNS RIGHT SIDE", Math.max(rect.x + friendlyW + 12, enemyX + 10), rect.y + rect.height - 10);
+        int standoffX = rect.x + (int) Math.round(rect.width * 0.50);
+        g2.setColor(new Color(255, 235, 150, 52));
+        g2.drawLine(standoffX, rect.y + 24, standoffX, rect.y + rect.height - 24);
+        g2.drawString("STANDOFF GAP", standoffX + 6, rect.y + rect.height / 2);
+        int arrowY = hostileZone.y + hostileZone.height / 2;
+        int arrowStart = hostileZone.x + 18;
+        int arrowEnd = Math.max(standoffX + 16, hostileZone.x - 30);
+        g2.setColor(new Color(255, 124, 108, 150));
+        g2.drawLine(arrowStart, arrowY, arrowEnd, arrowY);
+        g2.drawLine(arrowEnd, arrowY, arrowEnd + 8, arrowY - 5);
+        g2.drawLine(arrowEnd, arrowY, arrowEnd + 8, arrowY + 5);
+        drawDeploymentAssetDots(g2, prompt, rect, true);
+        drawDeploymentAssetDots(g2, prompt, rect, false);
+        int px = rect.x + (int) Math.round(MathUtil.clamp(prompt.deploymentX, 0.05, 0.42) * rect.width);
+        int py = rect.y + (int) Math.round(MathUtil.clamp(prompt.deploymentY, 0.14, 0.86) * rect.height);
+        g2.setColor(new Color(255, 225, 132, 235));
+        g2.fillOval(px - 6, py - 6, 12, 12);
+        g2.setColor(new Color(255, 248, 210, 235));
+        g2.drawOval(px - 10, py - 10, 20, 20);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 10));
+        g2.drawString("BLUE ENTRY", Math.min(rect.x + rect.width - 62, px + 12), Math.max(rect.y + 24, py - 8));
+        g2.setColor(new Color(210, 222, 238, 172));
+        g2.drawRoundRect(rect.x, rect.y, rect.width, rect.height, 10, 10);
+    }
+
+    private static int deploymentAssetCount(UiState.StrategicEncounterPrompt prompt, boolean friendly) {
+        if (prompt == null) return 0;
+        List<UiState.BriefingAsset> assets = friendly ? prompt.friendlyAssets : prompt.enemyAssets;
+        if (assets != null && !assets.isEmpty()) return assets.size();
+        List<String> lines = friendly ? prompt.friendlyAssetLines : prompt.enemyAssetLines;
+        return lines == null ? 0 : lines.size();
+    }
+
+    private static void drawDeploymentAssetDots(Graphics2D g2,
+                                                UiState.StrategicEncounterPrompt prompt,
+                                                Rectangle rect,
+                                                boolean friendly) {
+        List<UiState.BriefingAsset> assets = friendly ? prompt.friendlyAssets : prompt.enemyAssets;
+        int count = deploymentAssetCount(prompt, friendly);
+        int max = Math.min(friendly ? 10 : 16, Math.max(0, count));
+        for (int i = 0; i < max; i++) {
+            UiState.BriefingAsset asset = assets != null && i < assets.size() ? assets.get(i) : null;
+            boolean green = asset != null && asset.faction == Faction.TEAM_C;
+            double baseX = friendly
+                    ? (green ? 0.18 + (i % 4) * 0.060 : 0.08 + (i % 4) * 0.060)
+                    : 0.66 + (i % 4) * 0.072;
+            double baseY = 0.34 + (i / 4) * 0.20 + ((i % 2) * 0.04);
+            int x = rect.x + (int) Math.round(baseX * rect.width);
+            int y = rect.y + (int) Math.round(MathUtil.clamp(baseY, 0.26, 0.84) * rect.height);
+            int r = 4 + ((asset != null && asset.role != null && asset.role.isTitanOrMothership()) ? 3 : 0);
+            g2.setColor(deploymentAssetColor(friendly, asset));
+            if (friendly) {
+                g2.fillOval(x - r, y - r, r * 2, r * 2);
+                g2.setColor(new Color(6, 12, 20, 190));
+                g2.drawOval(x - r, y - r, r * 2, r * 2);
+            } else {
+                int marker = r + 3;
+                Polygon tri = new Polygon(
+                        new int[]{x - marker, x - marker, x + marker + 2},
+                        new int[]{y - marker, y + marker, y},
+                        3
+                );
+                g2.fillPolygon(tri);
+                g2.setColor(new Color(12, 4, 6, 215));
+                g2.drawPolygon(tri);
+                if (i < 4) {
+                    g2.setFont(new Font("Consolas", Font.BOLD, 9));
+                    g2.setColor(new Color(255, 204, 190, 230));
+                    g2.drawString("R" + (i + 1), x + marker + 4, y + 3);
+                }
+            }
+        }
+    }
+
+    private static Color deploymentAssetColor(boolean friendly, UiState.BriefingAsset asset) {
+        if (!friendly) return new Color(255, 128, 112, 220);
+        if (asset != null && asset.faction == Faction.TEAM_C) return new Color(104, 236, 142, 225);
+        if (asset != null && asset.faction == Faction.BRIGHT_YELLOW) return new Color(246, 222, 104, 220);
+        return new Color(112, 198, 245, 220);
     }
 
     public static boolean strategicEncounterFriendlyAssetPaneContains(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
@@ -13874,7 +14253,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             titleLines = Math.max(1, wrapHudText(metrics.getFontMetrics(titleFont), prompt.title, w - 52).size());
             bodyLines = Math.max(1, wrapHudMultilineText(metrics.getFontMetrics(bodyFont), prompt.body, w - 52).size());
             footerLines = Math.max(1, wrapHudText(metrics.getFontMetrics(footerFont),
-                    "1 close  |  2 moderate  |  3 far  |  C take command  |  A auto-resolve", w - 52).size());
+                    "1 close  |  2 moderate  |  3 far  |  Enter take command  |  A auto-resolve", w - 52).size());
         } finally {
             metrics.dispose();
         }
@@ -13882,16 +14261,18 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (prompt.location != null && !prompt.location.isBlank()) infoLineCount++;
         if (prompt.strengthReadout != null && !prompt.strengthReadout.isBlank()) infoLineCount++;
         int rows = strategicEncounterBriefingVisibleRows(viewH);
+        int deploymentHeight = strategicEncounterDeploymentMapHeight();
         int briefingHeight = 44 + rows * strategicEncounterBriefingRowHeight()
                 + ((prompt.insertionDetail == null || prompt.insertionDetail.isBlank()) ? 0 : 18)
                 + 30;
-        int h = 154 + titleLines * 24 + infoLineCount * 18 + bodyLines * 18 + footerLines * 14 + briefingHeight;
+        int h = 154 + titleLines * 24 + infoLineCount * 18 + bodyLines * 18 + footerLines * 14
+                + deploymentHeight + briefingHeight;
         int y = Math.max(36, Math.min(Math.max(36, viewH - h - 36), viewH / 2 - h / 2));
         Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
         int infoY = inner.y + 24 + titleLines * 24 + 2;
         if (prompt.location != null && !prompt.location.isBlank()) infoY += 18;
         if (prompt.strengthReadout != null && !prompt.strengthReadout.isBlank()) infoY += 20;
-        int briefingY = infoY + 4 + bodyLines * 18 + 10;
+        int briefingY = infoY + 4 + bodyLines * 18 + 10 + deploymentHeight;
         int gutter = 22;
         int colW = Math.max(160, (inner.width - gutter) / 2);
         return friendly
@@ -13972,10 +14353,17 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static List<CampaignHubClickTarget> galaxyActionClickTargets(GameContext ctx, Rectangle panelRect) {
         List<CampaignSystem.CampaignAction> actions = galaxyCommandActions(ctx);
+        CampaignSystem.CampaignAction primary = galaxyPrimaryAction(ctx, actions);
         ArrayList<CampaignHubClickTarget> out = new ArrayList<>();
-        for (CampaignSystem.CampaignAction action : actions) {
-            if (action == null || action.id.isBlank()) continue;
-            out.add(new CampaignHubClickTarget(CampaignHubClickTarget.Kind.ACTION, "", action.id));
+        if (primary != null && !primary.id.isBlank()) {
+            out.add(new CampaignHubClickTarget(CampaignHubClickTarget.Kind.ACTION, "", primary.id));
+        }
+        for (CampaignActionSection section : galaxyActionSections(actions, primary)) {
+            if (section == null || section.actions.isEmpty()) continue;
+            for (CampaignSystem.CampaignAction action : section.actions) {
+                if (action == null || action.id.isBlank()) continue;
+                out.add(new CampaignHubClickTarget(CampaignHubClickTarget.Kind.ACTION, "", action.id));
+            }
         }
         return out;
     }

@@ -2,9 +2,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class TargetingSystem {
+    public static final double COMBAT_TARGETING_RANGE = 3000.0;
     public static final double PLAYER_CURSOR_LOCK_RADIUS = 560.0;
     public static final double PLAYER_TARGET_LOCK_RANGE = 3600.0;
-    private static final double NPC_TARGET_SEARCH_RANGE = 3000.0;
+    private static final double NPC_TARGET_SEARCH_RANGE = COMBAT_TARGETING_RANGE;
 
     private TargetingSystem(){}
 
@@ -358,7 +359,7 @@ public final class TargetingSystem {
         if (observer instanceof Player) {
             range *= 2.0;
         }
-        return Math.max(260.0, range);
+        return Math.max(COMBAT_TARGETING_RANGE, range);
     }
 
     private static boolean isPlayerObserver(GameContext ctx, Ship observer) {

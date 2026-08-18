@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** Owner-playtest baseline audit for normal Standard Command Campaign Ops runs. */
+/** Owner-playtest baseline audit for normal Standard Command Open World Campaign runs. */
 public final class OwnerPlaytestBaselineHarness {
     public static final long GREEN_HEAVY_SEED = 71000L;
     public static final long YELLOW_HEAVY_SEED = 71001L;
@@ -187,7 +187,7 @@ public final class OwnerPlaytestBaselineHarness {
         lines.add("");
         lines.add("- Generated: " + report.generatedAt);
         lines.add("- Git commit: " + report.gitCommit);
-        lines.add("- Preset: Standard Command Campaign Ops");
+        lines.add("- Preset: Standard Command Open World Campaign");
         lines.add("- Resolution: 5000x5000");
         lines.add("- Duration seconds: " + report.seconds);
         lines.add("- Seeds: Green-heavy " + GREEN_HEAVY_SEED

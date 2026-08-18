@@ -145,7 +145,7 @@ class CampaignLivingWarSystemTest {
     }
 
     @Test
-    void importantNpcBattleJoinLaunchesTacticalForceEncounter() throws Exception {
+    void importantNpcBattleJoinOpensTacticalSetupMenu() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         Object red = firstForceForFaction(st, Faction.ENEMY);
@@ -168,10 +168,12 @@ class CampaignLivingWarSystemTest {
 
         assertTrue(CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "JOIN"));
 
-        assertFalse(ctx.ui.strategicEncounterPrompt.active);
+        assertTrue(ctx.ui.strategicEncounterPrompt.active);
+        assertEquals("CAMPAIGN_FORCE", ctx.ui.strategicEncounterPrompt.kind.toString());
+        assertEquals((Integer) getObject(red, "id"), ctx.ui.strategicEncounterPrompt.campaignForceId);
         assertEquals("JOIN", getObject(st.campaignBattles.get(0), "playerIntervention"));
-        assertFalse(st.strategicOvermapMode, "joining a nearby battle should enter tactical command");
-        assertTrue(st.galaxyEncounterActive, "joining should launch the hostile force encounter");
+        assertTrue(st.strategicOvermapMode, "joining a nearby battle should keep the player in setup until they engage");
+        assertFalse(st.galaxyEncounterActive, "joining should not bypass the hostile force setup menu");
     }
 
     @Test

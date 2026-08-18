@@ -72,7 +72,7 @@ The current regression suite passes the focused campaign-map, living-war, travel
 
 The remediation must close four proof gaps:
 
-1. **Runtime wiring:** verify that the settings and models exercised by tests are the same ones used by a normal Campaign Ops run.
+1. **Runtime wiring:** verify that the settings and models exercised by tests are the same ones used by a normal Open World Campaign run.
 2. **Projection:** verify that simulated fleet movement, operations, territory, cost, and pressure reach the actual map and HUD.
 3. **Time scale:** verify behavior over real player time, not only a single method call or accelerated test tick.
 4. **Comprehension:** verify that a player can explain what happened from the UI without debug knowledge.
@@ -111,7 +111,7 @@ This document is the master stabilization plan, not a single implementation prom
 
 - [x] Record the exact build version, Git commit, seed, preset, resolution, and save used for every verification run.
 - [ ] Preserve the completed worksheet as immutable source evidence.
-- [ ] Add a `playtest-baseline` run profile that starts a fresh Standard Command Campaign Ops game without debug tools.
+- [ ] Add a `playtest-baseline` run profile that starts a fresh Standard Command Open World Campaign game without debug tools.
 - [x] Add a deterministic seed set covering at least one Green-heavy, Yellow-heavy, and Red-heavy opening.
 - [ ] Record a 20-minute strategic timeline for each seed: fleet spawn, movement, contact state, operation assignment, battle, disappearance, capture, and territory owner. *(Harness supports 1,200-second runs and now streams partial timeline/snapshot evidence, but a complete all-seed 20-minute run has not finished inside the command window yet.)*
 - [x] Record player-visible screenshots or structured presentation snapshots at the same checkpoints.
@@ -122,7 +122,7 @@ This document is the master stabilization plan, not a single implementation prom
 
 ### Player-visible acceptance harness
 
-- [x] Add an end-to-end `OwnerPlaytestCampaignAcceptanceTest` or equivalent harness that uses the normal Campaign Ops bootstrap and UI presentation model.
+- [x] Add an end-to-end `OwnerPlaytestCampaignAcceptanceTest` or equivalent harness that uses the normal Open World Campaign bootstrap and UI presentation model.
 - [x] Assert that Green, Yellow, and Red can all produce observable strategic activity during the seeded run.
 - [ ] Assert that physical movement results in changing player-visible positions when valid intel exists.
 - [ ] Assert that exact, approximate, stale, and lost contacts remain behaviorally and visually distinct.

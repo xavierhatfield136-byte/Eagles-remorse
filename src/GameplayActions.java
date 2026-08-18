@@ -571,8 +571,7 @@ public final class GameplayActions {
             case java.awt.event.KeyEvent.VK_2 -> CampaignSystem.setPendingEncounterInsertionRange(ctx, "MODERATE");
             case java.awt.event.KeyEvent.VK_3 -> CampaignSystem.setPendingEncounterInsertionRange(ctx, "FAR");
             case java.awt.event.KeyEvent.VK_A -> CampaignSystem.autoResolvePendingStrategicEncounter(ctx);
-            case java.awt.event.KeyEvent.VK_C,
-                    java.awt.event.KeyEvent.VK_ENTER,
+            case java.awt.event.KeyEvent.VK_ENTER,
                     java.awt.event.KeyEvent.VK_SPACE -> CampaignSystem.takeCommandOfPendingStrategicEncounter(ctx);
             default -> false;
         };

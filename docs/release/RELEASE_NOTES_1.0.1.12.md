@@ -28,7 +28,7 @@ The portable packages include the bundled runtime and packaged game assets used 
 - Added all-faction regression coverage for turret centers sitting on visible hull art.
 - Updated Red artillery and hyperweapon behavior tuning, including the Red hyperweapon kinetic barrage profile.
 - Added Team E as a selectable custom-battle player team and preserved the choice in menu settings.
-- Added the Team E Shipyard main-menu entry for local PNG-based custom ship creation.
+- Added the Shipyard main-menu entry for local PNG-based custom ship creation.
 - Added local custom ship storage under `save/custom_ships/`, kept out of Git.
 - Added the Weapon Lab V1-A pipeline for local custom direct-fire cannon weapons using turret and projectile PNGs.
 - Added local custom weapon storage under `save/custom_weapons/`, kept out of Git.

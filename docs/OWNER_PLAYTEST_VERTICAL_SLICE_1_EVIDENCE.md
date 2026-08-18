@@ -83,7 +83,7 @@ The resulting 70-test focused fleet, operation, map-presentation, and checkpoint
 
 At owner request, the authoritative player campaign sensor radius is now three times its previous value: the base radius increases from 720 to 2,160 world units, while intelligence scaling is tripled with it. Detection and contact updates consume that same authoritative value. The strategic map now renders the volume as a filled circular `SENSOR SPHERE` using one pixel radius rather than a stretched ellipse. The expanded 119-test focused campaign selection passes with zero failures.
 
-- [ ] Start a fresh Standard Command Campaign Ops run on this build.
+- [ ] Start a fresh Standard Command Open World Campaign run on this build.
 - [ ] Observe at least one Green, Yellow, and Red fleet moving on the rendered map.
 - [ ] Follow the focused operation arrow and Sensor Net reports through its visible phases.
 - [ ] Confirm any lost fleet contact has an understandable stale/lost/removal explanation.

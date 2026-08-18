@@ -1437,12 +1437,25 @@ public final class UISystem {
             case "INSERT_CLOSE" -> CampaignSystem.setPendingEncounterInsertionRange(ctx, "CLOSE");
             case "INSERT_MODERATE" -> CampaignSystem.setPendingEncounterInsertionRange(ctx, "MODERATE");
             case "INSERT_FAR" -> CampaignSystem.setPendingEncounterInsertionRange(ctx, "FAR");
+            default -> {
+                if (actionId.startsWith("DEPLOY:")) {
+                    String[] parts = actionId.split(":");
+                    if (parts.length != 3) yield false;
+                    try {
+                        yield CampaignSystem.setPendingEncounterDeploymentPoint(ctx,
+                                Double.parseDouble(parts[1]),
+                                Double.parseDouble(parts[2]));
+                    } catch (Exception ignored) {
+                        yield false;
+                    }
+                }
+                yield false;
+            }
             case "FOLLOW" -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "FOLLOW");
             case "JOIN" -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "JOIN");
             case "IGNORE" -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "IGNORE");
             case "SUPPORT" -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "SUPPORT");
             case "OBSERVE" -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "OBSERVE");
-            default -> false;
         };
     }
 

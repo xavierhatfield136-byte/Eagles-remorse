@@ -3,7 +3,7 @@ import app.config.ExperienceSettings;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Read-only difficulty presentation and runtime-consumer audit helpers for Campaign Ops. */
+/** Read-only difficulty presentation and runtime-consumer audit helpers for Open World Campaign. */
 public final class CampaignDifficultySystem {
     private CampaignDifficultySystem() {}
 
@@ -53,7 +53,7 @@ public final class CampaignDifficultySystem {
                         "scales fuel, supplies, and ammo losses during strategic travel"),
                 new RuntimeConsumer("tacticalOnly",
                         "MainMenuPanel and CampaignSystem strategic tempo",
-                        "changes Campaign Ops structure by suppressing strategic pressure/attrition"),
+                        "changes Open World Campaign structure by suppressing strategic pressure/attrition"),
                 new RuntimeConsumer("commandOnly",
                         "ExperienceRuntime and GameplayActions",
                         "auto-resolves non-battle strategic prompts and blocks direct tactical deployment actions"),

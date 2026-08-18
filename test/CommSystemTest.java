@@ -18,6 +18,10 @@ class CommSystemTest {
 
         FleetShip trader = new FleetShip(ShipRole.TRANSPORT, Faction.TEAM_C, 1200.0, 1000.0);
         trader.name = "Broker Spine";
+        trader.alive = true;
+        trader.dying = false;
+        trader.hpMax = Math.max(1, trader.hpMax);
+        trader.hp = trader.hpMax;
         ctx.ships.add(trader);
         ctx.cursorWorldX = trader.x;
         ctx.cursorWorldY = trader.y;
@@ -75,6 +79,10 @@ class CommSystemTest {
 
         FleetShip trader = new FleetShip(ShipRole.TRANSPORT, Faction.TEAM_C, 1200.0, 1000.0);
         trader.name = "Broker Spine";
+        trader.alive = true;
+        trader.dying = false;
+        trader.hpMax = Math.max(1, trader.hpMax);
+        trader.hp = trader.hpMax;
         ctx.ships.add(trader);
         ctx.cursorWorldX = trader.x;
         ctx.cursorWorldY = trader.y;
@@ -166,6 +174,60 @@ class CommSystemTest {
         assertTrue(ctx.credits > creditsBefore, "trade should pay the player");
         assertTrue(ctx.command.shipCommActionCooldowns.getOrDefault(trader.id, 0.0) > 0.0,
                 "trade should create an anti-spam cooldown");
+    }
+
+    @Test
+    void servicesTabPurchasesOreThroughComms() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 24681L, false));
+        ctx.campaign = new CampaignSystem.CampaignState();
+        ctx.player = new Player(ShipRole.MOTHERSHIP, 1000.0, 1000.0);
+        ctx.player.faction = Faction.ALLY;
+        ctx.ships.add(ctx.player);
+        ctx.campaign.enabled = true;
+        CampaignSystem.grantCampaignOre(ctx, 25);
+        ctx.credits = 5000;
+
+        FleetShip trader = new FleetShip(ShipRole.TRANSPORT, Faction.TEAM_C, 1200.0, 1000.0);
+        trader.name = "Broker Spine";
+        trader.alive = true;
+        trader.dying = false;
+        trader.hpMax = Math.max(1, trader.hpMax);
+        trader.hp = trader.hpMax;
+        ctx.ships.add(trader);
+        ctx.cursorWorldX = trader.x;
+        ctx.cursorWorldY = trader.y;
+        ctx.ui.commIntent = UiState.CommIntent.REQUEST_TRADE;
+
+        CommSystem.tryHailCurrentContact(ctx);
+
+        assertTrue(ctx.ui.commTradeMenu.active, "trade hail should open services ledger");
+        assertEquals(trader.id, ctx.ui.commTradeMenu.targetId);
+        if (!ctx.ships.contains(trader)) ctx.ships.add(trader);
+        int oreOptionIndex = -1;
+        for (int i = 0; i < ctx.ui.commTradeMenu.options.size(); i++) {
+            UiState.CommTradeOption option = ctx.ui.commTradeMenu.options.get(i);
+            if (option != null && "BUY_SERVICE_ORE".equals(option.id)) {
+                oreOptionIndex = i;
+                break;
+            }
+        }
+        assertTrue(oreOptionIndex >= 0, "services tab should offer purchasable ore services");
+        assertTrue(ctx.ui.commTradeMenu.options.get(oreOptionIndex).enabled,
+                ctx.ui.commTradeMenu.options.get(oreOptionIndex).detail);
+        int creditsBefore = ctx.credits;
+        int oreBefore = CampaignSystem.currentCampaignOre(ctx);
+        trader.alive = true;
+        trader.dying = false;
+        trader.hpMax = Math.max(1, trader.hpMax);
+        trader.hp = trader.hpMax;
+
+        assertTrue(CommSystem.chooseTradeMenuOption(ctx, oreOptionIndex));
+
+        assertFalse(ctx.ui.commTradeMenu.active);
+        int oreAfter = CampaignSystem.currentCampaignOre(ctx);
+        assertTrue(oreAfter > oreBefore, "ore service should add campaign ore; before=" + oreBefore
+                + " after=" + oreAfter + " result=" + ctx.ui.commResultTitle + " " + ctx.ui.commResultBody);
+        assertTrue(ctx.credits < creditsBefore, "service purchase should spend credits");
     }
 
     @Test

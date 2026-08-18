@@ -245,7 +245,7 @@ class CampaignFleetHubMenuRegressionTest {
         assertNotNull(ctx.campaign);
         assertEquals(5, ctx.campaign.sector);
         assertTrue(CampaignSystem.isStrategicOvermapMode(ctx),
-                "Campaign Ops should quarantine legacy linear checkpoints onto the dynamic map");
+                "Open World Campaign should quarantine legacy linear checkpoints onto the dynamic map");
         assertEquals(GameState.MAP, ctx.state);
     }
 
@@ -270,7 +270,7 @@ class CampaignFleetHubMenuRegressionTest {
         assertTrue(CampaignSystem.launchPendingEpisode(ctx));
         assertEquals(6, ctx.campaign.sector);
         assertTrue(CampaignSystem.isStrategicOvermapMode(ctx),
-                "Campaign Ops route launch should return to the dynamic strategic map");
+                "Open World Campaign route launch should return to the dynamic strategic map");
         assertEquals(GameState.MAP, ctx.state);
         assertTrue(ctx.credits >= 120, "detour route should grant its credit bonus on launch");
         assertTrue(ctx.player.cargo >= 45, "detour route should grant ore on launch");

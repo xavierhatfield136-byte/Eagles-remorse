@@ -8,7 +8,7 @@ tester, build hash, preset, result, and any blocker notes for each run.
 
 ## Script 1: New Campaign First Route
 
-- [ ] Launch Campaign Ops from the main menu on Standard Command.
+- [ ] Launch Open World Campaign from the main menu on Standard Command.
 - [ ] Open Alpha Readiness and confirm the known-blocker list is readable.
 - [ ] Start a new campaign and verify the strategic map opens without overlap.
 - [ ] Select the first northern objective and read route tempo, risk, forecast,
@@ -24,7 +24,7 @@ and route/event reasoning visible.
 
 ## Script 2: Save And Load Continuity
 
-- [ ] Start Campaign Ops on Standard Command.
+- [ ] Start Open World Campaign on Standard Command.
 - [ ] Change fleet posture, select a route, and complete one travel leg.
 - [ ] Spend at least one hub service or support action.
 - [ ] Exit to menu or close the app after checkpoint save.
@@ -38,7 +38,7 @@ Pass criteria: no lost campaign state that changes player decisions.
 
 ## Script 3: Defeat Path
 
-- [ ] Start Campaign Ops on Iron Command.
+- [ ] Start Open World Campaign on Iron Command.
 - [ ] Pick a high-risk route or contact and enter tactical combat underprepared.
 - [ ] Allow flagship loss or campaign failure.
 - [ ] Confirm failure banner, game-over text, and menu recovery are clear.
@@ -49,7 +49,7 @@ next run.
 
 ## Script 4: Victory Path
 
-- [ ] Start Campaign Ops on Standard Command or Command Only.
+- [ ] Start Open World Campaign on Standard Command or Command Only.
 - [ ] Progress through the required main objectives using hub services, support,
   and strikes as needed.
 - [ ] Confirm late-route pressure, strike costs, repairs, and low-store warnings

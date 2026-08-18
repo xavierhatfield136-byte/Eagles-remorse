@@ -316,7 +316,7 @@ class AISystemSmallCraftRangeTest {
     }
 
     @Test
-    void missileShipsOpenAtStandoffBeforeUsingSensorAuthorizedGuns() throws Exception {
+    void missileShipsDoNotDelaySensorAuthorizedGunsDuringOpeningStandoff() throws Exception {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 3600, 1800, true, 49L, false));
         ctx.player = new Player(ShipRole.MOTHERSHIP, 0.0, 900.0);
         ctx.player.faction = Faction.ALLY;
@@ -335,20 +335,9 @@ class AISystemSmallCraftRangeTest {
         assertTrue(openingShots > 0);
         assertTrue(ctx.projectiles.stream()
                         .filter(projectile -> projectile.sourceShipId == missileBoat.id)
-                        .allMatch(projectile -> projectile instanceof Missile),
-                "opening standoff should spend missile racks without starting long-range gunfire");
-
-        ctx.projectiles.clear();
-        missileBoat.aiMissileStandoffTimer = 0.0;
-        missileBoat.aiMissileStandoffTargetId = -1;
-        for (Turret turret : missileBoat.turrets) turret.setReady();
-
-        int followUpShots = invokeFireIfAble(ctx, missileBoat, enemyCruiser, GameContext.DT, 1700.0);
-        assertTrue(followUpShots > 0);
-        assertTrue(ctx.projectiles.stream()
-                        .filter(projectile -> projectile.sourceShipId == missileBoat.id)
                         .anyMatch(projectile -> !(projectile instanceof Missile)),
-                "after the opening standoff expires, sensor-authorized guns should join the engagement");
+                "opening standoff should not suppress long-range gunfire inside the 3,000m combat envelope");
+
     }
 
     @Test

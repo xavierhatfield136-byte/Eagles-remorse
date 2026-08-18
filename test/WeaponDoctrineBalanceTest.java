@@ -121,6 +121,37 @@ class WeaponDoctrineBalanceTest {
     }
 
     @Test
+    void greenDirectedEnergyStaysBelowBlueMainBatteryDpsAcrossCommonHullClasses() {
+        ShipRole[] roles = {
+                ShipRole.FRIGATE,
+                ShipRole.LIGHT_CRUISER,
+                ShipRole.BATTLESHIP,
+                ShipRole.DREADNOUGHT
+        };
+
+        for (ShipRole role : roles) {
+            FleetShip blue = doctrineShip(role, Faction.ALLY);
+            FleetShip green = doctrineShip(role, Faction.TEAM_C);
+            double blueDps = primaryGunDps(blue);
+            double greenDps = primaryGunDps(green);
+
+            assertTrue(greenDps <= blueDps * 1.02,
+                    role + " green directed-energy DPS should not exceed blue main-battery DPS"
+                            + " (green=" + greenDps + ", blue=" + blueDps + ")");
+        }
+    }
+
+    @Test
+    void greenDirectedEnergyBeamWidthIsCappedForCapitalTurrets() {
+        FleetShip ship = new FleetShip(ShipRole.DREADNOUGHT, Faction.TEAM_C, 0.0, 0.0);
+        Turret gun = firstGun(ship);
+        assertTrue(gun != null, "expected a primary gun on the Team C dreadnought");
+
+        assertTrue(Turret.greenBeamWidth(gun.radius) <= Turret.GREEN_DIRECT_BEAM_MAX_WIDTH,
+                "Green beam width should be capped so capital beams do not sweep whole formations");
+    }
+
+    @Test
     void blueProjectilesGainDamageWithFlightDistance() {
         FleetShip ship = new FleetShip(ShipRole.PICKET, Faction.ALLY, 0.0, 0.0);
         Turret gun = firstGun(ship);
@@ -227,6 +258,34 @@ class WeaponDoctrineBalanceTest {
             }
         }
         return null;
+    }
+
+    private static FleetShip doctrineShip(ShipRole role, Faction faction) {
+        FleetShip ship = new FleetShip(role, faction, 0.0, 0.0);
+        ship.applyPrimaryWeaponFamily();
+        DoctrineRegistry.applyToShip(ship);
+        return ship;
+    }
+
+    private static double primaryGunDps(Ship ship) {
+        DoctrineProfile profile = DoctrineRegistry.forFaction(ship.faction);
+        double total = 0.0;
+        for (Turret turret : primaryGuns(ship)) {
+            double cycleMul = Math.max(0.20, ship.weaponCycleRateMultiplier());
+            double damageMul = Math.max(0.20,
+                    ship.weaponDamageMultiplier() * Math.max(1.0, ship.doctrineOffenseDamageMultiplier));
+            double baseReload = turret.cooldown / cycleMul;
+            double reload = baseReload;
+            if (profile.doctrine == Doctrine.ENERGY_NAVY) {
+                reload = Math.max(baseReload, Ship.BLUE_MAIN_BATTERY_MIN_RELOAD_SECONDS);
+                if (baseReload > 1e-6) damageMul *= reload / baseReload;
+            }
+            int shotDamage = ship.resolveStrikeCraftWeaponDamage(turret, turret.damage * damageMul);
+            double dps = shotDamage / Math.max(GameContext.DT, reload);
+            if (ship.faction == Faction.TEAM_C) dps *= Turret.GREEN_DIRECT_BEAM_DPS_MULT;
+            total += dps;
+        }
+        return total;
     }
 
     private static List<Turret> primaryGuns(Ship ship) {

@@ -52,7 +52,7 @@ Complete once per build or machine.
 ## Session 1 — Blind First Hour
 
 Goal: determine whether a player can understand and use the game without developer knowledge.  
-Setup: fresh save, `Campaign Ops`, `Standard Command`, default accessibility settings. Play for 45–60 minutes. Avoid debug tools.
+Setup: fresh save, `Open World Campaign`, `Standard Command`, default accessibility settings. Play for 45–60 minutes. Avoid debug tools.
 
 ### First Impressions And Onboarding
 
@@ -108,7 +108,7 @@ Setup: fresh save, `Campaign Ops`, `Standard Command`, default accessibility set
 ## Session 2 — Economy, Fleet Growth, And Sustain
 
 Goal: test whether resources create meaningful choices rather than an early snowball or unavoidable collapse.  
-Setup: fresh `Campaign Ops` run on `Standard Command`. Complete at least one full mine/salvage → return → repair/trade/refit/commission → relaunch loop.
+Setup: fresh `Open World Campaign` run on `Standard Command`. Complete at least one full mine/salvage → return → repair/trade/refit/commission → relaunch loop.
 
 Record approximate values if convenient.
 
@@ -191,7 +191,7 @@ Setup: use `Standard Command`. Travel north toward Earth, use Recon Sweep at lea
 ## Session 4 — Tactical Combat And Fleet Command
 
 Goal: judge control feel, battle readability, fleet roles, damage, and difficulty.  
-Setup: use Campaign Ops or Custom Battles. Play at least three fights: small/even, carrier-or-missile-heavy, and large/capital-or-titan-heavy.
+Setup: use Open World Campaign or Custom Battles. Play at least three fights: small/even, carrier-or-missile-heavy, and large/capital-or-titan-heavy.
 
 | Area | Rating (1–5) | Notes |
 |---|---:|---|
@@ -320,7 +320,7 @@ Goal: ensure every visible main-menu mode is honest, understandable, and functio
 | Mode | Starts? | Goal Clear? | Can Finish/Exit? | Main Issue | Keep Visible? |
 |---|---|---|---|---|---|
 | Tutorial / Command School | | | | | YES / NO |
-| Campaign Ops | | | | | YES / NO |
+| Open World Campaign | | | | | YES / NO |
 | Fleet | | | | | YES / NO |
 | Last Stand | | | | | YES / NO |
 | Resource Rush | | | | | YES / NO |
@@ -367,7 +367,7 @@ Complete after enough play to form an opinion.
 | What is the weakest feature that must improve before wider testing? | |
 | What kind of player is this build for? | |
 | What should an average successful campaign length be? | |
-| Should optional modes remain visible if Campaign Ops is the primary experience? | |
+| Should optional modes remain visible if Open World Campaign is the primary experience? | |
 | Which difficulty preset should be the default? | |
 | Which three systems must not receive more scope before stabilization? | 1.  2.  3. |
 | Which one system deserves deeper work after stabilization? | |
@@ -422,5 +422,3 @@ Fill this section last. It lets Codex triage the whole worksheet quickly.
 | Important thing that should remain unchanged | |
 
 Anything else you want me to understand:
-
-

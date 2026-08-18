@@ -2,13 +2,13 @@
 
 Purpose: expand Command School from a tactical-only sandbox into a two-part training mode that teaches both the overworld campaign map and the in-mission tactical command tools without risking the player's real campaign save.
 
-This checklist supersedes the older decision in `TUTORIAL_OVERWORLD_AND_CAMPAIGN_CHECKLIST.md` that Command School should remain tactical-only. Campaign Ops can still keep contextual first-hour guidance, but Command School should become the replayable place where the player can deliberately practice campaign-map movement, site entry, fleet choices, and mission command.
+This checklist supersedes the older decision in `TUTORIAL_OVERWORLD_AND_CAMPAIGN_CHECKLIST.md` that Command School should remain tactical-only. Open World Campaign can still keep contextual first-hour guidance, but Command School should become the replayable place where the player can deliberately practice campaign-map movement, site entry, fleet choices, and mission command.
 
 ## Implementation Status - 2026-06-26
 
 - [x] Command School now starts in a deterministic sample overworld map.
 - [x] The sample overworld includes Green, Yellow, Red, ore/resource, hostile contact, and optional side-contact training locations.
-- [x] Command School uses a campaign-state flag so training state is isolated from normal Campaign Ops.
+- [x] Command School uses a campaign-state flag so training state is isolated from normal Open World Campaign.
 - [x] Autonomous war escalation, territory flipping, and checkpoint/profile writes are bypassed for Command School training.
 - [x] Overworld lessons now precede the tactical Command School lessons.
 - [x] The existing tactical lessons are relabeled as the tactical branch and still rebuild the controlled tactical sandbox.
@@ -41,7 +41,7 @@ This checklist supersedes the older decision in `TUTORIAL_OVERWORLD_AND_CAMPAIGN
 
 ## Phase 2 - Sample Overworld Map Design
 
-- [ ] Create a small mock overworld scenario that is separate from normal Campaign Ops.
+- [ ] Create a small mock overworld scenario that is separate from normal Open World Campaign.
 - [ ] Include one Green home anchorage or command base.
 - [ ] Include one neutral or Yellow trade station.
 - [ ] Include one ore/resource site.
@@ -97,7 +97,7 @@ This checklist supersedes the older decision in `TUTORIAL_OVERWORLD_AND_CAMPAIGN
 ## Phase 4 - In-Mission Command School Update
 
 - [ ] Rename or label the existing lessons as the tactical branch of Command School.
-- [ ] Update lesson summary copy so it no longer says Campaign Ops alone covers overworld lessons.
+- [ ] Update lesson summary copy so it no longer says Open World Campaign alone covers overworld lessons.
 - [ ] Confirm tactical movement lesson matches current controls and UI.
 - [ ] Confirm waypoint/map lesson matches current `M` map behavior.
 - [ ] Confirm targeting lesson teaches current lock, fire, missile, and sensor behavior.
@@ -186,7 +186,7 @@ This checklist supersedes the older decision in `TUTORIAL_OVERWORLD_AND_CAMPAIGN
 
 ## Phase 9 - Exit Criteria
 
-- [ ] Command School teaches the main overworld controls and choices without relying on Campaign Ops.
+- [ ] Command School teaches the main overworld controls and choices without relying on Open World Campaign.
 - [ ] Command School teaches the current in-mission tactical controls accurately.
 - [ ] The sample overworld is deterministic, safe, and visually distinct from the real campaign.
 - [ ] The overworld-to-mission transition is stable.

@@ -82,7 +82,7 @@ Regional progression:
 
 The campaign is entered through:
 
-- `Campaign Ops`
+- `Open World Campaign`
   Standard campaign start or resume
 - `Fleet`
   Campaign-linked fleet hub / resume flow
@@ -531,7 +531,7 @@ It describes how the player performs major campaign actions in the current game 
 
 The player starts a campaign run by:
 
-1. choosing `Campaign Ops` from the main menu
+1. choosing `Open World Campaign` from the main menu
 2. beginning on the strategic overmap rather than inside a combat mission
 3. receiving a starting Blue fleet, starting credits, and an initialized overmap state
 4. beginning in the south with the first route north already framed by the campaign map

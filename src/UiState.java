@@ -152,6 +152,8 @@ public final class UiState {
         public String strengthReadout = "";
         public String insertionRange = "MODERATE";
         public String insertionDetail = "";
+        public double deploymentX = 0.25;
+        public double deploymentY = 0.50;
         public final List<String> friendlyAssetLines = new ArrayList<>();
         public final List<String> enemyAssetLines = new ArrayList<>();
         public final List<BriefingAsset> friendlyAssets = new ArrayList<>();
@@ -448,7 +450,18 @@ public final class UiState {
     }
 
     public void setStrategicEncounterInsertionRange(String insertionRange) {
-        strategicEncounterPrompt.insertionRange = normalizeInsertionRange(insertionRange);
+        String range = normalizeInsertionRange(insertionRange);
+        strategicEncounterPrompt.insertionRange = range;
+        strategicEncounterPrompt.deploymentX = defaultDeploymentXForRange(range);
+        strategicEncounterPrompt.deploymentY = 0.50;
+    }
+
+    public void setStrategicEncounterDeploymentPoint(double x, double y) {
+        strategicEncounterPrompt.deploymentX = MathUtil.clamp(x, 0.05, 0.42);
+        strategicEncounterPrompt.deploymentY = MathUtil.clamp(y, 0.14, 0.86);
+        strategicEncounterPrompt.insertionRange = strategicEncounterPrompt.deploymentX >= 0.34
+                ? "CLOSE"
+                : strategicEncounterPrompt.deploymentX <= 0.17 ? "FAR" : "MODERATE";
     }
 
     private static String normalizeInsertionRange(String insertionRange) {
@@ -457,6 +470,14 @@ public final class UiState {
             case "CLOSE" -> "CLOSE";
             case "FAR" -> "FAR";
             default -> "MODERATE";
+        };
+    }
+
+    private static double defaultDeploymentXForRange(String insertionRange) {
+        return switch (normalizeInsertionRange(insertionRange)) {
+            case "CLOSE" -> 0.38;
+            case "FAR" -> 0.12;
+            default -> 0.25;
         };
     }
 
@@ -500,6 +521,8 @@ public final class UiState {
         strategicEncounterPrompt.strengthReadout = "";
         strategicEncounterPrompt.insertionRange = "MODERATE";
         strategicEncounterPrompt.insertionDetail = "";
+        strategicEncounterPrompt.deploymentX = 0.25;
+        strategicEncounterPrompt.deploymentY = 0.50;
         strategicEncounterPrompt.friendlyAssetLines.clear();
         strategicEncounterPrompt.enemyAssetLines.clear();
         strategicEncounterPrompt.friendlyAssets.clear();
@@ -565,6 +588,8 @@ public final class UiState {
         target.strengthReadout = source.strengthReadout;
         target.insertionRange = normalizeInsertionRange(source.insertionRange);
         target.insertionDetail = source.insertionDetail;
+        target.deploymentX = MathUtil.clamp(source.deploymentX, 0.05, 0.42);
+        target.deploymentY = MathUtil.clamp(source.deploymentY, 0.14, 0.86);
         target.friendlyAssetLines.clear();
         target.friendlyAssetLines.addAll(source.friendlyAssetLines);
         target.enemyAssetLines.clear();

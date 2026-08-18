@@ -24,7 +24,7 @@ import java.util.function.Consumer;
 public final class MainMenuPanel extends JPanel {
     private static final long MENU_BG_SEED = 0x5A17C0DEL;
     private static final String NO_CHECKPOINT_MESSAGE =
-            "No checkpoint saved yet. Clear a sector in Campaign Ops to unlock resume.";
+            "No active campaign. Begin a campaign to establish your fleet.";
     private static final String[] CAMPAIGN_SLOT_IDS = {"slot-1", "slot-2", "slot-3"};
     private static final String[] CAMPAIGN_SLOT_LABELS = {"Save 1", "Save 2", "Save 3"};
     private static final String[] CUSTOM_BATTLE_ROLE_IDS = {
@@ -72,11 +72,6 @@ public final class MainMenuPanel extends JPanel {
         title.setFont(MenuDisplay.font("Consolas", Font.BOLD, 62, uiScale));
         title.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        JLabel subtitle = new JLabel("Command the campaign, stage a battle, or enter the fleet school.");
-        subtitle.setForeground(new Color(197, 220, 235, 220));
-        subtitle.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 17, uiScale));
-        subtitle.setAlignmentX(Component.LEFT_ALIGNMENT);
-
         GameMode[] missionModes = new GameMode[]{
                 GameMode.LAST_STAND,
                 GameMode.RESOURCE_RUSH,
@@ -109,18 +104,29 @@ public final class MainMenuPanel extends JPanel {
         JButton quit = createMenuButton("Quit", new Color(100, 63, 73), uiScale);
         continueCampaignButton = createMenuButton("Continue Campaign", new Color(71, 139, 96), uiScale);
         deleteCampaignButton = createMenuButton("Delete Save", new Color(117, 58, 70), uiScale);
-        JButton campaignOps = createMenuButton("Campaign Ops", new Color(41, 112, 170), uiScale);
-        JButton linearCampaign = createMenuButton("Classic Campaign", new Color(82, 91, 126), uiScale);
+        JButton newCampaign = createMenuButton("New Campaign", new Color(41, 112, 170), uiScale);
+        JButton campaignOps = createMenuButton("Open World Campaign", new Color(41, 112, 170), uiScale);
+        JButton linearCampaign = createMenuButton("Linear Campaign", new Color(82, 91, 126), uiScale);
         JButton customBattle = createMenuButton("Custom Battle", new Color(64, 126, 177), uiScale);
-        JButton customShipCreator = createMenuButton("Team E Shipyard", new Color(66, 112, 148), uiScale);
+        JButton multiplayerButton = createMenuButton("Multiplayer", new Color(53, 123, 126), uiScale);
+        JButton customShipCreator = createMenuButton("Shipyard", new Color(66, 112, 148), uiScale);
         JButton galaxyMapTest = createMenuButton("Galaxy Map Test", new Color(72, 103, 150), uiScale);
         JButton tutorialStart = createMenuButton("Commander's Academy", new Color(60, 118, 186), uiScale);
+        JButton settingsButton = createMenuButton("Settings", new Color(64, 80, 116), uiScale);
         JButton experienceButton = createMenuButton("Accessibility", new Color(64, 80, 116), uiScale);
         JButton controlsButton = createMenuButton("Controls", new Color(65, 91, 126), uiScale);
+        newCampaign.setName("newCampaignButton");
         customBattle.setName("customBattleButton");
+        multiplayerButton.setName("multiplayerButton");
         customShipCreator.setName("customShipCreatorButton");
         tutorialStart.setName("tutorialStartButton");
+        settingsButton.setName("settingsButton");
         controlsButton.setName(InputBindingsDialog.CONTROLS_BUTTON_NAME);
+        JButton backFromCampaign = createMenuButton("Back", new Color(48, 62, 82), uiScale);
+        JButton backFromBattle = createMenuButton("Back", new Color(48, 62, 82), uiScale);
+        JButton backFromMultiplayer = createMenuButton("Back", new Color(48, 62, 82), uiScale);
+        JButton backFromSettings = createMenuButton("Back", new Color(48, 62, 82), uiScale);
+        JButton backFromDeveloper = createMenuButton("Back", new Color(48, 62, 82), uiScale);
         JButton hostBattle = createMenuButton("Create Lobby", new Color(53, 123, 126), uiScale);
         JButton joinBattle = createMenuButton("Join Lobby", new Color(79, 102, 151), uiScale);
         JButton diagnosticsBattle = createMenuButton("Diagnostics", new Color(86, 77, 122), uiScale);
@@ -153,15 +159,6 @@ public final class MainMenuPanel extends JPanel {
         }
 
         JLabel fullscreenHint = metaLabel("Alt+Enter toggles fullscreen during battle", uiScale);
-        JLabel singlePlayerLead = bodyLabel(
-                "<html><div style='width:360px;'>"
-                        + "Campaign actions stay up front. Resume when a checkpoint exists, or start the strategic layer fresh."
-                        + "</div></html>", uiScale);
-        JLabel missionLead = bodyLabel(
-                "<html><div style='width:360px;'>"
-                        + "Build a tactical run with the encounter type, map scale, player team, and seed."
-                        + "</div></html>", uiScale);
-
         MenuSettingsStore.MenuSettings persisted = MenuSettingsStore.load();
         final ExperienceSettings[] experience = {ExperienceSettingsStore.load()};
         GameMode persistedMode = MenuSettingsStore.resolveMode(persisted.modeName);
@@ -172,6 +169,7 @@ public final class MainMenuPanel extends JPanel {
         directAddressField.setText(persisted.multiplayerDirectAddress);
         multiplayerNameField.setText(persisted.multiplayerPlayerName);
         multiplayerMissionBox.setSelectedItem(MultiplayerMissionChoice.fromMissionId(persisted.multiplayerMissionId));
+        final String[] selectedCampaignStartupPreset = {""};
 
         java.util.function.Consumer<GameMode> persistSettings = (selectedMode) -> {
             MenuSettingsStore.MenuSettings save = new MenuSettingsStore.MenuSettings();
@@ -314,10 +312,15 @@ public final class MainMenuPanel extends JPanel {
                 if (seed == 0) seed = System.nanoTime();
                 PlayerTeamChoice choice = (PlayerTeamChoice) teamBox.getSelectedItem();
                 int playerTeamId = (choice == null) ? 0 : choice.teamId();
+                String startupPreset = selectedCampaignStartupPreset[0] == null ? "" : selectedCampaignStartupPreset[0];
                 GameConfig launch = new GameConfig(GameMode.CAMPAIGN_OPS, w, h, true, seed, false,
-                        playerTeamId, false)
-                        .withAutoLaunchCampaignStartSite(true)
+                        playerTeamId, false,
+                        1, "", "",
+                        startupPreset)
                         .withCampaignSlot(slotId);
+                if (startupPreset.isBlank()) {
+                    launch = launch.withAutoLaunchCampaignStartSite(true);
+                }
                 onStart.accept(launch.withExperience(experience[0]));
             });
             campaignSlotDeleteButtons[i].addActionListener(e -> {
@@ -332,37 +335,6 @@ public final class MainMenuPanel extends JPanel {
                 }
             });
         }
-        campaignOps.addActionListener(e -> startWithMode.accept(GameMode.CAMPAIGN_OPS));
-        linearCampaign.addActionListener(e -> {
-            persistSettings.accept(GameMode.CAMPAIGN_OPS);
-            int w = 5000;
-            int h = 5000;
-            if (mapBox.getSelectedIndex() == 1) {
-                w = 10000;
-                h = 10000;
-            }
-            if (mapBox.getSelectedIndex() == 2) {
-                w = 20000;
-                h = 20000;
-            }
-            long seed;
-            try {
-                seed = Long.parseLong(seedField.getText().trim());
-            } catch (Exception ex) {
-                seed = System.nanoTime();
-            }
-            if (seed == 0) seed = System.nanoTime();
-            PlayerTeamChoice choice = (PlayerTeamChoice) teamBox.getSelectedItem();
-            int playerTeamId = (choice == null) ? 0 : choice.teamId();
-            onStart.accept(new GameConfig(GameMode.CAMPAIGN_OPS, w, h, true, seed, false,
-                    playerTeamId, false,
-                    1, "", "",
-                    "linear_campaign").withExperience(experience[0]));
-        });
-        customBattle.addActionListener(e -> {
-            modeBox.setSelectedItem(GameMode.CUSTOM_BATTLES);
-            startWithMode.accept(GameMode.CUSTOM_BATTLES);
-        });
         customShipCreator.addActionListener(e -> openCustomShipCreator(this));
         galaxyMapTest.addActionListener(e -> {
             persistSettings.accept(GameMode.CAMPAIGN_OPS);
@@ -422,7 +394,7 @@ public final class MainMenuPanel extends JPanel {
         titleStack.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
         titleStack.add(title);
         titleStack.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
-        titleStack.add(subtitle);
+        titleStack.add(bodyLabel("Continue your war, begin a campaign, or prepare an independent engagement.", uiScale));
 
         JPanel headerPanel = transparentPanel();
         headerPanel.setLayout(new BorderLayout(MenuDisplay.scaled(24, uiScale), 0));
@@ -431,7 +403,7 @@ public final class MainMenuPanel extends JPanel {
         JPanel headerBadges = new FlowPanel(FlowLayout.RIGHT, MenuDisplay.scaled(10, uiScale), MenuDisplay.scaled(8, uiScale));
         headerBadges.add(createBadge("Version " + AppInfo.VERSION, new Color(15, 29, 45, 220),
                 new Color(74, 138, 174, 170), uiScale));
-        headerBadges.add(createBadge("Live Command Deck", new Color(37, 29, 43, 214),
+        headerBadges.add(createBadge("Command Center", new Color(37, 29, 43, 214),
                 new Color(204, 139, 79, 160), uiScale));
         headerPanel.add(headerBadges, BorderLayout.EAST);
 
@@ -447,7 +419,7 @@ public final class MainMenuPanel extends JPanel {
         c.gridy = 0;
         c.anchor = GridBagConstraints.LINE_END;
         c.weightx = 0;
-        missionForm.add(label("Mode:", uiScale), c);
+        missionForm.add(label("Battle Type:", uiScale), c);
         c.gridx = 1;
         c.anchor = GridBagConstraints.LINE_START;
         c.fill = GridBagConstraints.HORIZONTAL;
@@ -459,7 +431,7 @@ public final class MainMenuPanel extends JPanel {
         c.anchor = GridBagConstraints.LINE_END;
         c.fill = GridBagConstraints.NONE;
         c.weightx = 0;
-        missionForm.add(label("Map Size:", uiScale), c);
+        missionForm.add(label("Map:", uiScale), c);
         c.gridx = 1;
         c.anchor = GridBagConstraints.LINE_START;
         c.fill = GridBagConstraints.HORIZONTAL;
@@ -471,7 +443,7 @@ public final class MainMenuPanel extends JPanel {
         c.anchor = GridBagConstraints.LINE_END;
         c.fill = GridBagConstraints.NONE;
         c.weightx = 0;
-        missionForm.add(label("Player Team:", uiScale), c);
+        missionForm.add(label("Your Faction:", uiScale), c);
         c.gridx = 1;
         c.anchor = GridBagConstraints.LINE_START;
         c.fill = GridBagConstraints.HORIZONTAL;
@@ -493,41 +465,70 @@ public final class MainMenuPanel extends JPanel {
         JPanel missionFormShell = createInsetPanel(new Color(9, 19, 31, 190), new Color(76, 130, 161, 130), uiScale);
         missionFormShell.add(missionForm);
 
-        JPanel campaignActions = transparentPanel();
-        campaignActions.setLayout(new GridLayout(0, 1, 0, MenuDisplay.scaled(10, uiScale)));
-        campaignActions.add(campaignOps);
-        campaignActions.add(continueCampaignButton);
-        campaignActions.add(linearCampaign);
-        campaignActions.add(customBattle);
-        campaignActions.add(customShipCreator);
-        campaignActions.add(tutorialStart);
-        campaignActions.add(galaxyMapTest);
-        campaignActions.add(experienceButton);
-        campaignActions.add(controlsButton);
+        CardLayout menuCardsLayout = new CardLayout();
+        JPanel menuCards = transparentPanel();
+        menuCards.setLayout(menuCardsLayout);
 
-        JPanel singlePlayerCard = createSectionPanel(new Color(48, 146, 197, 160), uiScale);
-        singlePlayerCard.add(eyebrowLabel("Campaign", uiScale, new Color(115, 204, 225)));
-        singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
-        singlePlayerCard.add(sectionTitle("Command Your Sector", uiScale));
-        singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
-        singlePlayerCard.add(singlePlayerLead);
-        singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
-        singlePlayerCard.add(campaignActions);
-        singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
-        JPanel checkpointPanel = createInsetPanel(new Color(16, 35, 31, 190), new Color(86, 150, 111, 135), uiScale);
-        checkpointPanel.add(continueCampaignLabel);
-        checkpointPanel.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
-        deleteCampaignButton.setAlignmentX(Component.LEFT_ALIGNMENT);
-        checkpointPanel.add(deleteCampaignButton);
-        singlePlayerCard.add(checkpointPanel);
-        singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(12, uiScale)));
+        JPanel commandPanel = transparentPanel();
+        commandPanel.setLayout(new BorderLayout(0, MenuDisplay.scaled(18, uiScale)));
+        JPanel continueCard = createSectionPanel(new Color(83, 170, 111, 165), uiScale);
+        continueCard.add(eyebrowLabel("Continue Campaign", uiScale, new Color(152, 229, 168)));
+        continueCard.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
+        continueCard.add(sectionTitle("Return To The War", uiScale));
+        continueCard.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
+        continueCard.add(continueCampaignLabel);
+        continueCard.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
+        continueCard.add(continueCampaignButton);
+        commandPanel.add(continueCard, BorderLayout.NORTH);
+
+        JPanel destinationGrid = transparentPanel();
+        destinationGrid.setLayout(new GridLayout(0, 2, MenuDisplay.scaled(14, uiScale), MenuDisplay.scaled(14, uiScale)));
+        destinationGrid.add(newCampaign);
+        destinationGrid.add(customBattle);
+        if (multiplayerEntryPointEnabled()) {
+            destinationGrid.add(multiplayerButton);
+        }
+        destinationGrid.add(tutorialStart);
+        destinationGrid.add(customShipCreator);
+        destinationGrid.add(settingsButton);
+        commandPanel.add(destinationGrid, BorderLayout.CENTER);
+        if (developerMenuEnabled()) {
+            JButton developerTools = createMenuButton("Developer Tools", new Color(86, 77, 122), uiScale);
+            developerTools.setName("developerToolsButton");
+            JPanel devRow = transparentPanel();
+            devRow.setLayout(new BorderLayout());
+            devRow.add(developerTools, BorderLayout.EAST);
+            commandPanel.add(devRow, BorderLayout.SOUTH);
+            developerTools.addActionListener(e -> menuCardsLayout.show(menuCards, "developer"));
+        }
+
+        JPanel campaignPanel = createSectionPanel(new Color(48, 146, 197, 160), uiScale);
+        campaignPanel.setLayout(new BorderLayout(0, MenuDisplay.scaled(18, uiScale)));
+        campaignPanel.add(subMenuHeader("New Campaign", "Choose Campaign Type", backFromCampaign,
+                uiScale, new Color(115, 204, 225)), BorderLayout.NORTH);
+        JLabel campaignTypeLabel = bodyLabel("Selected: Open World Campaign", uiScale);
+        JPanel campaignChoicePanel = verticalPanel();
+        campaignChoicePanel.add(campaignTypeLabel);
+        campaignChoicePanel.add(Box.createVerticalStrut(MenuDisplay.scaled(12, uiScale)));
+        JPanel campaignTypeGrid = transparentPanel();
+        campaignTypeGrid.setLayout(new GridLayout(1, 2, MenuDisplay.scaled(12, uiScale), 0));
+        campaignTypeGrid.add(campaignOps);
+        campaignTypeGrid.add(linearCampaign);
+        campaignChoicePanel.add(campaignTypeGrid);
+        campaignChoicePanel.add(Box.createVerticalStrut(MenuDisplay.scaled(16, uiScale)));
+        campaignChoicePanel.add(bodyLabel("<html><div style='width:560px;'>"
+                + "Open World Campaign starts the dynamic strategic war. Linear Campaign starts the structured mission sequence. "
+                + "Choose the campaign type here, then start or load a save slot from the left column."
+                + "</div></html>", uiScale));
+
         JPanel slotPanel = createInsetPanel(new Color(14, 28, 43, 196), new Color(91, 135, 181, 130), uiScale);
-        slotPanel.add(eyebrowLabel("Save Files", uiScale, new Color(151, 203, 234)));
+        slotPanel.setPreferredSize(new Dimension(MenuDisplay.scaled(580, uiScale), MenuDisplay.scaled(440, uiScale)));
+        slotPanel.add(eyebrowLabel("Select Save Slot", uiScale, new Color(151, 203, 234)));
         slotPanel.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
         for (int i = 0; i < campaignSlotButtons.length; i++) {
             JPanel row = transparentPanel();
             row.setLayout(new BorderLayout(MenuDisplay.scaled(10, uiScale), 0));
-            campaignSlotButtons[i].setPreferredSize(new Dimension(MenuDisplay.scaled(112, uiScale), MenuDisplay.scaled(38, uiScale)));
+            campaignSlotButtons[i].setPreferredSize(new Dimension(MenuDisplay.scaled(104, uiScale), MenuDisplay.scaled(38, uiScale)));
             campaignSlotDeleteButtons[i].setPreferredSize(new Dimension(MenuDisplay.scaled(88, uiScale), MenuDisplay.scaled(38, uiScale)));
             JPanel slotButtons = transparentPanel();
             slotButtons.setLayout(new GridLayout(1, 2, MenuDisplay.scaled(6, uiScale), 0));
@@ -536,43 +537,120 @@ public final class MainMenuPanel extends JPanel {
             row.add(slotButtons, BorderLayout.WEST);
             row.add(campaignSlotLabels[i], BorderLayout.CENTER);
             row.setAlignmentX(Component.LEFT_ALIGNMENT);
+            row.setMaximumSize(new Dimension(Integer.MAX_VALUE, MenuDisplay.scaled(64, uiScale)));
             slotPanel.add(row);
             if (i < campaignSlotButtons.length - 1) {
                 slotPanel.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
             }
         }
-        singlePlayerCard.add(slotPanel);
+        slotPanel.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
+        deleteCampaignButton.setAlignmentX(Component.LEFT_ALIGNMENT);
+        slotPanel.add(deleteCampaignButton);
 
-        JPanel missionCard = createSectionPanel(new Color(221, 139, 75, 145), uiScale);
-        missionCard.add(eyebrowLabel("Mission Setup", uiScale, new Color(235, 176, 111)));
-        missionCard.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
-        missionCard.add(sectionTitle("Build A Custom Engagement", uiScale));
-        missionCard.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
-        missionCard.add(missionLead);
-        missionCard.add(Box.createVerticalStrut(MenuDisplay.scaled(18, uiScale)));
+        JPanel campaignBody = transparentPanel();
+        campaignBody.setLayout(new BorderLayout(MenuDisplay.scaled(24, uiScale), 0));
+        campaignBody.add(slotPanel, BorderLayout.WEST);
+        campaignBody.add(campaignChoicePanel, BorderLayout.CENTER);
+        campaignPanel.add(campaignBody, BorderLayout.CENTER);
+
+        JPanel customBattlePanel = createSectionPanel(new Color(221, 139, 75, 145), uiScale);
+        customBattlePanel.setLayout(new BorderLayout(0, MenuDisplay.scaled(18, uiScale)));
+        customBattlePanel.add(subMenuHeader("Custom Battle", "Build A Custom Engagement", backFromBattle,
+                uiScale, new Color(235, 176, 111)), BorderLayout.NORTH);
+        JPanel customBattleBody = verticalPanel();
+        customBattleBody.add(bodyLabel("Choose the battle type, map scale, faction, and seed before launching.", uiScale));
+        customBattleBody.add(Box.createVerticalStrut(MenuDisplay.scaled(16, uiScale)));
+        customBattleBody.add(missionFormShell);
+        customBattleBody.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
+        JPanel battleActions = new JPanel(new GridLayout(1, 1, 0, 0));
+        battleActions.setOpaque(false);
+        battleActions.setAlignmentX(Component.LEFT_ALIGNMENT);
+        battleActions.add(start);
+        customBattleBody.add(battleActions);
+        customBattlePanel.add(customBattleBody, BorderLayout.CENTER);
+
+        JPanel multiplayerPanel = createSectionPanel(new Color(64, 151, 158, 150), uiScale);
+        multiplayerPanel.setName("multiplayerEntryPanel");
+        multiplayerPanel.setLayout(new BorderLayout(0, MenuDisplay.scaled(18, uiScale)));
+        multiplayerPanel.add(subMenuHeader("Multiplayer", "Host Or Join A Game", backFromMultiplayer,
+                uiScale, new Color(119, 217, 208)), BorderLayout.NORTH);
+        JPanel multiplayerBody = verticalPanel();
+        JPanel multiplayerForm = createInsetPanel(new Color(8, 26, 33, 196), new Color(64, 151, 158, 135), uiScale);
+        multiplayerForm.add(formRow("Player Name:", multiplayerNameField, uiScale));
+        multiplayerForm.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
+        multiplayerForm.add(formRow("Server Address:", directAddressField, uiScale));
+        multiplayerForm.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
+        multiplayerForm.add(formRow("Mission:", multiplayerMissionBox, uiScale));
+        multiplayerBody.add(multiplayerForm);
+        multiplayerBody.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
+        JPanel multiplayerActions = new JPanel(new GridLayout(1, 2, MenuDisplay.scaled(12, uiScale), 0));
+        multiplayerActions.setOpaque(false);
+        multiplayerActions.setAlignmentX(Component.LEFT_ALIGNMENT);
+        multiplayerActions.add(hostBattle);
+        multiplayerActions.add(joinBattle);
+        multiplayerBody.add(multiplayerActions);
+        JLabel debugInfo = metaLabel("Protocol 1  |  Build " + AppInfo.VERSION + "  |  Manifest V1", uiScale);
+        debugInfo.setName("multiplayerDebugInfoLabel");
+        multiplayerBody.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
+        multiplayerBody.add(debugInfo);
+        multiplayerPanel.add(multiplayerBody, BorderLayout.CENTER);
+
+        JPanel settingsPanel = createSectionPanel(new Color(92, 110, 159, 150), uiScale);
+        settingsPanel.setLayout(new BorderLayout(0, MenuDisplay.scaled(18, uiScale)));
+        settingsPanel.add(subMenuHeader("Settings", "Controls And Accessibility", backFromSettings,
+                uiScale, new Color(176, 199, 239)), BorderLayout.NORTH);
+        JPanel settingsActions = transparentPanel();
+        settingsActions.setLayout(new GridLayout(0, 1, 0, MenuDisplay.scaled(10, uiScale)));
+        settingsActions.add(experienceButton);
+        settingsActions.add(controlsButton);
+        settingsPanel.add(settingsActions, BorderLayout.CENTER);
+
+        JPanel developerPanel = createSectionPanel(new Color(86, 77, 122, 150), uiScale);
+        developerPanel.setLayout(new BorderLayout(0, MenuDisplay.scaled(18, uiScale)));
+        developerPanel.add(subMenuHeader("Development Build Only", "Developer Tools", backFromDeveloper,
+                uiScale, new Color(199, 185, 238)), BorderLayout.NORTH);
+        JPanel developerActions = transparentPanel();
+        developerActions.setLayout(new GridLayout(0, 1, 0, MenuDisplay.scaled(10, uiScale)));
+        developerActions.add(galaxyMapTest);
+        developerActions.add(diagnosticsBattle);
+        developerPanel.add(developerActions, BorderLayout.CENTER);
+
+        menuCards.add(commandPanel, "command");
+        menuCards.add(campaignPanel, "campaign");
+        menuCards.add(customBattlePanel, "custom");
         if (multiplayerEntryPointEnabled()) {
-            missionCard.add(buildMultiplayerEntryPanel(hostBattle, joinBattle, diagnosticsBattle,
-                    directAddressField, multiplayerNameField, multiplayerMissionBox, uiScale));
-            missionCard.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
+            menuCards.add(multiplayerPanel, "multiplayer");
         }
-        missionCard.add(missionFormShell);
-        missionCard.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
+        menuCards.add(settingsPanel, "settings");
+        if (developerMenuEnabled()) {
+            menuCards.add(developerPanel, "developer");
+        }
 
-        JPanel missionActions = new JPanel(new GridLayout(1, 2, MenuDisplay.scaled(12, uiScale), 0));
-        missionActions.setOpaque(false);
-        missionActions.setAlignmentX(Component.LEFT_ALIGNMENT);
-        missionActions.add(start);
-        missionActions.add(credits);
-        missionCard.add(missionActions);
-
-        JPanel mainColumns = new JPanel(new GridLayout(1, 2, MenuDisplay.scaled(24, uiScale), 0));
-        mainColumns.setOpaque(false);
-        mainColumns.add(singlePlayerCard);
-        mainColumns.add(missionCard);
+        newCampaign.addActionListener(e -> menuCardsLayout.show(menuCards, "campaign"));
+        customBattle.addActionListener(e -> menuCardsLayout.show(menuCards, "custom"));
+        multiplayerButton.addActionListener(e -> menuCardsLayout.show(menuCards, "multiplayer"));
+        settingsButton.addActionListener(e -> menuCardsLayout.show(menuCards, "settings"));
+        backFromCampaign.addActionListener(e -> menuCardsLayout.show(menuCards, "command"));
+        backFromBattle.addActionListener(e -> menuCardsLayout.show(menuCards, "command"));
+        backFromMultiplayer.addActionListener(e -> menuCardsLayout.show(menuCards, "command"));
+        backFromSettings.addActionListener(e -> menuCardsLayout.show(menuCards, "command"));
+        backFromDeveloper.addActionListener(e -> menuCardsLayout.show(menuCards, "command"));
+        campaignOps.addActionListener(e -> {
+            selectedCampaignStartupPreset[0] = "";
+            campaignTypeLabel.setText("Selected: Open World Campaign");
+        });
+        linearCampaign.addActionListener(e -> {
+            selectedCampaignStartupPreset[0] = "linear_campaign";
+            campaignTypeLabel.setText("Selected: Linear Campaign");
+        });
 
         JPanel footerPanel = transparentPanel();
         footerPanel.setLayout(new BorderLayout(MenuDisplay.scaled(12, uiScale), 0));
-        footerPanel.add(quit, BorderLayout.WEST);
+        JPanel footerActions = new JPanel(new GridLayout(1, 2, MenuDisplay.scaled(10, uiScale), 0));
+        footerActions.setOpaque(false);
+        footerActions.add(credits);
+        footerActions.add(quit);
+        footerPanel.add(footerActions, BorderLayout.WEST);
         JPanel footerInfo = transparentPanel();
         footerInfo.setLayout(new BoxLayout(footerInfo, BoxLayout.Y_AXIS));
         versionLabel.setAlignmentX(Component.RIGHT_ALIGNMENT);
@@ -584,7 +662,7 @@ public final class MainMenuPanel extends JPanel {
 
         JPanel rootContent = createMenuContent(uiScale);
         rootContent.add(headerPanel, BorderLayout.NORTH);
-        rootContent.add(mainColumns, BorderLayout.CENTER);
+        rootContent.add(menuCards, BorderLayout.CENTER);
         rootContent.add(footerPanel, BorderLayout.SOUTH);
 
         setLayout(new GridBagLayout());
@@ -691,6 +769,44 @@ public final class MainMenuPanel extends JPanel {
     static boolean multiplayerEntryPointEnabled() {
         return PostAlphaFeatureFlags.enabled(PostAlphaFeatureFlags.Feature.MULTIPLAYER_CUSTOM_MISSIONS)
                 || PostAlphaFeatureFlags.enabled(PostAlphaFeatureFlags.Feature.MULTIPLAYER_CUSTOM_BATTLE);
+    }
+
+    private static boolean developerMenuEnabled() {
+        return Boolean.getBoolean("game.dev.menu")
+                || "true".equalsIgnoreCase(System.getenv("GAME_DEV_MENU"));
+    }
+
+    private static JPanel formRow(String labelText, JComponent field, double uiScale) {
+        JPanel row = transparentPanel();
+        row.setLayout(new BorderLayout(MenuDisplay.scaled(10, uiScale), 0));
+        JLabel label = label(labelText, uiScale);
+        label.setPreferredSize(new Dimension(MenuDisplay.scaled(150, uiScale), MenuDisplay.scaled(34, uiScale)));
+        row.add(label, BorderLayout.WEST);
+        row.add(field, BorderLayout.CENTER);
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return row;
+    }
+
+    private static JPanel verticalPanel() {
+        JPanel panel = transparentPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        return panel;
+    }
+
+    private static JPanel subMenuHeader(String eyebrow, String title, JButton backButton, double uiScale, Color accent) {
+        JPanel header = transparentPanel();
+        header.setLayout(new BorderLayout(MenuDisplay.scaled(18, uiScale), 0));
+        JPanel titleStack = verticalPanel();
+        titleStack.add(eyebrowLabel(eyebrow, uiScale, accent));
+        titleStack.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
+        titleStack.add(sectionTitle(title, uiScale));
+        header.add(titleStack, BorderLayout.WEST);
+        backButton.setPreferredSize(new Dimension(MenuDisplay.scaled(160, uiScale), MenuDisplay.scaled(38, uiScale)));
+        JPanel backWrap = transparentPanel();
+        backWrap.setLayout(new BorderLayout());
+        backWrap.add(backButton, BorderLayout.NORTH);
+        header.add(backWrap, BorderLayout.EAST);
+        return header;
     }
 
     private static JPanel buildMultiplayerEntryPanel(JButton hostBattle,
@@ -968,8 +1084,12 @@ public final class MainMenuPanel extends JPanel {
     public void refreshCampaignCheckpointState() {
         ResumeCampaignState checkpoint = loadResumeCampaignState();
         continueCampaignButton.setEnabled(checkpoint.available() && checkpoint.config() != null);
+        continueCampaignButton.setText(checkpoint.available() ? "Continue Campaign" : "No Active Campaign");
         deleteCampaignButton.setEnabled(checkpoint.available());
-        continueCampaignLabel.setText("<html><div style='width:300px;'>" + checkpoint.summaryText() + "</div></html>");
+        String primarySummary = checkpoint.available()
+                ? checkpoint.summaryText()
+                : "<b>No active campaign</b><br>Begin a campaign to establish your fleet.";
+        continueCampaignLabel.setText("<html><div style='width:520px;'>" + primarySummary + "</div></html>");
         for (int i = 0; i < campaignSlotButtons.length; i++) {
             ResumeCampaignState slot = loadResumeCampaignState(CAMPAIGN_SLOT_IDS[i]);
             campaignSlotButtons[i].setText(slot.available() ? "Load" : "Start");
@@ -1261,8 +1381,8 @@ public final class MainMenuPanel extends JPanel {
         } catch (ReflectiveOperationException ex) {
             String message = ex.getCause() == null ? ex.getMessage() : ex.getCause().getMessage();
             JOptionPane.showMessageDialog(parent,
-                    "Team E ship creator is unavailable: " + message,
-                    "Team E Shipyard",
+                    "Custom shipyard is unavailable: " + message,
+                    "Shipyard",
                     JOptionPane.ERROR_MESSAGE);
         }
     }

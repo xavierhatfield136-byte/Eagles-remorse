@@ -19,6 +19,9 @@ public class Turret {
     public static final double MISSILE_LIFE_MULT = 1.22;
     // Tactical alignment: non-beam ordnance should cross the screen visibly instead of feeling nearly hitscan.
     public static final double GUN_PROJECTILE_SPEED_MULT = 0.84;
+    public static final double GREEN_DIRECT_BEAM_DPS_MULT = 0.82;
+    public static final double GREEN_DIRECT_BEAM_WIDTH_MULT = 0.52;
+    public static final double GREEN_DIRECT_BEAM_MAX_WIDTH = 22.0;
 
     public enum Kind {
         GUN,
@@ -322,9 +325,9 @@ public class Turret {
                 double shotInterval = Math.max(GameContext.DT, effectiveReloadSeconds);
                 int beamLife = Math.max(2, (int) Math.round(shotInterval / GameContext.DT));
                 double baseDps = gunDamage / shotInterval;
-                double beamDps = baseDps * 1.08;
+                double beamDps = baseDps * GREEN_DIRECT_BEAM_DPS_MULT;
                 double beamLength = greenBeamLength(host, missileTarget, projectileSpeed);
-                double beamWidth = Math.max(4.5, radius * 0.95);
+                double beamWidth = greenBeamWidth(radius);
                 PhaserBeam p = new PhaserBeam(
                         host,
                         this,
@@ -454,6 +457,10 @@ public class Turret {
     static double greenBeamLength(Ship host, Ship target, double projectileSpeed) {
         double floor = (host == null || target == null) ? 300.0 : host.radius + target.radius + 190.0;
         return Math.max(floor, AISystem.STANDARD_PROSECUTION_RANGE);
+    }
+
+    static double greenBeamWidth(double turretRadius) {
+        return Math.max(3.8, Math.min(GREEN_DIRECT_BEAM_MAX_WIDTH, turretRadius * GREEN_DIRECT_BEAM_WIDTH_MULT));
     }
 
     private boolean isWithinHullWeaponArc(Ship host) {

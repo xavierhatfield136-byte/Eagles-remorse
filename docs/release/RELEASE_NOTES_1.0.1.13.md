@@ -31,8 +31,8 @@ version.
 - Retired legacy opening Red patrol/scout forces from dynamic campaign sector
   one so previously cleared starter contacts do not return as stale map ghosts.
 - Moved the old authored linear sector missions behind the separate
-  `Classic Campaign` menu entry.
-- Forced normal `Campaign Ops` starts, route launches, and legacy checkpoint
+  `Linear Campaign` menu entry.
+- Forced normal `Open World Campaign` starts, route launches, and legacy checkpoint
   resumes through the dynamic strategic overmap instead of the old sector script
   path.
 - Added main-menu campaign save deletion for the primary checkpoint/autosaves

@@ -59,7 +59,7 @@ public final class CustomShipBuilderDialog {
         CustomWeaponRegistry weaponRegistry = new CustomWeaponRegistry();
         CustomWeaponCreationService weaponService = new CustomWeaponCreationService(weaponRegistry, new CustomWeaponAssetProcessor());
         Window owner = parent == null ? null : SwingUtilities.getWindowAncestor(parent);
-        JDialog dialog = new JDialog(owner, "Team E Shipyard", Dialog.ModalityType.APPLICATION_MODAL);
+        JDialog dialog = new JDialog(owner, "Shipyard", Dialog.ModalityType.APPLICATION_MODAL);
         dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         dialog.setContentPane(buildContent(dialog, service, registry, weaponService));
         dialog.pack();
@@ -212,12 +212,12 @@ public final class CustomShipBuilderDialog {
             refreshShipList(service, shipModel, shipList, creation.definition().id);
             JOptionPane.showMessageDialog(dialog,
                     creation.definition().displayName + " was added to Team E.",
-                    "Team E Shipyard",
+                    "Shipyard",
                     JOptionPane.INFORMATION_MESSAGE);
         } catch (RuntimeException | IOException ex) {
             JOptionPane.showMessageDialog(dialog,
                     "Ship import failed: " + ex.getMessage(),
-                    "Team E Shipyard",
+                    "Shipyard",
                     JOptionPane.ERROR_MESSAGE);
         }
     }
@@ -329,7 +329,7 @@ public final class CustomShipBuilderDialog {
         if (selected == null) return;
         int confirm = JOptionPane.showConfirmDialog(dialog,
                 "Delete " + selected.definition.displayName + " from local Team E ships?",
-                "Team E Shipyard",
+                "Shipyard",
                 JOptionPane.OK_CANCEL_OPTION,
                 JOptionPane.WARNING_MESSAGE);
         if (confirm != JOptionPane.OK_OPTION) return;
@@ -340,7 +340,7 @@ public final class CustomShipBuilderDialog {
         } catch (IOException ex) {
             JOptionPane.showMessageDialog(dialog,
                     "Delete failed: " + ex.getMessage(),
-                    "Team E Shipyard",
+                    "Shipyard",
                     JOptionPane.ERROR_MESSAGE);
         }
     }
@@ -368,7 +368,7 @@ public final class CustomShipBuilderDialog {
             model.clear();
             JOptionPane.showMessageDialog(list,
                     "Could not load Team E ships: " + ex.getMessage(),
-                    "Team E Shipyard",
+                    "Shipyard",
                     JOptionPane.ERROR_MESSAGE);
         }
     }
