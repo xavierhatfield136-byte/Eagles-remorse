@@ -1434,6 +1434,9 @@ public final class UISystem {
             case "TAKE_COMMAND" -> CampaignSystem.takeCommandOfPendingStrategicEncounter(ctx);
             case "AUTO_RESOLVE" -> CampaignSystem.autoResolvePendingStrategicEncounter(ctx);
             case "DISMISS_STALE" -> dismissStaleStrategicEncounterPrompt(ctx);
+            case "INSERT_CLOSE" -> CampaignSystem.setPendingEncounterInsertionRange(ctx, "CLOSE");
+            case "INSERT_MODERATE" -> CampaignSystem.setPendingEncounterInsertionRange(ctx, "MODERATE");
+            case "INSERT_FAR" -> CampaignSystem.setPendingEncounterInsertionRange(ctx, "FAR");
             case "FOLLOW" -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "FOLLOW");
             case "JOIN" -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "JOIN");
             case "IGNORE" -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "IGNORE");
@@ -1446,6 +1449,31 @@ public final class UISystem {
     public static boolean handleCampaignMapWheel(GameContext ctx, MouseWheelEvent e, int viewportW, int viewportH) {
         if (ctx == null || ctx.ui == null || e == null || !ctx.ui.mapOpen) return false;
         if (!CampaignSystem.isStrategicGalaxyMapMode(ctx)) return false;
+        if (CampaignSystem.hasPendingStrategicEncounterChoice(ctx)
+                && ctx.ui.strategicEncounterPrompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_FORCE) {
+            int rotation = e.getWheelRotation();
+            if (rotation == 0) return true;
+            int visibleRows = Renderer.strategicEncounterAssetVisibleRows(viewportH);
+            if (Renderer.strategicEncounterFriendlyAssetPaneContains(ctx, viewportW, viewportH, e.getX(), e.getY())) {
+                int total = ctx.ui.strategicEncounterPrompt.friendlyAssets.isEmpty()
+                        ? ctx.ui.strategicEncounterPrompt.friendlyAssetLines.size()
+                        : ctx.ui.strategicEncounterPrompt.friendlyAssets.size();
+                int max = Math.max(0, total - visibleRows);
+                ctx.ui.strategicEncounterPrompt.friendlyAssetScroll =
+                        MathUtil.clamp(ctx.ui.strategicEncounterPrompt.friendlyAssetScroll + rotation, 0, max);
+                return true;
+            }
+            if (Renderer.strategicEncounterEnemyAssetPaneContains(ctx, viewportW, viewportH, e.getX(), e.getY())) {
+                int total = ctx.ui.strategicEncounterPrompt.enemyAssets.isEmpty()
+                        ? ctx.ui.strategicEncounterPrompt.enemyAssetLines.size()
+                        : ctx.ui.strategicEncounterPrompt.enemyAssets.size();
+                int max = Math.max(0, total - visibleRows);
+                ctx.ui.strategicEncounterPrompt.enemyAssetScroll =
+                        MathUtil.clamp(ctx.ui.strategicEncounterPrompt.enemyAssetScroll + rotation, 0, max);
+                return true;
+            }
+            return true;
+        }
         if (ctx.ui.campaignHubMenu.active) {
             try {
                 CampaignSystem.HubService service = CampaignSystem.HubService.valueOf(ctx.ui.campaignHubMenu.serviceId);

@@ -7649,7 +7649,8 @@ public class Renderer {
         g2.setColor(new Color(0, 0, 0, 178));
         g2.fillRect(0, 0, viewW, viewH);
 
-        int w = Math.min(620, Math.max(420, viewW - 180));
+        boolean forceBriefing = prompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_FORCE;
+        int w = forceBriefing ? Math.min(920, Math.max(560, viewW - 120)) : Math.min(620, Math.max(420, viewW - 180));
         int x = (viewW - w) / 2;
         int y = Math.max(70, viewH / 2 - 130);
 
@@ -7683,7 +7684,7 @@ public class Renderer {
             case INSTALLATION_THREAT ->
                     "Auto-resolve keeps the installation open. Taking command clears the hostile contact inside the harbor approach.";
             case CAMPAIGN_FORCE ->
-                    "Auto-resolve avoids tactical deployment. Taking command opens a direct fleet-contact battle.";
+                    "1 close  |  2 moderate  |  3 far  |  C take command  |  A auto-resolve";
             case CAMPAIGN_BATTLE ->
                     "F follow fleet  |  J join battle  |  I ignore  |  S offer support  |  O observe";
             case TASK_FORCE ->
@@ -7695,11 +7696,17 @@ public class Renderer {
         int infoLineCount = 0;
         if (prompt.location != null && !prompt.location.isBlank()) infoLineCount++;
         if (prompt.strengthReadout != null && !prompt.strengthReadout.isBlank()) infoLineCount++;
+        int briefingRows = forceBriefing ? strategicEncounterBriefingVisibleRows(viewH) : 0;
+        int briefingHeight = forceBriefing ? 44 + briefingRows * strategicEncounterBriefingRowHeight()
+                + ((prompt.insertionDetail == null || prompt.insertionDetail.isBlank()) ? 0 : 18)
+                + 30 : 0;
         int h = 154
                 + Math.max(1, titleLines.size()) * 24
                 + Math.max(0, infoLineCount) * 18
                 + Math.max(1, bodyLines.size()) * 18
-                + Math.max(1, footerLines.size()) * 14;
+                + Math.max(1, footerLines.size()) * 14
+                + briefingHeight;
+        y = Math.max(36, Math.min(Math.max(36, viewH - h - 36), viewH / 2 - h / 2));
         drawHudPanelFrame(g2, x, y, w, h, frameTitle, new Color(255, 206, 122, 230), ThemeArt.HUD_SPECIAL_FRAME);
         Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
 
@@ -7739,11 +7746,36 @@ public class Renderer {
             bodyY += 18;
         }
 
-        int chipY = y + h - 58;
+        if (forceBriefing) {
+            int briefingY = bodyY + 10;
+            int gutter = 22;
+            int colW = Math.max(160, (inner.width - gutter) / 2);
+            Rectangle friendlyPane = new Rectangle(inner.x, briefingY, colW, 26 + briefingRows * strategicEncounterBriefingRowHeight());
+            Rectangle enemyPane = new Rectangle(inner.x + colW + gutter, briefingY, colW, 26 + briefingRows * strategicEncounterBriefingRowHeight());
+            prompt.friendlyAssetScroll = MathUtil.clamp(prompt.friendlyAssetScroll, 0,
+                    Math.max(0, briefingAssetCount(prompt, true) - briefingRows));
+            prompt.enemyAssetScroll = MathUtil.clamp(prompt.enemyAssetScroll, 0,
+                    Math.max(0, briefingAssetCount(prompt, false) - briefingRows));
+            drawStrategicBriefingAssetPane(g2, prompt, friendlyPane, true, briefingRows);
+            drawStrategicBriefingAssetPane(g2, prompt, enemyPane, false, briefingRows);
+            int detailY = briefingY + 26 + briefingRows * strategicEncounterBriefingRowHeight() + 4;
+            if (prompt.insertionDetail != null && !prompt.insertionDetail.isBlank()) {
+                g2.setColor(new Color(200, 218, 238, 212));
+                g2.drawString(ellipsizeToWidth(g2, prompt.insertionDetail, inner.width), inner.x, detailY);
+            }
+        }
+
+        int chipY = y + h - (forceBriefing ? 86 : 58);
         if (prompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_BATTLE) {
             drawHudStatusChip(g2, "J JOIN", inner.x, chipY, 76, 22, new Color(255, 206, 122, 224), true);
             drawHudStatusChip(g2, "I IGNORE", inner.x + 90, chipY, 82, 22, new Color(190, 190, 220, 224), true);
         } else {
+            if (forceBriefing) {
+                drawInsertionChip(g2, prompt, "CLOSE", "1 CLOSE", inner.x, chipY, 92);
+                drawInsertionChip(g2, prompt, "MODERATE", "2 MODERATE", inner.x + 104, chipY, 118);
+                drawInsertionChip(g2, prompt, "FAR", "3 FAR", inner.x + 234, chipY, 78);
+                chipY += 30;
+            }
             drawHudStatusChip(g2, "A AUTO-RESOLVE", inner.x, chipY, 132, 22, new Color(132, 196, 255, 224), true);
             drawHudStatusChip(g2, "C TAKE COMMAND", inner.x + 146, chipY, 142, 22, new Color(255, 206, 122, 224), true);
             if (!CampaignSystem.hasValidStrategicEncounterResponder(ctx)) {
@@ -7760,6 +7792,136 @@ public class Renderer {
             footerY += 14;
         }
 
+        g2.setFont(oldFont);
+        g2.setColor(oldColor);
+    }
+
+    private static int strategicEncounterBriefingVisibleRows(int viewH) {
+        if (viewH < 660) return 3;
+        if (viewH < 820) return 4;
+        return 5;
+    }
+
+    private static int strategicEncounterBriefingRowHeight() {
+        return 54;
+    }
+
+    private static int briefingAssetCount(UiState.StrategicEncounterPrompt prompt, boolean friendly) {
+        if (prompt == null) return 0;
+        List<UiState.BriefingAsset> assets = friendly ? prompt.friendlyAssets : prompt.enemyAssets;
+        if (assets != null && !assets.isEmpty()) return assets.size();
+        List<String> lines = friendly ? prompt.friendlyAssetLines : prompt.enemyAssetLines;
+        return lines == null ? 0 : lines.size();
+    }
+
+    private static void drawStrategicBriefingAssetPane(Graphics2D g2,
+                                                       UiState.StrategicEncounterPrompt prompt,
+                                                       Rectangle pane,
+                                                       boolean friendly,
+                                                       int visibleRows) {
+        if (g2 == null || prompt == null || pane == null) return;
+        Color accent = friendly ? new Color(132, 196, 255, 228) : new Color(255, 146, 122, 228);
+        String title = friendly ? "BLUE / ALLIED ASSETS" : "ENEMY ASSETS";
+        int rowH = strategicEncounterBriefingRowHeight();
+        List<UiState.BriefingAsset> assets = friendly ? prompt.friendlyAssets : prompt.enemyAssets;
+        List<String> fallbackLines = friendly ? prompt.friendlyAssetLines : prompt.enemyAssetLines;
+        int total = assets == null || assets.isEmpty() ? (fallbackLines == null ? 0 : fallbackLines.size()) : assets.size();
+        int scroll = MathUtil.clamp(friendly ? prompt.friendlyAssetScroll : prompt.enemyAssetScroll, 0, Math.max(0, total - visibleRows));
+
+        g2.setFont(new Font("Consolas", Font.BOLD, 12));
+        g2.setColor(accent);
+        g2.drawString(title, pane.x, pane.y + 14);
+        if (total > visibleRows) {
+            g2.setFont(new Font("Consolas", Font.PLAIN, 9));
+            String counter = (scroll + 1) + "-" + Math.min(total, scroll + visibleRows) + " / " + total;
+            g2.drawString(counter, pane.x + pane.width - g2.getFontMetrics().stringWidth(counter), pane.y + 14);
+        }
+
+        Shape oldClip = g2.getClip();
+        Rectangle rowsClip = new Rectangle(pane.x, pane.y + 22, pane.width, Math.max(1, visibleRows * rowH));
+        g2.clip(rowsClip);
+        for (int i = 0; i < visibleRows && i + scroll < total; i++) {
+            int index = i + scroll;
+            Rectangle row = new Rectangle(pane.x, pane.y + 24 + i * rowH, pane.width, rowH - 7);
+            g2.setColor(new Color(12, 18, 30, 132));
+            g2.fillRoundRect(row.x, row.y, row.width, row.height, 10, 10);
+            g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 68));
+            g2.drawRoundRect(row.x, row.y, row.width, row.height, 10, 10);
+            if (assets != null && !assets.isEmpty()) {
+                drawStrategicBriefingAssetRow(g2, assets.get(index), row, accent);
+            } else if (fallbackLines != null) {
+                g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+                g2.setColor(friendly ? new Color(214, 232, 250, 216) : new Color(250, 214, 204, 216));
+                g2.drawString(ellipsizeToWidth(g2, fallbackLines.get(index), row.width - 12), row.x + 6, row.y + 25);
+            }
+        }
+        g2.setClip(oldClip);
+    }
+
+    private static void drawStrategicBriefingAssetRow(Graphics2D g2,
+                                                      UiState.BriefingAsset asset,
+                                                      Rectangle row,
+                                                      Color accent) {
+        if (asset == null || row == null) return;
+        ShipRole role = asset.role == null ? ShipRole.PATROL : asset.role;
+        Faction faction = asset.faction == null ? Faction.ALLY : asset.faction;
+        drawCanonicalHullSprite(g2, role, faction, new Rectangle(row.x + 6, row.y + 5, 44, row.height - 10),
+                0.86f, accent);
+        int textX = row.x + 58;
+        int maxText = Math.max(36, row.width - 66);
+        g2.setFont(new Font("Consolas", Font.BOLD, 10));
+        g2.setColor(new Color(242, 248, 255, 226));
+        g2.drawString(ellipsizeToWidth(g2, asset.name.toUpperCase(Locale.US), maxText), textX, row.y + 17);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 9));
+        g2.setColor(new Color(184, 204, 226, 184));
+        String roleLine = shopRoleTitle(role) + "  |  " + Math.round(MathUtil.clamp(asset.condition, 0.0, 100.0)) + "%";
+        g2.drawString(ellipsizeToWidth(g2, roleLine, maxText), textX, row.y + 31);
+        if (asset.forceName != null && !asset.forceName.isBlank()) {
+            g2.setColor(new Color(170, 190, 214, 150));
+            g2.drawString(ellipsizeToWidth(g2, asset.forceName, maxText), textX, row.y + 43);
+        }
+    }
+
+    private static void drawInsertionChip(Graphics2D g2,
+                                          UiState.StrategicEncounterPrompt prompt,
+                                          String range,
+                                          String label,
+                                          int x,
+                                          int y,
+                                          int w) {
+        boolean active = prompt != null && range.equalsIgnoreCase(prompt.insertionRange);
+        Color accent = active ? new Color(255, 206, 122, 236) : new Color(150, 184, 218, 196);
+        drawHudStatusChip(g2, label, x, y, w, 22, accent, active);
+    }
+
+    public static void drawCampaignEncounterLoadingOverlay(Graphics2D g2, GameContext ctx, int viewW, int viewH) {
+        if (g2 == null || ctx == null || ctx.ui == null || !ctx.ui.campaignEncounterLoading.active) return;
+        UiState.CampaignEncounterLoading loading = ctx.ui.campaignEncounterLoading;
+        g2.setColor(new Color(0, 0, 0, 150));
+        g2.fillRect(0, 0, viewW, viewH);
+        Font oldFont = g2.getFont();
+        Color oldColor = g2.getColor();
+        g2.setFont(new Font("Consolas", Font.BOLD, 24));
+        g2.setColor(new Color(245, 238, 224, 236));
+        String title = (loading.title == null || loading.title.isBlank()) ? "PREPARING TACTICAL ENTRY" : loading.title;
+        FontMetrics fm = g2.getFontMetrics();
+        g2.drawString(title, (viewW - fm.stringWidth(title)) / 2, Math.max(90, viewH / 2 - 42));
+        g2.setFont(new Font("Consolas", Font.PLAIN, 15));
+        g2.setColor(new Color(205, 224, 242, 226));
+        String status = (loading.status == null || loading.status.isBlank()) ? "Loading" : loading.status;
+        FontMetrics sfm = g2.getFontMetrics();
+        g2.drawString(status, (viewW - sfm.stringWidth(status)) / 2, Math.max(124, viewH / 2 - 8));
+        int barW = Math.min(720, Math.max(260, viewW - 180));
+        int barH = 16;
+        int barX = (viewW - barW) / 2;
+        int barY = viewH - 58;
+        g2.setColor(new Color(8, 16, 24, 220));
+        g2.fillRect(barX, barY, barW, barH);
+        g2.setColor(new Color(116, 186, 255, 230));
+        int fill = (int) Math.round(barW * MathUtil.clamp(loading.progress, 0.0, 1.0));
+        g2.fillRect(barX, barY, fill, barH);
+        g2.setColor(new Color(235, 244, 255, 210));
+        g2.drawRect(barX, barY, barW, barH);
         g2.setFont(oldFont);
         g2.setColor(oldColor);
     }
@@ -9033,6 +9195,11 @@ public class Renderer {
             end--;
         }
         return text.substring(0, Math.max(1, end)) + ellipsis;
+    }
+
+    private static String ellipsizeToWidth(Graphics2D g2, String text, int maxWidth) {
+        if (g2 == null) return "";
+        return fitShopText(g2.getFontMetrics(), text == null ? "" : text, maxWidth);
     }
 
     private static String shopRoleTitle(ShipRole role) {
@@ -13592,7 +13759,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             }
             return null;
         }
-        String[] actions = {"AUTO_RESOLVE", "TAKE_COMMAND", "DISMISS_STALE"};
+        String[] actions = prompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_FORCE
+                ? new String[]{"INSERT_CLOSE", "INSERT_MODERATE", "INSERT_FAR", "AUTO_RESOLVE", "TAKE_COMMAND", "DISMISS_STALE"}
+                : new String[]{"AUTO_RESOLVE", "TAKE_COMMAND", "DISMISS_STALE"};
         for (int i = 0; i < chips.length && i < actions.length; i++) {
             if (chips[i].contains(mouseX, mouseY)) {
                 return new CampaignHubClickTarget(CampaignHubClickTarget.Kind.STRATEGIC_ENCOUNTER, "", actions[i]);
@@ -13603,7 +13772,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static Rectangle[] strategicEncounterChipRects(GameContext ctx, int viewW, int viewH) {
         UiState.StrategicEncounterPrompt prompt = ctx.ui.strategicEncounterPrompt;
-        int w = Math.min(620, Math.max(420, viewW - 180));
+        boolean forceBriefing = prompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_FORCE;
+        int w = forceBriefing ? Math.min(920, Math.max(560, viewW - 120)) : Math.min(620, Math.max(420, viewW - 180));
         int x = (viewW - w) / 2;
         int y = Math.max(70, viewH / 2 - 130);
         BufferedImage metricsImage = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
@@ -13625,7 +13795,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 case INSTALLATION_THREAT ->
                         "Auto-resolve keeps the installation open. Taking command clears the hostile contact inside the harbor approach.";
                 case CAMPAIGN_FORCE ->
-                        "Auto-resolve avoids tactical deployment. Taking command opens a direct fleet-contact battle.";
+                        "1 close  |  2 moderate  |  3 far  |  C take command  |  A auto-resolve";
                 case CAMPAIGN_BATTLE ->
                         "J join battle  |  I ignore";
                 case TASK_FORCE ->
@@ -13638,13 +13808,28 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         int infoLineCount = 0;
         if (prompt.location != null && !prompt.location.isBlank()) infoLineCount++;
         if (prompt.strengthReadout != null && !prompt.strengthReadout.isBlank()) infoLineCount++;
-        int h = 154 + titleLines * 24 + infoLineCount * 18 + bodyLines * 18 + footerLines * 14;
+        int briefingRows = forceBriefing ? strategicEncounterBriefingVisibleRows(viewH) : 0;
+        int briefingHeight = forceBriefing ? 44 + briefingRows * strategicEncounterBriefingRowHeight()
+                + ((prompt.insertionDetail == null || prompt.insertionDetail.isBlank()) ? 0 : 18)
+                + 30 : 0;
+        int h = 154 + titleLines * 24 + infoLineCount * 18 + bodyLines * 18 + footerLines * 14 + briefingHeight;
+        y = Math.max(36, Math.min(Math.max(36, viewH - h - 36), viewH / 2 - h / 2));
         Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
-        int chipY = y + h - 58;
+        int chipY = y + h - (forceBriefing ? 86 : 58);
         if (prompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_BATTLE) {
             return new Rectangle[]{
                     new Rectangle(inner.x, chipY, 76, 22),
                     new Rectangle(inner.x + 90, chipY, 82, 22)
+            };
+        }
+        if (prompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_FORCE) {
+            return new Rectangle[]{
+                    new Rectangle(inner.x, chipY, 92, 22),
+                    new Rectangle(inner.x + 104, chipY, 118, 22),
+                    new Rectangle(inner.x + 234, chipY, 78, 22),
+                    new Rectangle(inner.x, chipY + 30, 132, 22),
+                    new Rectangle(inner.x + 146, chipY + 30, 142, 22),
+                    new Rectangle(inner.x + 302, chipY + 30, 132, 22)
             };
         }
         return new Rectangle[]{
@@ -13652,6 +13837,66 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 new Rectangle(inner.x + 146, chipY, 142, 22),
                 new Rectangle(inner.x + 302, chipY, 132, 22)
         };
+    }
+
+    public static boolean strategicEncounterFriendlyAssetPaneContains(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
+        Rectangle pane = strategicEncounterAssetPaneRect(ctx, viewW, viewH, true);
+        return pane != null && pane.contains(mouseX, mouseY);
+    }
+
+    public static boolean strategicEncounterEnemyAssetPaneContains(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
+        Rectangle pane = strategicEncounterAssetPaneRect(ctx, viewW, viewH, false);
+        return pane != null && pane.contains(mouseX, mouseY);
+    }
+
+    public static int strategicEncounterAssetVisibleRows(int viewH) {
+        return strategicEncounterBriefingVisibleRows(viewH);
+    }
+
+    private static Rectangle strategicEncounterAssetPaneRect(GameContext ctx,
+                                                             int viewW,
+                                                             int viewH,
+                                                             boolean friendly) {
+        if (ctx == null || ctx.ui == null || !ctx.ui.strategicEncounterPrompt.active) return null;
+        UiState.StrategicEncounterPrompt prompt = ctx.ui.strategicEncounterPrompt;
+        if (prompt.kind != UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_FORCE) return null;
+        int w = Math.min(920, Math.max(560, viewW - 120));
+        int x = (viewW - w) / 2;
+        BufferedImage metricsImage = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D metrics = metricsImage.createGraphics();
+        Font titleFont = new Font("Consolas", Font.BOLD, 20);
+        Font bodyFont = new Font("Consolas", Font.PLAIN, 15);
+        Font footerFont = new Font("Consolas", Font.PLAIN, 12);
+        int titleLines = 1;
+        int bodyLines = 1;
+        int footerLines = 1;
+        try {
+            titleLines = Math.max(1, wrapHudText(metrics.getFontMetrics(titleFont), prompt.title, w - 52).size());
+            bodyLines = Math.max(1, wrapHudMultilineText(metrics.getFontMetrics(bodyFont), prompt.body, w - 52).size());
+            footerLines = Math.max(1, wrapHudText(metrics.getFontMetrics(footerFont),
+                    "1 close  |  2 moderate  |  3 far  |  C take command  |  A auto-resolve", w - 52).size());
+        } finally {
+            metrics.dispose();
+        }
+        int infoLineCount = 0;
+        if (prompt.location != null && !prompt.location.isBlank()) infoLineCount++;
+        if (prompt.strengthReadout != null && !prompt.strengthReadout.isBlank()) infoLineCount++;
+        int rows = strategicEncounterBriefingVisibleRows(viewH);
+        int briefingHeight = 44 + rows * strategicEncounterBriefingRowHeight()
+                + ((prompt.insertionDetail == null || prompt.insertionDetail.isBlank()) ? 0 : 18)
+                + 30;
+        int h = 154 + titleLines * 24 + infoLineCount * 18 + bodyLines * 18 + footerLines * 14 + briefingHeight;
+        int y = Math.max(36, Math.min(Math.max(36, viewH - h - 36), viewH / 2 - h / 2));
+        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
+        int infoY = inner.y + 24 + titleLines * 24 + 2;
+        if (prompt.location != null && !prompt.location.isBlank()) infoY += 18;
+        if (prompt.strengthReadout != null && !prompt.strengthReadout.isBlank()) infoY += 20;
+        int briefingY = infoY + 4 + bodyLines * 18 + 10;
+        int gutter = 22;
+        int colW = Math.max(160, (inner.width - gutter) / 2);
+        return friendly
+                ? new Rectangle(inner.x, briefingY, colW, 26 + rows * strategicEncounterBriefingRowHeight())
+                : new Rectangle(inner.x + colW + gutter, briefingY, colW, 26 + rows * strategicEncounterBriefingRowHeight());
     }
 
     public static boolean campaignFleetRosterContains(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {

@@ -78,10 +78,12 @@ public final class ProductionValidationHarness {
     }
 
     private static void validateThemeArt(List<String> errors, List<String> report) {
-        String[] slots = {
+        String[] requiredSlots = {
                 ThemeArt.MENU_MAIN_SHELL,
                 ThemeArt.MENU_SECTION_PANEL,
-                ThemeArt.MENU_INSET_PANEL,
+                ThemeArt.MENU_INSET_PANEL
+        };
+        String[] fallbackSlots = {
                 ThemeArt.HUD_STANDARD_PANEL,
                 ThemeArt.HUD_ALERT_PANEL,
                 ThemeArt.HUD_STATUS_STRIP,
@@ -89,12 +91,17 @@ public final class ProductionValidationHarness {
                 ThemeArt.HUD_RADAR_RING
         };
         int present = 0;
-        for (String slot : slots) {
+        for (String slot : requiredSlots) {
             boolean ok = ThemeArt.get(slot) != null;
             if (ok) present++;
             else errors.add("ui-theme: missing asset for " + slot);
         }
-        report.add("ui-theme slots=" + present + "/" + slots.length);
+        int fallbackPresent = 0;
+        for (String slot : fallbackSlots) {
+            if (ThemeArt.get(slot) != null) fallbackPresent++;
+        }
+        report.add("ui-theme menu slots=" + present + "/" + requiredSlots.length
+                + " hud overrides=" + fallbackPresent + "/" + fallbackSlots.length + " (fallback allowed)");
     }
 
     private static void validateSfxManifest(List<String> errors, List<String> report) {

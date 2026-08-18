@@ -1062,9 +1062,67 @@ class CampaignOvermapEncounterFlowTest {
 
         assertTrue(CampaignSystem.engageSelectedCampaignContact(ctx));
         assertTrue(CampaignSystem.takeCommandOfPendingStrategicEncounter(ctx));
+        assertTrue(ctx.ui.campaignEncounterLoading.active);
+        assertTrue(st.strategicOvermapMode);
+        assertEquals(GameState.MAP, ctx.state);
+
+        CampaignSystem.update(ctx, 1.2);
+
         assertFalse(st.strategicOvermapMode);
         assertTrue(st.galaxyEncounterActive);
         assertFalse(getBoolean(hostile, "destroyed"));
+    }
+
+    @Test
+    void directFleetContactBriefingListsAssetsAndHonorsFarInsertionChoice() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.playerGalaxyX = 2500.0;
+        st.playerGalaxyY = 2700.0;
+
+        Object hostile = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
+                "Regression Red Briefing Fight", "direct contact", "test briefing fleet fight",
+                st.playerGalaxyX + 900.0, st.playerGalaxyY + 40.0);
+        setBoolean(hostile, "simulationActive", true);
+        setDouble(hostile, "strength", 94.0);
+        setDouble(hostile, "contactConfidence", 0.95);
+        setDouble(hostile, "lastKnownAgeSec", 0.0);
+        setBoolean(hostile, "visibleToPlayer", true);
+        setObject(hostile, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+        addPoolRecord(st, Faction.ENEMY, ShipRole.INTERDICTION_TITAN, getInt(hostile, "id"), "Briefing Titan");
+        addPoolRecord(st, Faction.ENEMY, ShipRole.FRIGATE, getInt(hostile, "id"), "Briefing Escort");
+
+        CampaignSystem.selectCampaignContactTarget(ctx,
+                "Regression Red Briefing Fight",
+                "EXACT LIVE CONTACT",
+                "Tracked",
+                st.playerGalaxyX + 900.0,
+                st.playerGalaxyY + 40.0,
+                true,
+                true);
+
+        assertTrue(CampaignSystem.engageSelectedCampaignContact(ctx));
+        assertFalse(ctx.ui.strategicEncounterPrompt.friendlyAssetLines.isEmpty());
+        assertTrue(ctx.ui.strategicEncounterPrompt.enemyAssetLines.stream()
+                .anyMatch(line -> line.contains("Regression Red Briefing Fight")));
+        assertFalse(ctx.ui.strategicEncounterPrompt.friendlyAssets.isEmpty(),
+                "briefing should expose individual friendly hull rows, not only text summaries");
+        assertTrue(ctx.ui.strategicEncounterPrompt.enemyAssets.stream()
+                        .anyMatch(asset -> asset.role == ShipRole.INTERDICTION_TITAN
+                                && asset.name.contains("Briefing Titan")),
+                "briefing should expose each identified enemy hull by role and name");
+        assertTrue(CampaignSystem.setPendingEncounterInsertionRange(ctx, "FAR"));
+        assertEquals("FAR", ctx.ui.strategicEncounterPrompt.insertionRange);
+
+        assertTrue(CampaignSystem.takeCommandOfPendingStrategicEncounter(ctx));
+        assertEquals("FAR", st.pendingCampaignEncounterInsertionRange);
+        assertTrue(ctx.ui.campaignEncounterLoading.active);
+
+        CampaignSystem.update(ctx, 1.2);
+
+        assertFalse(ctx.ui.campaignEncounterLoading.active);
+        assertFalse(st.strategicOvermapMode);
+        assertTrue(st.galaxyEncounterActive);
     }
 
     @Test

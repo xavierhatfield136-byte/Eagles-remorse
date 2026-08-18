@@ -199,6 +199,57 @@ class CampaignFleetHubMenuRegressionTest {
     }
 
     @Test
+    void checkpointStoreDeletesPrimaryAndNamedSlotsIndependently() {
+        CampaignCheckpointStore.Checkpoint primary = new CampaignCheckpointStore.Checkpoint();
+        primary.nextSector = 4;
+        CampaignCheckpointStore.save(primary);
+
+        CampaignCheckpointStore.Checkpoint slotOne = new CampaignCheckpointStore.Checkpoint();
+        slotOne.nextSector = 9;
+        CampaignCheckpointStore.saveSlot("slot-1", slotOne);
+
+        CampaignCheckpointStore.Checkpoint slotTwo = new CampaignCheckpointStore.Checkpoint();
+        slotTwo.nextSector = 12;
+        CampaignCheckpointStore.saveSlot("slot-2", slotTwo);
+
+        CampaignCheckpointStore.Checkpoint autosave = new CampaignCheckpointStore.Checkpoint();
+        autosave.nextSector = 18;
+        CampaignCheckpointStore.saveAutosave(autosave, 2);
+
+        CampaignCheckpointStore.clearSlot("slot-1");
+
+        assertNotNull(CampaignCheckpointStore.load(), "deleting a named save must leave the primary checkpoint");
+        assertEquals(4, CampaignCheckpointStore.load().nextSector);
+        assertTrue(CampaignCheckpointStore.loadSlot("slot-1") == null);
+        assertNotNull(CampaignCheckpointStore.loadSlot("slot-2"));
+        assertNotNull(CampaignCheckpointStore.recoverLatestAutosave());
+
+        CampaignCheckpointStore.clearPrimaryAndAutosaves();
+
+        assertTrue(CampaignCheckpointStore.load() == null);
+        assertTrue(CampaignCheckpointStore.recoverLatestAutosave() == null);
+        assertNotNull(CampaignCheckpointStore.loadSlot("slot-2"),
+                "deleting the primary checkpoint and autosaves must leave named campaign saves");
+    }
+
+    @Test
+    void campaignOpsResumeConvertsLegacyLinearCheckpointToStrategicMap() {
+        CampaignCheckpointStore.Checkpoint checkpoint = new CampaignCheckpointStore.Checkpoint();
+        checkpoint.nextSector = 5;
+        CampaignCheckpointStore.save(checkpoint);
+
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000,
+                true, 4321L, false, 0, true));
+        SpawnSystem.initWorld(ctx);
+
+        assertNotNull(ctx.campaign);
+        assertEquals(5, ctx.campaign.sector);
+        assertTrue(CampaignSystem.isStrategicOvermapMode(ctx),
+                "Campaign Ops should quarantine legacy linear checkpoints onto the dynamic map");
+        assertEquals(GameState.MAP, ctx.state);
+    }
+
+    @Test
     void routeChoiceUpdatesPendingSectorBeforeLaunch() {
         GameContext ctx = campaignContext(GameMode.CAMPAIGN_OPS);
         ctx.campaign.sector = 4;
@@ -218,6 +269,9 @@ class CampaignFleetHubMenuRegressionTest {
 
         assertTrue(CampaignSystem.launchPendingEpisode(ctx));
         assertEquals(6, ctx.campaign.sector);
+        assertTrue(CampaignSystem.isStrategicOvermapMode(ctx),
+                "Campaign Ops route launch should return to the dynamic strategic map");
+        assertEquals(GameState.MAP, ctx.state);
         assertTrue(ctx.credits >= 120, "detour route should grant its credit bonus on launch");
         assertTrue(ctx.player.cargo >= 45, "detour route should grant ore on launch");
     }

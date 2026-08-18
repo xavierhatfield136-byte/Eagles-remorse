@@ -567,6 +567,9 @@ public final class GameplayActions {
             };
         }
         return switch (e.getKeyCode()) {
+            case java.awt.event.KeyEvent.VK_1 -> CampaignSystem.setPendingEncounterInsertionRange(ctx, "CLOSE");
+            case java.awt.event.KeyEvent.VK_2 -> CampaignSystem.setPendingEncounterInsertionRange(ctx, "MODERATE");
+            case java.awt.event.KeyEvent.VK_3 -> CampaignSystem.setPendingEncounterInsertionRange(ctx, "FAR");
             case java.awt.event.KeyEvent.VK_A -> CampaignSystem.autoResolvePendingStrategicEncounter(ctx);
             case java.awt.event.KeyEvent.VK_C,
                     java.awt.event.KeyEvent.VK_ENTER,

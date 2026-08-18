@@ -62,13 +62,22 @@ Baseline evidence recorded this pass:
   `.\gradlew.bat check`.
 - Windows package validation passed: `.\gradlew.bat phase11Packaging`.
 - Built portable Windows artifact: `build\package\windows\EaglesRemorse-1.0.1.12-windows-x64-full.zip`.
+- Windows portable manifest/loadability verification passed:
+  `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify-windows-portable-distribution.ps1`.
+- Verified Windows portable SHA-256:
+  `02272348875ee0e3a8e5eadc22f8c1091c2637df6f994a78ddf35819c0683636`.
+- Clean extracted-package launch smoke passed from an outside-repository temp
+  extraction with isolated working directory and isolated user data:
+  `build\reports\distribution-verification\isolated_launch_smoke_full_shakedown.json`.
+- Distribution gate report:
+  `build\reports\distribution-verification\release_candidate_gate.json`.
 - WiX was not found on `PATH`, so the EXE installer artifact was skipped by the
   existing Gradle packaging rule.
 
 Still requires owner/playtest/platform validation:
 
 - Full blind first-hour playtests.
-- Manual packaged Windows Academy/campaign smoke from clean user data.
+- Manual interactive packaged Windows Academy/campaign smoke from clean user data.
 - Linux/macOS packaged smoke tests if those platforms remain release targets.
 - Steamworks/AppID/depot setup.
 - Final screenshots, store copy, release notes, and owner go/no-go sign-off.
@@ -89,7 +98,7 @@ different kinds of checklist rows:
 
 Current checklist count after reconciliation:
 
-- `FIRST_HOUR_EXPERIENCE.md`: 298 checked, 474 unchecked.
+- `FIRST_HOUR_EXPERIENCE.md`: 302 checked, 470 unchecked.
 - `1_0_MASTER_IMPLEMENTATION_CHECKLIST.md`: 991 checked, 101 unchecked.
 
 Interpretation: the large number of unchecked rows is expected. The unchecked
@@ -108,11 +117,14 @@ Code-backed confidence currently established:
 - Full automated release validation, performance guardrails, save/load soak,
   campaign-transition fuzzing, screenshot regression, production validation, and
   Windows package validation have passed locally.
+- The Windows portable package passed staged/ZIP/extracted manifest checks,
+  runtime asset loadability, and hidden launch smoke from outside the repository.
 
 Items intentionally left unchecked:
 
 - Anything that requires blind first-hour playtesting.
-- Anything that requires an interactive packaged-build playthrough or Steamworks access.
+- Anything that requires an interactive packaged-build playthrough, visual QA,
+  external-machine validation, or Steamworks access.
 - Optional AAR detail such as per-ship damage dealt, missile interception counts,
   engagement range time, escort coverage time, and point-defense contribution.
 - Owner go/no-go and subjective quality acceptance.
@@ -122,9 +134,9 @@ Items intentionally left unchecked:
 These are the actionable blockers still open before treating this as a release
 candidate:
 
-1. Manually smoke-test the packaged Windows game from a clean user data
-   directory, including Academy start/completion, normal campaign start,
-   save/load, AAR display, telemetry summary, and no repo-file dependency.
+1. Manually smoke-test the packaged Windows game interactively from a clean user
+   data directory, including Academy start/completion, normal campaign start,
+   save/load, AAR display, and telemetry summary.
 2. Run blind first-hour playtests from a packaged build, record observation
    notes, collect interview answers, and promote reproducible confusion or
    softlocks into fixes.
@@ -244,8 +256,12 @@ Frozen work:
 
 ## 0.3 Current First-Hour Flow Audit
 
-- [ ] Start from a clean user data directory.
-- [ ] Open the game from the packaged build.
+Reconciliation note: local automation has proved clean-user-data startup from an
+outside-repository packaged extraction. The remaining rows in this section still
+require interactive observation of the actual first-hour flow.
+
+- [x] Start from a clean user data directory.
+- [x] Open the game from the packaged build.
 - [ ] Record all main menu choices visible to a new player.
 - [ ] Start a normal campaign with no developer knowledge.
 - [ ] Record the first five prompts or instructions shown.
@@ -1162,10 +1178,15 @@ Command School lesson flow.
 
 ## 9.5 Packaged-Build Tests
 
+Reconciliation note: local package verification has proved the Windows portable
+ZIP contents, runtime asset loadability, clean extraction, and outside-repository
+launch. Academy-specific packaged interaction is still unchecked until a human
+starts and plays the Academy from that package.
+
 - [ ] Windows packaged Academy launch succeeds.
 - [ ] Linux packaged Academy launch succeeds.
 - [ ] macOS packaged Academy launch succeeds when available.
-- [ ] Clean install does not require repo files.
+- [x] Clean install does not require repo files.
 - [x] Academy save path uses user data directory.
 - [x] Telemetry path uses user data directory.
 - [ ] Graduation import works from packaged build.
@@ -1375,7 +1396,7 @@ Official reference: https://partner.steamgames.com/doc/store/releasing
 - [ ] No AAR explanation that is known to be false.
 - [ ] No inaccessible mandatory control.
 - [ ] No progression requiring debug tools.
-- [ ] No packaged build dependency on repo files.
+- [x] No packaged build dependency on repo files.
 - [ ] No severe first-hour text overlap.
 - [ ] No missing required platform artifact.
 

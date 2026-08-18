@@ -1189,6 +1189,24 @@ public final class CampaignCheckpointStore {
         }
     }
 
+    public static void clearPrimaryAndAutosaves() {
+        synchronized (IO_LOCK) {
+            clearPrimary();
+            clearDirectory(autosaveDir(), "autosave_clear");
+        }
+    }
+
+    public static void clearSlot(String slotId) {
+        synchronized (IO_LOCK) {
+            Path path = slotPath(slotId);
+            try {
+                Files.deleteIfExists(path);
+            } catch (IOException ex) {
+                ErrorLog.logException("[campaign] checkpoint_slot_clear_failed path=" + path, ex);
+            }
+        }
+    }
+
     private static void addSlotSummary(List<SlotSummary> out, String id, String label, Path path, boolean autosave) {
         if (out == null || path == null || !Files.exists(path)) return;
         Checkpoint cp = readCheckpointThroughPrimary(path);

@@ -816,7 +816,8 @@ class CampaignLivingWarSystemTest {
                     ctx, st, 0.2);
         }
         assertTrue(simulationActiveNpcCount(st) <= 160, "simulation ticks should retain the bounded NPC roster");
-        assertEquals(catalogCount, st.campaignForces.size(), "simulation ticks should retain stable catalog entries");
+        assertTrue(st.campaignForces.size() <= catalogCount,
+                "simulation ticks may retire depleted fleets but must not recreate checklist catalog entries");
         assertEquals(nextId, st.nextCampaignForceId, "simulation ticks must not rebuild checklist catalog entries");
     }
 
@@ -969,6 +970,64 @@ class CampaignLivingWarSystemTest {
     }
 
     @Test
+    void emptyOncePhysicalFleetIsRemovedEvenWithStaleStrength() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object ghost = invokePrivate("ensureCampaignForce",
+                new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
+                        Faction.class, String.class, String.class, String.class, double.class, double.class},
+                st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
+                "Regression Empty Overworld Ghost", "red regression yard", "Should disappear", 2600.0, 2500.0);
+        setObject(ghost, "hadTacticalMembers", true);
+        setDouble(ghost, "strength", 88.0);
+        setDouble(ghost, "readiness", 90.0);
+        setDouble(ghost, "hullIntegrity", 90.0);
+        setDouble(ghost, "rosterTransitionGraceSec", 0.0);
+        ((Set<?>) getObject(ghost, "shipIds")).clear();
+
+        invokePrivate("cleanupInvalidCampaignForceReferences",
+                new Class[]{CampaignSystem.CampaignState.class}, st);
+
+        assertTrue(getBoolean(ghost, "destroyed"));
+        assertEquals("empty_overworld_roster", getObject(ghost, "removalReason"));
+    }
+
+    @Test
+    void friendlyOvermapFleetsSeparateInsteadOfStackingOnOnePoint() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object redA = invokePrivate("ensureCampaignForce",
+                new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
+                        Faction.class, String.class, String.class, String.class, double.class, double.class},
+                st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
+                "Regression Red Stack A", "red regression yard", "Stack test", 2500.0, 2500.0);
+        Object redB = invokePrivate("ensureCampaignForce",
+                new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
+                        Faction.class, String.class, String.class, String.class, double.class, double.class},
+                st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
+                "Regression Red Stack B", "red regression yard", "Stack test", 2500.0, 2500.0);
+        ensureRegressionForceRoster(st, redA, Faction.ENEMY);
+        ensureRegressionForceRoster(st, redB, Faction.ENEMY);
+        setDouble(redA, "x", 2500.0);
+        setDouble(redA, "y", 2500.0);
+        setDouble(redB, "x", 2500.0);
+        setDouble(redB, "y", 2500.0);
+        setDouble(redA, "targetX", 2500.0);
+        setDouble(redA, "targetY", 2500.0);
+        setDouble(redB, "targetX", 2500.0);
+        setDouble(redB, "targetY", 2500.0);
+        setObject(redA, "simulationActive", true);
+        setObject(redB, "simulationActive", true);
+
+        invokePrivate("enforceCampaignForceSpatialSeparation",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class}, ctx, st);
+
+        double separated = Math.hypot(getDouble(redA, "x") - getDouble(redB, "x"),
+                getDouble(redA, "y") - getDouble(redB, "y"));
+        assertTrue(separated >= 100.0, "separation pass should break exact same-faction overlap");
+    }
+
+    @Test
     void pendingMajorRedLaunchEmitsEarlyMidAndFinalWarnings() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
@@ -1006,6 +1065,29 @@ class CampaignLivingWarSystemTest {
             String name = getObject(force, "name").toString().toUpperCase();
             if (!name.equals("RED SCOUT PAIR") && !name.equals("RED PATROL GROUP") && !name.equals("RED INTERCEPTOR SQUADRON")) continue;
             throw new AssertionError(name + " should not be seeded on the opening overmap");
+        }
+    }
+
+    @Test
+    void staleOpeningRedWaveForcesArePurgedFromSectorOneState() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object stale = invokePrivate("ensureCampaignForce",
+                new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
+                        Faction.class, String.class, String.class, String.class, double.class, double.class},
+                st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Red Patrol Group", "legacy opening wave", "stale opening tutorial force",
+                st.playerGalaxyX + 120.0, st.playerGalaxyY);
+        assertTrue(stale != null, "test setup should create a legacy opening force");
+
+        invokePrivate("syncCampaignForceSimulationSeeds",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class},
+                ctx, st);
+
+        for (Object force : st.campaignForces) {
+            String name = getObject(force, "name").toString().toUpperCase();
+            assertFalse(name.equals("RED PATROL GROUP"),
+                    "legacy opening Red Patrol Group should be retired before it can reappear on the overmap");
         }
     }
 

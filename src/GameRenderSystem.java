@@ -350,6 +350,7 @@ public final class GameRenderSystem {
 
         drawCampaignMissionIntro(ctx, g2, viewportW, viewportH);
         drawCampaignTransitionOverlay(ctx, g2, viewportW, viewportH);
+        Renderer.drawCampaignEncounterLoadingOverlay(g2, ctx, viewportW, viewportH);
 
         if (CampaignSystem.hasPendingStrategicEncounterChoice(ctx)) {
             Renderer.drawStrategicEncounterOverlay(g2, ctx, viewportW, viewportH);
@@ -424,6 +425,7 @@ if (DevTools.isDebugOverlay()) {
                 Double.NaN, Double.NaN, ctx.ui.mapPings, null, ctx.eventBanner);
         drawCampaignMissionIntro(ctx, g2, viewportW, viewportH);
         drawCampaignTransitionOverlay(ctx, g2, viewportW, viewportH);
+        Renderer.drawCampaignEncounterLoadingOverlay(g2, ctx, viewportW, viewportH);
         if (CampaignSystem.hasPendingStrategicEncounterChoice(ctx)) {
             Renderer.drawStrategicEncounterOverlay(g2, ctx, viewportW, viewportH);
         }

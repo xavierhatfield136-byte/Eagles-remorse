@@ -150,6 +150,39 @@ public final class UiState {
         public String body = "";
         public String location = "";
         public String strengthReadout = "";
+        public String insertionRange = "MODERATE";
+        public String insertionDetail = "";
+        public final List<String> friendlyAssetLines = new ArrayList<>();
+        public final List<String> enemyAssetLines = new ArrayList<>();
+        public final List<BriefingAsset> friendlyAssets = new ArrayList<>();
+        public final List<BriefingAsset> enemyAssets = new ArrayList<>();
+        public int friendlyAssetScroll = 0;
+        public int enemyAssetScroll = 0;
+    }
+
+    public static final class BriefingAsset {
+        public String name = "";
+        public String forceName = "";
+        public ShipRole role = ShipRole.PATROL;
+        public Faction faction = Faction.ALLY;
+        public double condition = 100.0;
+
+        public BriefingAsset(String name, String forceName, ShipRole role, Faction faction, double condition) {
+            this.name = (name == null || name.isBlank()) ? "Ship" : name.trim();
+            this.forceName = (forceName == null) ? "" : forceName.trim();
+            this.role = role == null ? ShipRole.PATROL : role;
+            this.faction = faction == null ? Faction.ALLY : faction;
+            this.condition = MathUtil.clamp(condition, 0.0, 100.0);
+        }
+    }
+
+    public static final class CampaignEncounterLoading {
+        public boolean active = false;
+        public double progress = 0.0;
+        public String title = "";
+        public String status = "";
+        public final List<String> steps = new ArrayList<>();
+        public int stepIndex = 0;
     }
 
     public enum BlockingModalOwner {
@@ -236,6 +269,7 @@ public final class UiState {
     public final List<String> stateTransitionHistory = new ArrayList<>();
     public final StrategicEncounterPrompt strategicEncounterPrompt = new StrategicEncounterPrompt();
     private final Deque<StrategicEncounterPrompt> queuedStrategicEncounterPrompts = new ArrayDeque<>();
+    public final CampaignEncounterLoading campaignEncounterLoading = new CampaignEncounterLoading();
     public final CampaignHubMenu campaignHubMenu = new CampaignHubMenu();
     public final CampaignActionConfirm campaignActionConfirm = new CampaignActionConfirm();
     public final CommTradeMenu commTradeMenu = new CommTradeMenu();
@@ -344,7 +378,7 @@ public final class UiState {
 
     public boolean hasBlockingOverlay() {
         return shopOpen || baseMenuOpen || mapOpen || commsOpen || formationMenuOpen || powerManagementOpen || crewStationsOpen || flightDeckOpen || controlsScreenOpen
-                || strategicEncounterPrompt.active || campaignHubMenu.active || campaignActionConfirm.active || commTradeMenu.active
+                || strategicEncounterPrompt.active || campaignEncounterLoading.active || campaignHubMenu.active || campaignActionConfirm.active || commTradeMenu.active
                 || commsContextMenu.active;
     }
 
@@ -389,6 +423,43 @@ public final class UiState {
         submitStrategicEncounterPrompt(next);
     }
 
+    public void setStrategicEncounterBriefingAssets(List<String> friendlyLines,
+                                                    List<String> enemyLines,
+                                                    String insertionDetail) {
+        strategicEncounterPrompt.friendlyAssetLines.clear();
+        strategicEncounterPrompt.enemyAssetLines.clear();
+        if (friendlyLines != null) strategicEncounterPrompt.friendlyAssetLines.addAll(friendlyLines);
+        if (enemyLines != null) strategicEncounterPrompt.enemyAssetLines.addAll(enemyLines);
+        strategicEncounterPrompt.insertionDetail = (insertionDetail == null) ? "" : insertionDetail.trim();
+    }
+
+    public void setStrategicEncounterBriefingAssets(List<String> friendlyLines,
+                                                    List<String> enemyLines,
+                                                    List<BriefingAsset> friendlyAssets,
+                                                    List<BriefingAsset> enemyAssets,
+                                                    String insertionDetail) {
+        setStrategicEncounterBriefingAssets(friendlyLines, enemyLines, insertionDetail);
+        strategicEncounterPrompt.friendlyAssets.clear();
+        strategicEncounterPrompt.enemyAssets.clear();
+        if (friendlyAssets != null) strategicEncounterPrompt.friendlyAssets.addAll(friendlyAssets);
+        if (enemyAssets != null) strategicEncounterPrompt.enemyAssets.addAll(enemyAssets);
+        strategicEncounterPrompt.friendlyAssetScroll = 0;
+        strategicEncounterPrompt.enemyAssetScroll = 0;
+    }
+
+    public void setStrategicEncounterInsertionRange(String insertionRange) {
+        strategicEncounterPrompt.insertionRange = normalizeInsertionRange(insertionRange);
+    }
+
+    private static String normalizeInsertionRange(String insertionRange) {
+        if (insertionRange == null || insertionRange.isBlank()) return "MODERATE";
+        return switch (insertionRange.trim().toUpperCase(java.util.Locale.US)) {
+            case "CLOSE" -> "CLOSE";
+            case "FAR" -> "FAR";
+            default -> "MODERATE";
+        };
+    }
+
     public void showCampaignBattleInterventionPrompt(int campaignBattleId, String title, String body,
                                                      String location, String strengthReadout) {
         StrategicEncounterPrompt next = newStrategicEncounterPrompt(StrategicEncounterPrompt.Kind.CAMPAIGN_BATTLE,
@@ -427,6 +498,14 @@ public final class UiState {
         strategicEncounterPrompt.body = "";
         strategicEncounterPrompt.location = "";
         strategicEncounterPrompt.strengthReadout = "";
+        strategicEncounterPrompt.insertionRange = "MODERATE";
+        strategicEncounterPrompt.insertionDetail = "";
+        strategicEncounterPrompt.friendlyAssetLines.clear();
+        strategicEncounterPrompt.enemyAssetLines.clear();
+        strategicEncounterPrompt.friendlyAssets.clear();
+        strategicEncounterPrompt.enemyAssets.clear();
+        strategicEncounterPrompt.friendlyAssetScroll = 0;
+        strategicEncounterPrompt.enemyAssetScroll = 0;
     }
 
     private StrategicEncounterPrompt newStrategicEncounterPrompt(StrategicEncounterPrompt.Kind kind,
@@ -484,6 +563,18 @@ public final class UiState {
         target.body = source.body;
         target.location = source.location;
         target.strengthReadout = source.strengthReadout;
+        target.insertionRange = normalizeInsertionRange(source.insertionRange);
+        target.insertionDetail = source.insertionDetail;
+        target.friendlyAssetLines.clear();
+        target.friendlyAssetLines.addAll(source.friendlyAssetLines);
+        target.enemyAssetLines.clear();
+        target.enemyAssetLines.addAll(source.enemyAssetLines);
+        target.friendlyAssets.clear();
+        target.friendlyAssets.addAll(source.friendlyAssets);
+        target.enemyAssets.clear();
+        target.enemyAssets.addAll(source.enemyAssets);
+        target.friendlyAssetScroll = source.friendlyAssetScroll;
+        target.enemyAssetScroll = source.enemyAssetScroll;
     }
 
     private void clearStrategicEncounterPromptReferences() {
@@ -506,6 +597,39 @@ public final class UiState {
         campaignHubMenu.active = false;
         campaignHubMenu.locationId = "";
         campaignHubMenu.serviceId = "";
+    }
+
+    public void startCampaignEncounterLoading(String title, List<String> steps) {
+        campaignEncounterLoading.active = true;
+        campaignEncounterLoading.progress = 0.0;
+        campaignEncounterLoading.title = (title == null || title.isBlank()) ? "PREPARING TACTICAL ENTRY" : title.trim();
+        campaignEncounterLoading.steps.clear();
+        if (steps != null) campaignEncounterLoading.steps.addAll(steps);
+        if (campaignEncounterLoading.steps.isEmpty()) {
+            campaignEncounterLoading.steps.add("Reading tactical contact");
+            campaignEncounterLoading.steps.add("Deploying fleet assets");
+            campaignEncounterLoading.steps.add("Opening combat space");
+        }
+        campaignEncounterLoading.stepIndex = 0;
+        campaignEncounterLoading.status = campaignEncounterLoading.steps.get(0);
+    }
+
+    public void updateCampaignEncounterLoading(double progress) {
+        if (!campaignEncounterLoading.active) return;
+        campaignEncounterLoading.progress = MathUtil.clamp(progress, 0.0, 1.0);
+        int lastIndex = Math.max(0, campaignEncounterLoading.steps.size() - 1);
+        int nextIndex = Math.min(lastIndex, (int) Math.floor(campaignEncounterLoading.progress * campaignEncounterLoading.steps.size()));
+        campaignEncounterLoading.stepIndex = nextIndex;
+        campaignEncounterLoading.status = campaignEncounterLoading.steps.get(nextIndex);
+    }
+
+    public void clearCampaignEncounterLoading() {
+        campaignEncounterLoading.active = false;
+        campaignEncounterLoading.progress = 0.0;
+        campaignEncounterLoading.title = "";
+        campaignEncounterLoading.status = "";
+        campaignEncounterLoading.steps.clear();
+        campaignEncounterLoading.stepIndex = 0;
     }
 
     public void showCampaignActionConfirm(String actionId, String title, String body) {

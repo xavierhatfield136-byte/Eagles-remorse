@@ -92,6 +92,56 @@ class CampaignFleetEscalationTest {
     }
 
     @Test
+    void intelOnlyRedTitanReserveDoesNotReadAsLevelOne() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object force = ensureCampaignForce(st,
+                CampaignSystem.CampaignForceKind.LOCAL_FORCE,
+                Faction.ENEMY,
+                "Red Interdiction Titan Reserve 13",
+                "Earthward reserve",
+                "intel-only titan reserve should classify by strategic profile",
+                st.playerGalaxyX + 820.0,
+                st.playerGalaxyY + 40.0);
+        setField(force, "strength", 94.0);
+        setField(force, "visibleToPlayer", true);
+        setField(force, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+
+        FleetClassifier.FleetProfile profile = (FleetClassifier.FleetProfile) invokePrivate(
+                "campaignForceFleetProfile",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, force.getClass()},
+                ctx, st, force);
+
+        assertTrue(profile.level.level >= 3, "titan reserve should not be classified as a level-1 light contact");
+        assertTrue(profile.titanCount >= 1);
+        assertTrue(profile.shipCount >= 8);
+    }
+
+    @Test
+    void lowLevelRedPatrolManifestDoesNotUseContactCapAsReinforcementFloor() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object force = ensureCampaignForce(st,
+                CampaignSystem.CampaignForceKind.PATROL_GROUP,
+                Faction.ENEMY,
+                "Regression Red Light Patrol",
+                "Starter lane",
+                "Light patrol should stay light",
+                st.playerGalaxyX + 620.0,
+                st.playerGalaxyY);
+        setField(force, "strength", 36.0);
+
+        Object manifest = invokePrivate("encounterManifestForForce",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, force.getClass(), int.class},
+                ctx, st, force, 24);
+        List<ShipRole> roles = manifestRoles(manifest);
+
+        assertTrue(roles.size() <= 4, "low-level patrol should not be padded out to the contact cap: " + roles);
+        assertTrue(roles.stream().noneMatch(role -> role.isCapitalCombatant() || role.isTitanOrMothership()),
+                "starter patrol should remain escort-scale: " + roles);
+    }
+
+    @Test
     void tacticalEncounterManifestOffsetsDoNotStackRepeatedRoles() throws Exception {
         double[] first = (double[]) invokePrivate("tacticalFormationOffset",
                 new Class[]{CampaignSystem.FleetFormationRole.class, int.class, boolean.class},

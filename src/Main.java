@@ -24,6 +24,11 @@ public class Main {
                     public MainMenuPanel.ResumeCampaignState load(String slotId) {
                         return loadResumeCampaignState(slotId);
                     }
+
+                    @Override
+                    public boolean delete(String slotId) {
+                        return deleteCampaignSave(slotId);
+                    }
                 },
                 this::paintMenuSpaceBackground,
                 () -> System.exit(0));
@@ -117,6 +122,15 @@ public class Main {
         return MainMenuPanel.ResumeCampaignState.available(
                 checkpoint.menuSummary(),
                 checkpoint.toGameConfig(app.config.GameMode.CAMPAIGN_OPS).withCampaignSlot(slotId));
+    }
+
+    private boolean deleteCampaignSave(String slotId) {
+        if (slotId == null || slotId.isBlank() || "primary".equalsIgnoreCase(slotId.trim())) {
+            CampaignCheckpointStore.clearPrimaryAndAutosaves();
+            return true;
+        }
+        CampaignCheckpointStore.clearSlot(slotId);
+        return true;
     }
 
     private String slotStatusSuffix() {

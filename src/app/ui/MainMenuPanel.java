@@ -42,8 +42,10 @@ public final class MainMenuPanel extends JPanel {
     private final long backgroundStartNs = System.nanoTime();
     private final Timer backgroundTimer;
     private final JButton continueCampaignButton;
+    private final JButton deleteCampaignButton;
     private final JLabel continueCampaignLabel;
     private final JButton[] campaignSlotButtons = new JButton[CAMPAIGN_SLOT_IDS.length];
+    private final JButton[] campaignSlotDeleteButtons = new JButton[CAMPAIGN_SLOT_IDS.length];
     private final JLabel[] campaignSlotLabels = new JLabel[CAMPAIGN_SLOT_IDS.length];
     private final ResumeCampaignProvider resumeCampaignProvider;
     private final SpaceBackgroundPainter spaceBackgroundPainter;
@@ -106,7 +108,9 @@ public final class MainMenuPanel extends JPanel {
         JButton credits = createMenuButton("Credits", new Color(48, 62, 82), uiScale);
         JButton quit = createMenuButton("Quit", new Color(100, 63, 73), uiScale);
         continueCampaignButton = createMenuButton("Continue Campaign", new Color(71, 139, 96), uiScale);
+        deleteCampaignButton = createMenuButton("Delete Save", new Color(117, 58, 70), uiScale);
         JButton campaignOps = createMenuButton("Campaign Ops", new Color(41, 112, 170), uiScale);
+        JButton linearCampaign = createMenuButton("Classic Campaign", new Color(82, 91, 126), uiScale);
         JButton customBattle = createMenuButton("Custom Battle", new Color(64, 126, 177), uiScale);
         JButton customShipCreator = createMenuButton("Team E Shipyard", new Color(66, 112, 148), uiScale);
         JButton galaxyMapTest = createMenuButton("Galaxy Map Test", new Color(72, 103, 150), uiScale);
@@ -143,6 +147,7 @@ public final class MainMenuPanel extends JPanel {
         continueCampaignLabel.setForeground(new Color(196, 219, 192, 220));
         for (int i = 0; i < campaignSlotButtons.length; i++) {
             campaignSlotButtons[i] = createMenuButton(CAMPAIGN_SLOT_LABELS[i], new Color(68, 111, 154), uiScale);
+            campaignSlotDeleteButtons[i] = createMenuButton("Delete", new Color(107, 56, 68), uiScale);
             campaignSlotLabels[i] = bodyLabel("", uiScale);
             campaignSlotLabels[i].setForeground(new Color(204, 222, 238, 216));
         }
@@ -270,6 +275,16 @@ public final class MainMenuPanel extends JPanel {
             persistSettings.accept(GameMode.CAMPAIGN_OPS);
             onStart.accept(checkpoint.config().withExperience(experience[0]));
         });
+        deleteCampaignButton.addActionListener(e -> {
+            ResumeCampaignState checkpoint = loadResumeCampaignState();
+            if (!checkpoint.available()) {
+                refreshCampaignCheckpointState();
+                return;
+            }
+            if (confirmDeleteCampaignSave("primary campaign save and autosaves", checkpoint.summaryText())) {
+                deleteCampaignSave("primary");
+            }
+        });
         for (int i = 0; i < campaignSlotButtons.length; i++) {
             final int slotIndex = i;
             campaignSlotButtons[i].addActionListener(e -> {
@@ -305,8 +320,45 @@ public final class MainMenuPanel extends JPanel {
                         .withCampaignSlot(slotId);
                 onStart.accept(launch.withExperience(experience[0]));
             });
+            campaignSlotDeleteButtons[i].addActionListener(e -> {
+                String slotId = CAMPAIGN_SLOT_IDS[slotIndex];
+                ResumeCampaignState checkpoint = loadResumeCampaignState(slotId);
+                if (!checkpoint.available()) {
+                    refreshCampaignCheckpointState();
+                    return;
+                }
+                if (confirmDeleteCampaignSave(CAMPAIGN_SLOT_LABELS[slotIndex], checkpoint.summaryText())) {
+                    deleteCampaignSave(slotId);
+                }
+            });
         }
         campaignOps.addActionListener(e -> startWithMode.accept(GameMode.CAMPAIGN_OPS));
+        linearCampaign.addActionListener(e -> {
+            persistSettings.accept(GameMode.CAMPAIGN_OPS);
+            int w = 5000;
+            int h = 5000;
+            if (mapBox.getSelectedIndex() == 1) {
+                w = 10000;
+                h = 10000;
+            }
+            if (mapBox.getSelectedIndex() == 2) {
+                w = 20000;
+                h = 20000;
+            }
+            long seed;
+            try {
+                seed = Long.parseLong(seedField.getText().trim());
+            } catch (Exception ex) {
+                seed = System.nanoTime();
+            }
+            if (seed == 0) seed = System.nanoTime();
+            PlayerTeamChoice choice = (PlayerTeamChoice) teamBox.getSelectedItem();
+            int playerTeamId = (choice == null) ? 0 : choice.teamId();
+            onStart.accept(new GameConfig(GameMode.CAMPAIGN_OPS, w, h, true, seed, false,
+                    playerTeamId, false,
+                    1, "", "",
+                    "linear_campaign").withExperience(experience[0]));
+        });
         customBattle.addActionListener(e -> {
             modeBox.setSelectedItem(GameMode.CUSTOM_BATTLES);
             startWithMode.accept(GameMode.CUSTOM_BATTLES);
@@ -445,6 +497,7 @@ public final class MainMenuPanel extends JPanel {
         campaignActions.setLayout(new GridLayout(0, 1, 0, MenuDisplay.scaled(10, uiScale)));
         campaignActions.add(campaignOps);
         campaignActions.add(continueCampaignButton);
+        campaignActions.add(linearCampaign);
         campaignActions.add(customBattle);
         campaignActions.add(customShipCreator);
         campaignActions.add(tutorialStart);
@@ -463,6 +516,9 @@ public final class MainMenuPanel extends JPanel {
         singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
         JPanel checkpointPanel = createInsetPanel(new Color(16, 35, 31, 190), new Color(86, 150, 111, 135), uiScale);
         checkpointPanel.add(continueCampaignLabel);
+        checkpointPanel.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
+        deleteCampaignButton.setAlignmentX(Component.LEFT_ALIGNMENT);
+        checkpointPanel.add(deleteCampaignButton);
         singlePlayerCard.add(checkpointPanel);
         singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(12, uiScale)));
         JPanel slotPanel = createInsetPanel(new Color(14, 28, 43, 196), new Color(91, 135, 181, 130), uiScale);
@@ -472,7 +528,12 @@ public final class MainMenuPanel extends JPanel {
             JPanel row = transparentPanel();
             row.setLayout(new BorderLayout(MenuDisplay.scaled(10, uiScale), 0));
             campaignSlotButtons[i].setPreferredSize(new Dimension(MenuDisplay.scaled(112, uiScale), MenuDisplay.scaled(38, uiScale)));
-            row.add(campaignSlotButtons[i], BorderLayout.WEST);
+            campaignSlotDeleteButtons[i].setPreferredSize(new Dimension(MenuDisplay.scaled(88, uiScale), MenuDisplay.scaled(38, uiScale)));
+            JPanel slotButtons = transparentPanel();
+            slotButtons.setLayout(new GridLayout(1, 2, MenuDisplay.scaled(6, uiScale), 0));
+            slotButtons.add(campaignSlotButtons[i]);
+            slotButtons.add(campaignSlotDeleteButtons[i]);
+            row.add(slotButtons, BorderLayout.WEST);
             row.add(campaignSlotLabels[i], BorderLayout.CENTER);
             row.setAlignmentX(Component.LEFT_ALIGNMENT);
             slotPanel.add(row);
@@ -907,17 +968,47 @@ public final class MainMenuPanel extends JPanel {
     public void refreshCampaignCheckpointState() {
         ResumeCampaignState checkpoint = loadResumeCampaignState();
         continueCampaignButton.setEnabled(checkpoint.available() && checkpoint.config() != null);
+        deleteCampaignButton.setEnabled(checkpoint.available());
         continueCampaignLabel.setText("<html><div style='width:300px;'>" + checkpoint.summaryText() + "</div></html>");
         for (int i = 0; i < campaignSlotButtons.length; i++) {
             ResumeCampaignState slot = loadResumeCampaignState(CAMPAIGN_SLOT_IDS[i]);
             campaignSlotButtons[i].setText(slot.available() ? "Load" : "Start");
             campaignSlotButtons[i].setEnabled(true);
+            campaignSlotDeleteButtons[i].setEnabled(slot.available());
             String summary = slot.available()
                     ? slot.summaryText()
                     : "Empty slot. Start a campaign here; F10 saves back to this file.";
             campaignSlotLabels[i].setText("<html><div style='width:245px;'><b>"
                     + CAMPAIGN_SLOT_LABELS[i] + "</b><br>" + summary + "</div></html>");
         }
+    }
+
+    private boolean confirmDeleteCampaignSave(String label, String summary) {
+        String details = (summary == null || summary.isBlank()) ? "" : "\n\n" + stripHtml(summary);
+        int result = JOptionPane.showConfirmDialog(
+                this,
+                "Delete " + label + "?" + details,
+                "Delete Campaign Save",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE);
+        return result == JOptionPane.YES_OPTION;
+    }
+
+    private void deleteCampaignSave(String slotId) {
+        if (resumeCampaignProvider != null && resumeCampaignProvider.delete(slotId)) {
+            refreshCampaignCheckpointState();
+        } else {
+            Toolkit.getDefaultToolkit().beep();
+            refreshCampaignCheckpointState();
+        }
+    }
+
+    private static String stripHtml(String text) {
+        return text == null ? "" : text
+                .replaceAll("(?i)<br\\s*/?>", "\n")
+                .replaceAll("<[^>]*>", "")
+                .replace("&nbsp;", " ")
+                .trim();
     }
 
     private ResumeCampaignState loadResumeCampaignState() {
@@ -1732,6 +1823,10 @@ public final class MainMenuPanel extends JPanel {
 
         default ResumeCampaignState load(String slotId) {
             return load();
+        }
+
+        default boolean delete(String slotId) {
+            return false;
         }
     }
 

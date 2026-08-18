@@ -3519,6 +3519,9 @@ class CampaignSystemModels {
         public int proximityAlertStage = 0;
         public double proximityAlertCooldownSec = 0.0;
         public boolean manualEncounterCommitInProgress = false;
+        public int pendingCampaignForceEncounterId = 0;
+        public String pendingCampaignEncounterInsertionRange = "MODERATE";
+        public double pendingCampaignEncounterLoadingSec = 0.0;
         public double factionDirectorAccumulatorSec = 0.0;
         public String redDirectorBrief = "Red director awaiting theater picture";
         public String greenDirectorBrief = "Green director awaiting theater picture";
