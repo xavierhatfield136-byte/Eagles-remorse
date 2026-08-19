@@ -127,6 +127,41 @@ class CampaignStrategicCommandHudTest {
     }
 
     @Test
+    void hostileContactDoesNotExposeLaunchStrikeAction() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.selectCampaignContactTarget(ctx,
+                "Red contact",
+                "Hostile fleet",
+                "Target-Quality",
+                ctx.campaign.playerGalaxyX + 320.0,
+                ctx.campaign.playerGalaxyY,
+                true,
+                true);
+
+        assertTrue(CampaignSystem.campaignVisibleActions(ctx).stream()
+                .noneMatch(action -> "LAUNCH_STRIKE".equals(action.id)));
+    }
+
+    @Test
+    void encounterInsertionRangesUseExplicitMeterBands() {
+        assertEquals(3000.0, CampaignSystem.encounterInsertionDistanceMetersForTests("CLOSE"), 0.001);
+        assertEquals(6000.0, CampaignSystem.encounterInsertionDistanceMetersForTests("MODERATE"), 0.001);
+        assertEquals(9000.0, CampaignSystem.encounterInsertionDistanceMetersForTests("FAR"), 0.001);
+    }
+
+    @Test
+    void deploymentPointSelectionDoesNotRewriteSelectedRange() {
+        UiState ui = new UiState();
+        ui.showCampaignForceEncounterPrompt(12, "HOSTILE FORCE", "body", "axis", "strength");
+        ui.setStrategicEncounterInsertionRange("FAR");
+        ui.setStrategicEncounterDeploymentPoint(0.38, 0.72);
+
+        assertEquals("FAR", ui.strategicEncounterPrompt.insertionRange);
+        assertEquals(0.38, ui.strategicEncounterPrompt.deploymentX, 0.001);
+        assertEquals(0.72, ui.strategicEncounterPrompt.deploymentY, 0.001);
+    }
+
+    @Test
     void campaignClarityLayerRecordsReportsMemoryAndWarRoomReadouts() {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;

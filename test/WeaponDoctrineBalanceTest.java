@@ -6,10 +6,58 @@ import java.lang.reflect.Method;
 
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WeaponDoctrineBalanceTest {
+
+    @Test
+    void conventionalGunProjectileCompressionHalvesCadenceAndDoublesShotDamage() {
+        FleetShip ship = new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 0.0, 0.0);
+        Turret gun = firstGun(ship);
+        assertTrue(gun != null, "expected a conventional gun on the frigate");
+        gun.cooldown = 1.0;
+        gun.damage = 10;
+        gun.setReady();
+        double cycleBefore = ship.weaponCycleRateMultiplier();
+        double damageBefore = ship.weaponDamageMultiplier();
+        double offenseBefore = Math.max(1.0, ship.doctrineOffenseDamageMultiplier);
+
+        Projectile shot = gun.fire(ship, null, GameContext.DT);
+
+        assertTrue(Turret.appliesGlobalNonMissileProjectileCompressionForTest(ship, gun, null));
+        double expectedCycle = cycleBefore
+                * 0.78
+                * Turret.GLOBAL_NON_MISSILE_PROJECTILE_RATE_MULT;
+        expectedCycle = Math.max(0.20, expectedCycle);
+        assertEquals(gun.cooldown / expectedCycle, gun.getCooldownRemaining(), 1e-6);
+
+        double expectedDamageInput = gun.damage
+                * damageBefore
+                * 1.28
+                * Turret.GLOBAL_NON_MISSILE_PROJECTILE_DAMAGE_MULT
+                * offenseBefore;
+        assertEquals(ship.resolveStrikeCraftWeaponDamage(gun, expectedDamageInput), shot.damage);
+    }
+
+    @Test
+    void projectileCompressionLeavesBeamsMinersAndPointDefenseCadenceAlone() {
+        FleetShip greenBeam = new FleetShip(ShipRole.FRIGATE, Faction.TEAM_C, 0.0, 0.0);
+        Turret greenGun = firstGun(greenBeam);
+        assertTrue(greenGun != null, "expected a green beam gun");
+        assertFalse(Turret.appliesGlobalNonMissileProjectileCompressionForTest(greenBeam, greenGun, null));
+
+        FleetShip miner = new FleetShip(ShipRole.MINER, Faction.ENEMY, 0.0, 0.0);
+        Turret miningGun = firstGun(miner);
+        assertTrue(miningGun != null, "expected a defensive miner gun");
+        assertFalse(Turret.appliesGlobalNonMissileProjectileCompressionForTest(miner, miningGun, null));
+
+        FleetShip pdCraft = new FleetShip(ShipRole.PD_CRAFT, Faction.ENEMY, 0.0, 0.0);
+        Turret pdGun = firstGun(pdCraft);
+        assertTrue(pdGun != null, "expected a point-defense gun");
+        assertFalse(Turret.appliesGlobalNonMissileProjectileCompressionForTest(pdCraft, pdGun, null));
+    }
 
     @Test
     void beamBoltFamilyUsesTheActualBeamBoltSpeed() {

@@ -34,13 +34,10 @@ class RendererHudLayoutTest {
     }
 
     @Test
-    void strikePanelSitsAboveBeamWhenRoomAllows() {
+    void combatHudPanelListOmitsRemovedStrikePanel() {
         List<Rectangle> panels = Renderer.combatHudPanelRects(1280, 720, true, true);
-        Rectangle beam = panels.get(0);
-        Rectangle strike = panels.get(panels.size() - 1);
 
-        assertTrue(strike.y + strike.height <= beam.y,
-                "strike menu should sit above the beam mode menu when there is room");
+        assertEquals(3, panels.size(), "combat HUD panel list should contain beam, missile, and cloak only");
     }
 
     @Test
@@ -180,6 +177,45 @@ class RendererHudLayoutTest {
     }
 
     @Test
+    void gameplayTurretsRenderOnlyWhenShipIsReadableOnScreen() {
+        BufferedImage image = new BufferedImage(220, 180, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = image.createGraphics();
+        try {
+            FleetShip frigate = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 0.0, 0.0);
+            assertFalse(Renderer.shouldRenderGameplayTurretsForShip(g2, frigate),
+                    "frigate turrets should be hidden when the hull is too small to inspect");
+
+            g2.scale(2.0, 2.0);
+            assertTrue(Renderer.shouldRenderGameplayTurretsForShip(g2, frigate),
+                    "zooming in should restore readable turret art");
+            assertTrue(Renderer.tacticalShipScreenDiameterForTurretRendering(g2, frigate)
+                    >= Renderer.gameplayTurretRenderMinScreenDiameterForTests());
+        } finally {
+            g2.dispose();
+        }
+    }
+
+    @Test
+    void xrayRoomIntegrityColorRampsFromGreenToBlack() {
+        Color healthy = Renderer.xrayRoomIntegrityFillColorForTests(1.0);
+        Color yellow = Renderer.xrayRoomIntegrityFillColorForTests(0.60);
+        Color orange = Renderer.xrayRoomIntegrityFillColorForTests(0.30);
+        Color red = Renderer.xrayRoomIntegrityFillColorForTests(0.10);
+        Color destroyed = Renderer.xrayRoomIntegrityFillColorForTests(0.0);
+
+        assertTrue(healthy.getGreen() > healthy.getRed(), "healthy rooms should read green");
+        assertTrue(yellow.getRed() > 200 && yellow.getGreen() > 180 && yellow.getBlue() < 100,
+                "moderately damaged rooms should read yellow");
+        assertTrue(orange.getRed() > orange.getGreen() && orange.getGreen() > orange.getBlue(),
+                "heavily damaged rooms should read orange");
+        assertTrue(red.getRed() > red.getGreen() * 2 && red.getRed() > red.getBlue() * 2,
+                "critical rooms should read red");
+        assertEquals(0, destroyed.getRed(), "destroyed rooms should be black");
+        assertEquals(0, destroyed.getGreen(), "destroyed rooms should be black");
+        assertEquals(0, destroyed.getBlue(), "destroyed rooms should be black");
+    }
+
+    @Test
     void factionHullLightingDoesNotPaintTransparentSpritePadding() throws Exception {
         Class<?> shipRenderer = null;
         for (Class<?> nested : Renderer.class.getDeclaredClasses()) {
@@ -281,7 +317,9 @@ class RendererHudLayoutTest {
     private static void assertPanelLayoutReadable(int viewW, int viewH, boolean cloak, boolean strike) {
         List<Rectangle> panels = Renderer.combatHudPanelRects(viewW, viewH, cloak, strike);
         Rectangle coreMenu = Renderer.getCoreMenuBarRect(viewW, viewH);
-        assertTrue(panels.size() >= 3, "expected combat mode panels and strike panel at " + viewW + "x" + viewH);
+        int expectedPanels = cloak ? 3 : 2;
+        assertEquals(expectedPanels, panels.size(),
+                "expected only beam, missile, and optional cloak panels at " + viewW + "x" + viewH);
         for (Rectangle panel : panels) {
             assertTrue(panel.x >= 0 && panel.y >= 0, "panel should stay on-screen");
             assertTrue(panel.x + panel.width <= viewW, "panel should fit horizontally");

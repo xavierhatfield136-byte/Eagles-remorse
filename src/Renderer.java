@@ -329,21 +329,7 @@ public class Renderer {
             MISSILE_FAST,
             MISSILE_AAA,
             CLOAK_CHARGE,
-            CLOAK_ACTIVE,
-            STRIKE_SELECT_TORPEDO,
-            STRIKE_SELECT_AIRWING,
-            STRIKE_SELECT_NUCLEAR,
-            STRIKE_LAUNCH,
-            INTERNAL_VIEW,
-            CREW_PRIORITY_AUTO,
-            CREW_PRIORITY_FIRE,
-            CREW_PRIORITY_REACTOR,
-            CREW_PRIORITY_ENGINES,
-            CREW_PRIORITY_WEAPONS,
-            CREW_PRIORITY_SHIELDS,
-            CREW_PRIORITY_SENSORS,
-            CREW_PRIORITY_BATTLE,
-            CREW_PRIORITY_CANCEL
+            CLOAK_ACTIVE
         }
 
         public final Kind kind;
@@ -405,11 +391,6 @@ public class Renderer {
     }
 
     private enum CombatHudPanelImageKey {
-        BEAM_RAPID,
-        BEAM_CONCENTRATED,
-        MISSILE_HEAVY,
-        MISSILE_FAST,
-        MISSILE_AAA,
         CLOAK_CHARGE,
         CLOAK_ACTIVE
     }
@@ -453,32 +434,6 @@ public class Renderer {
 
         private static BufferedImage load(CombatHudPanelImageKey key) {
             String[] candidates = switch (key) {
-                case BEAM_RAPID -> new String[]{
-                        "beam_mode_rapid.png",
-                        "beam_mode_rapid_fire.png",
-                        "beam mode rapid fire.png",
-                        "beam_mode_rapidfire.png",
-                        "beam mode rapid.png"
-                };
-                case BEAM_CONCENTRATED -> new String[]{
-                        "beam_mode_concentrated.png",
-                        "beam mode concentrated.png",
-                        "beam_mode_focus.png"
-                };
-                case MISSILE_HEAVY -> new String[]{
-                        "missile_mode_heavy.png",
-                        "missile mode heavy.png"
-                };
-                case MISSILE_FAST -> new String[]{
-                        "missile_mode_fast.png",
-                        "missile mode fast.png"
-                };
-                case MISSILE_AAA -> new String[]{
-                        "missile_mode_aaa.png",
-                        "missile mode aaa.png",
-                        "missile_mode_aa.png",
-                        "missile mode aa.png"
-                };
                 case CLOAK_CHARGE -> new String[]{
                         "cloak_mode_charge.png",
                         "cloak mode charge.png",
@@ -5560,40 +5515,12 @@ public class Renderer {
         if (includeCloak && layout.cloakRect.width > 0 && layout.cloakRect.height > 0) {
             out.add(new Rectangle(layout.cloakRect));
         }
-        if (includeStrike) {
-            Rectangle strike = combatStrikePanelRect(viewW, viewH, layout);
-            if (strike.width > 0 && strike.height > 0) out.add(new Rectangle(strike));
-        }
         return List.copyOf(out);
     }
 
     public static HudPanelClickTarget hudPanelClickTargetAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
         if (ctx == null || ctx.player == null) return null;
         CombatHudPanelLayout layout = combatHudPanelLayout(viewW, viewH, ctx.player.isStealth);
-        Rectangle crewPanel = crewPriorityPanelRect(viewW, viewH, layout, showCombatStrikePanel(ctx));
-        if (crewPanel.contains(mouseX, mouseY)) {
-            if (crewInternalViewRect(crewPanel).contains(mouseX, mouseY)) {
-                return new HudPanelClickTarget(HudPanelClickTarget.Kind.INTERNAL_VIEW);
-            }
-            for (int i = 0; i < CREW_PRIORITY_KINDS.length; i++) {
-                if (crewPriorityButtonRect(crewPanel, i).contains(mouseX, mouseY)) {
-                    return new HudPanelClickTarget(CREW_PRIORITY_KINDS[i]);
-                }
-            }
-        }
-        if (showCombatStrikePanel(ctx)) {
-            Rectangle strikeRect = combatStrikePanelRect(viewW, viewH, layout);
-            if (strikeRect != null && strikeRect.width > 0 && strikeRect.height > 0 && strikeRect.contains(mouseX, mouseY)) {
-                Rectangle t = combatStrikeTorpedoRect(strikeRect);
-                Rectangle a = combatStrikeAirWingRect(strikeRect);
-                Rectangle n = combatStrikeNuclearRect(strikeRect);
-                Rectangle l = combatStrikeLaunchRect(strikeRect);
-                if (t.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.STRIKE_SELECT_TORPEDO);
-                if (a.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.STRIKE_SELECT_AIRWING);
-                if (n.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.STRIKE_SELECT_NUCLEAR);
-                if (l.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.STRIKE_LAUNCH);
-            }
-        }
         Rectangle beamRapid = beamRapidRect(layout.beamRect);
         if (beamRapid.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.BEAM_RAPID);
         Rectangle beamConcentrated = beamConcentratedRect(layout.beamRect);
@@ -5621,58 +5548,6 @@ public class Renderer {
             if (cloakActive.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.CLOAK_ACTIVE);
         }
         return null;
-    }
-
-    private static final HudPanelClickTarget.Kind[] CREW_PRIORITY_KINDS = {
-            HudPanelClickTarget.Kind.CREW_PRIORITY_AUTO,
-            HudPanelClickTarget.Kind.CREW_PRIORITY_FIRE,
-            HudPanelClickTarget.Kind.CREW_PRIORITY_REACTOR,
-            HudPanelClickTarget.Kind.CREW_PRIORITY_ENGINES,
-            HudPanelClickTarget.Kind.CREW_PRIORITY_WEAPONS,
-            HudPanelClickTarget.Kind.CREW_PRIORITY_SHIELDS,
-            HudPanelClickTarget.Kind.CREW_PRIORITY_SENSORS,
-            HudPanelClickTarget.Kind.CREW_PRIORITY_BATTLE,
-            HudPanelClickTarget.Kind.CREW_PRIORITY_CANCEL
-    };
-
-    private static final String[] CREW_PRIORITY_LABELS = {
-            "AUTO", "FIRE", "CORE", "ENG", "WPN", "SHD", "SNS", "BTL", "CLR"
-    };
-
-    private static Rectangle crewPriorityPanelRect(int viewW, int viewH, CombatHudPanelLayout layout, boolean includeStrike) {
-        if (layout == null) return new Rectangle(0, 0, 0, 0);
-        int w = layout.beamRect.width;
-        int h = 118;
-        int x = layout.beamRect.x;
-        int y = layout.beamRect.y - h - 10;
-        if (includeStrike) {
-            Rectangle strike = combatStrikePanelRect(viewW, viewH, layout);
-            if (strike != null && strike.width > 0 && strike.height > 0) y = strike.y - h - 10;
-        }
-        if (y < 12) {
-            x = Math.max(12, layout.beamRect.x - w - 12);
-            y = layout.beamRect.y;
-        }
-        if (x + w > viewW - 12) x = Math.max(12, viewW - w - 12);
-        if (y + h > viewH - 12) y = Math.max(12, viewH - h - 12);
-        return new Rectangle(x, y, w, h);
-    }
-
-    private static Rectangle crewInternalViewRect(Rectangle panel) {
-        return new Rectangle(panel.x + 12, panel.y + 24, panel.width - 24, 22);
-    }
-
-    private static Rectangle crewPriorityButtonRect(Rectangle panel, int index) {
-        int cols = 4;
-        int gap = 5;
-        int row = index / cols;
-        int col = index % cols;
-        int x0 = panel.x + 12;
-        int y0 = panel.y + 52;
-        int usableW = panel.width - 24 - gap * (cols - 1);
-        int bw = Math.max(20, usableW / cols);
-        int bh = 16;
-        return new Rectangle(x0 + col * (bw + gap), y0 + row * (bh + gap), bw, bh);
     }
 
     private static Rectangle beamRapidRect(Rectangle panel) {
@@ -5719,54 +5594,23 @@ public class Renderer {
         if (player.isStealth) {
             drawCloakModePanel(g2, player, layout.cloakRect);
         }
-        if (showCombatStrikePanel(ctx)) {
-            Rectangle strikeRect = combatStrikePanelRect(viewW, viewH, layout);
-            drawCombatStrikeSelectionPanel(g2, ctx, strikeRect);
-        }
-        drawCrewPriorityPanel(g2, ctx, crewPriorityPanelRect(viewW, viewH, layout, showCombatStrikePanel(ctx)));
-    }
-
-    private static boolean showCombatStrikePanel(GameContext ctx) {
-        if (ctx == null || ctx.player == null || ctx.campaign == null || !ctx.campaign.enabled) return false;
-        if (ctx.player.role != ShipRole.MOTHERSHIP) return false;
-        return !CampaignSystem.isStrategicOvermapMode(ctx);
     }
 
     private static void drawBeamModePanel(Graphics2D g2, Player player, Rectangle rect) {
         if (g2 == null || player == null || rect == null) return;
-        CombatHudPanelImageKey key = (player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT)
-                ? CombatHudPanelImageKey.BEAM_CONCENTRATED
-                : CombatHudPanelImageKey.BEAM_RAPID;
-        HudPanelVisual visual = panelVisual(key, rect);
         String active = (player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT) ? "CONCENTRATED" : "RAPID FIRE";
-        if (visual != null) {
-            drawCombatModeImagePanel(g2, rect, "BEAM MODE", active, new Color(255, 182, 92, 220), visual);
-            return;
-        }
-        drawFallbackPanel(g2, rect, "BEAM MODE", active,
-                "Click left for rapid fire", "Click right for concentrated", new Color(255, 182, 92, 220));
+        drawBeamModeControlPanel(g2, player, rect, active);
     }
 
     private static void drawMissileModePanel(Graphics2D g2, Player player, Rectangle rect) {
         if (g2 == null || player == null || rect == null) return;
         Turret.MissileRole role = currentPlayerMissileRole(player);
-        CombatHudPanelImageKey key = switch (role) {
-            case ANTI_HEAVY -> CombatHudPanelImageKey.MISSILE_HEAVY;
-            case INTERCEPT -> CombatHudPanelImageKey.MISSILE_AAA;
-            case ANTI_LIGHT, ANTI_MEDIUM -> CombatHudPanelImageKey.MISSILE_FAST;
-        };
-        HudPanelVisual visual = panelVisual(key, rect);
         String active = switch (role) {
             case ANTI_HEAVY -> "HEAVY";
             case INTERCEPT -> "AAA";
             case ANTI_LIGHT, ANTI_MEDIUM -> "FAST";
         };
-        if (visual != null) {
-            drawCombatModeImagePanel(g2, rect, "MISSILE MODE", active, new Color(255, 156, 92, 220), visual);
-            return;
-        }
-        drawFallbackPanel(g2, rect, "MISSILE MODE", active,
-                "Top: heavy payload", "Mid: fast / Bottom: AAA", new Color(255, 156, 92, 220));
+        drawMissileModeControlPanel(g2, role, rect, active);
     }
 
     private static void drawCloakModePanel(Graphics2D g2, Player player, Rectangle rect) {
@@ -5790,50 +5634,79 @@ public class Renderer {
                         : new Color(108, 194, 255, 220));
     }
 
-    private static void drawCrewPriorityPanel(Graphics2D g2, GameContext ctx, Rectangle rect) {
-        if (g2 == null || ctx == null || ctx.player == null || rect == null || rect.width <= 0 || rect.height <= 0) return;
-        drawHudPanelFrame(g2, rect.x, rect.y, rect.width, rect.height, "INTERNAL CREW", new Color(145, 226, 190, 220));
+    private static void drawBeamModeControlPanel(Graphics2D g2, Player player, Rectangle rect, String active) {
+        Color accent = new Color(255, 182, 92, 220);
+        drawHudPanelFrame(g2, rect.x, rect.y, rect.width, rect.height, "BEAM MODE", accent);
         Font oldFont = g2.getFont();
-        g2.setFont(new Font("Consolas", Font.BOLD, 10));
-        FontMetrics fm = g2.getFontMetrics();
-
-        Rectangle view = crewInternalViewRect(rect);
-        boolean fpsViewActive = ctx.ui != null && ctx.ui.tacticalViewEnabled;
-        Color viewAccent = fpsViewActive ? new Color(124, 236, 180, 220) : new Color(150, 190, 230, 160);
-        drawHudStatusChip(g2, fpsViewActive ? "FPS VIEW ON" : "FPS VIEW", view.x, view.y, view.width, view.height,
-                viewAccent, fpsViewActive);
-
-        Ship.CrewPriority active = ctx.player.crewPriority();
-        for (int i = 0; i < CREW_PRIORITY_LABELS.length; i++) {
-            Rectangle b = crewPriorityButtonRect(rect, i);
-            Ship.CrewPriority priority = crewPriorityForHudButton(i);
-            boolean selected = i != 8 && active == priority;
-            Color fill = selected ? new Color(90, 210, 164, 220) : new Color(18, 32, 44, 190);
-            Color edge = selected ? new Color(205, 255, 226, 230) : new Color(120, 180, 216, 150);
-            g2.setColor(fill);
-            g2.fillRoundRect(b.x, b.y, b.width, b.height, 6, 6);
-            g2.setColor(edge);
-            g2.drawRoundRect(b.x, b.y, b.width, b.height, 6, 6);
-            String label = CREW_PRIORITY_LABELS[i];
-            int tx = b.x + Math.max(2, (b.width - fm.stringWidth(label)) / 2);
-            int ty = b.y + Math.max(fm.getAscent(), (b.height + fm.getAscent() - fm.getDescent()) / 2);
-            g2.setColor(selected ? new Color(8, 20, 18, 235) : new Color(218, 238, 248, 218));
-            g2.drawString(label, tx, ty);
-        }
+        Rectangle rapid = beamRapidRect(rect);
+        Rectangle concentrated = beamConcentratedRect(rect);
+        boolean concentratedActive = player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT;
+        drawCombatModeChoice(g2, rapid, "RAPID", "FIRE", !concentratedActive, accent);
+        drawCombatModeChoice(g2, concentrated, "FOCUS", "BEAM", concentratedActive, accent);
+        drawCombatModeActiveChip(g2, rect, active, accent);
         g2.setFont(oldFont);
     }
 
-    private static Ship.CrewPriority crewPriorityForHudButton(int index) {
-        return switch (index) {
-            case 1 -> Ship.CrewPriority.FIRE_SUPPRESSION;
-            case 2 -> Ship.CrewPriority.REACTOR;
-            case 3 -> Ship.CrewPriority.ENGINES;
-            case 4 -> Ship.CrewPriority.WEAPONS;
-            case 5 -> Ship.CrewPriority.SHIELDS;
-            case 6 -> Ship.CrewPriority.SENSORS;
-            case 7 -> Ship.CrewPriority.BATTLE_STATIONS;
-            default -> Ship.CrewPriority.AUTO_REPAIR;
-        };
+    private static void drawMissileModeControlPanel(Graphics2D g2, Turret.MissileRole role, Rectangle rect, String active) {
+        Color accent = new Color(255, 156, 92, 220);
+        drawHudPanelFrame(g2, rect.x, rect.y, rect.width, rect.height, "MISSILE MODE", accent);
+        Font oldFont = g2.getFont();
+        drawCombatModeChoice(g2, missileRowRect(rect, 0), "HEAVY", "PAYLOAD", role == Turret.MissileRole.ANTI_HEAVY, accent);
+        drawCombatModeChoice(g2, missileRowRect(rect, 1), "FAST", "INTERCEPT", role == Turret.MissileRole.ANTI_LIGHT || role == Turret.MissileRole.ANTI_MEDIUM, accent);
+        drawCombatModeChoice(g2, missileRowRect(rect, 2), "AAA", "SCREEN", role == Turret.MissileRole.INTERCEPT, accent);
+        drawCombatModeActiveChip(g2, rect, active, accent);
+        g2.setFont(oldFont);
+    }
+
+    private static void drawCombatModeActiveChip(Graphics2D g2, Rectangle rect, String active, Color accent) {
+        if (g2 == null || rect == null || active == null || active.isBlank()) return;
+        g2.setFont(new Font("Consolas", Font.BOLD, 11));
+        FontMetrics fm = g2.getFontMetrics();
+        int chipW = Math.min(rect.width - 24, fm.stringWidth(active) + 18);
+        drawHudStatusChip(g2, active, rect.x + rect.width - chipW - 12, rect.y + 6,
+                chipW, 18, accent, true);
+    }
+
+    private static void drawCombatModeChoice(Graphics2D g2, Rectangle r, String primary, String secondary,
+                                             boolean selected, Color accent) {
+        if (g2 == null || r == null || r.width <= 0 || r.height <= 0) return;
+        Color base = (accent == null) ? new Color(180, 205, 235, 220) : accent;
+        Paint oldPaint = g2.getPaint();
+        Color top = selected ? withAlpha(base, 96) : new Color(18, 28, 40, 178);
+        Color bottom = selected ? withAlpha(new Color(255, 232, 180), 56) : new Color(7, 14, 24, 202);
+        g2.setPaint(new GradientPaint(r.x, r.y, top, r.x, r.y + r.height, bottom));
+        g2.fillRoundRect(r.x, r.y, r.width, r.height, 8, 8);
+        g2.setPaint(oldPaint);
+        g2.setColor(selected ? withAlpha(base, 230) : withAlpha(new Color(140, 180, 220), 138));
+        g2.drawRoundRect(r.x, r.y, r.width - 1, r.height - 1, 8, 8);
+
+        int lamp = Math.min(12, Math.max(7, r.height / 4));
+        int lampX = r.x + 10;
+        int lampY = r.y + (r.height - lamp) / 2;
+        g2.setColor(selected ? new Color(255, 226, 132, 238) : new Color(120, 130, 144, 150));
+        g2.fillRoundRect(lampX, lampY, lamp, lamp, 4, 4);
+        g2.setColor(selected ? withAlpha(Color.WHITE, 184) : withAlpha(Color.WHITE, 48));
+        g2.drawRoundRect(lampX, lampY, lamp, lamp, 4, 4);
+
+        int textX = lampX + lamp + 10;
+        int maxW = Math.max(12, r.x + r.width - textX - 8);
+        g2.setFont(new Font("Consolas", Font.BOLD, r.height >= 40 ? 14 : 12));
+        FontMetrics primaryFm = g2.getFontMetrics();
+        String primaryText = fitShopText(primaryFm, primary, maxW);
+        g2.setColor(selected ? new Color(255, 244, 210, 238) : new Color(226, 236, 246, 214));
+        int primaryY = secondary == null || secondary.isBlank()
+                ? r.y + (r.height + primaryFm.getAscent() - primaryFm.getDescent()) / 2
+                : r.y + Math.max(primaryFm.getAscent() + 3, r.height / 2);
+        g2.drawString(primaryText, textX, primaryY);
+
+        if (secondary != null && !secondary.isBlank()) {
+            g2.setFont(new Font("Consolas", Font.PLAIN, 10));
+            FontMetrics secondaryFm = g2.getFontMetrics();
+            String secondaryText = fitShopText(secondaryFm, secondary, maxW);
+            g2.setColor(selected ? withAlpha(new Color(255, 236, 176), 210) : new Color(176, 198, 218, 172));
+            int secondaryY = Math.min(r.y + r.height - 7, primaryY + secondaryFm.getAscent() + 2);
+            g2.drawString(secondaryText, textX, secondaryY);
+        }
     }
 
     private static void drawCombatModeImagePanel(Graphics2D g2, Rectangle rect, String title, String active, Color accent, HudPanelVisual visual) {
@@ -5848,100 +5721,6 @@ public class Renderer {
             drawHudStatusChip(g2, active, rect.x + rect.width - chipW - 12, rect.y + rect.height - 28, chipW, 18, accent, true);
             g2.setFont(oldFont);
         }
-    }
-
-    private static boolean strikeActionEnabled(GameContext ctx, String id) {
-        if (ctx == null || id == null) return false;
-        for (CampaignSystem.CampaignAction action : CampaignSystem.tacticalMapVisibleActions(ctx)) {
-            if (action == null || action.id == null) continue;
-            if (action.id.equalsIgnoreCase(id)) return action.enabled;
-        }
-        return false;
-    }
-
-    private static Rectangle combatStrikePanelRect(int viewW, int viewH, CombatHudPanelLayout layout) {
-        if (layout == null) return new Rectangle(0, 0, 0, 0);
-        int w = layout.beamRect.width;
-        int h = Math.max(88, (int) Math.round(layout.beamRect.height * 0.72));
-        int x = layout.beamRect.x;
-        int y = layout.beamRect.y - h - 10;
-        if (y < 12) {
-            x = Math.max(12, layout.beamRect.x - w - 12);
-            y = layout.beamRect.y;
-        }
-        if (x + w > viewW - 12) x = Math.max(12, viewW - w - 12);
-        if (y + h > viewH - 12) y = Math.max(12, viewH - h - 12);
-        return new Rectangle(x, y, w, h);
-    }
-
-    private static Rectangle combatStrikeTorpedoRect(Rectangle panel) {
-        int buttonY = panel.y + (int) Math.round(panel.height * 0.30);
-        int buttonH = (int) Math.round(panel.height * 0.30);
-        int x = panel.x + (int) Math.round(panel.width * 0.11);
-        int w = (int) Math.round(panel.width * 0.23);
-        return new Rectangle(x, buttonY, w, buttonH);
-    }
-
-    private static Rectangle combatStrikeAirWingRect(Rectangle panel) {
-        int buttonY = panel.y + (int) Math.round(panel.height * 0.30);
-        int buttonH = (int) Math.round(panel.height * 0.30);
-        int x = panel.x + (int) Math.round(panel.width * 0.39);
-        int w = (int) Math.round(panel.width * 0.23);
-        return new Rectangle(x, buttonY, w, buttonH);
-    }
-
-    private static Rectangle combatStrikeNuclearRect(Rectangle panel) {
-        int buttonY = panel.y + (int) Math.round(panel.height * 0.30);
-        int buttonH = (int) Math.round(panel.height * 0.30);
-        int x = panel.x + (int) Math.round(panel.width * 0.67);
-        int w = (int) Math.round(panel.width * 0.23);
-        return new Rectangle(x, buttonY, w, buttonH);
-    }
-
-    private static Rectangle combatStrikeLaunchRect(Rectangle panel) {
-        int y = panel.y + (int) Math.round(panel.height * 0.68);
-        int h = (int) Math.round(panel.height * 0.20);
-        int x = panel.x + (int) Math.round(panel.width * 0.28);
-        int w = (int) Math.round(panel.width * 0.44);
-        return new Rectangle(x, y, w, h);
-    }
-
-    private static void drawCombatStrikeSelectionPanel(Graphics2D g2, GameContext ctx, Rectangle rect) {
-        if (g2 == null || ctx == null || rect == null || rect.width <= 0 || rect.height <= 0) return;
-        int mode = (ctx.ui == null) ? 0 : MathUtil.clamp(ctx.ui.combatStrikeSelection, 0, 2);
-        BufferedImage art = switch (mode) {
-            case 1 -> StrikeButtonSkinLibrary.getAirWingButton();
-            case 2 -> StrikeButtonSkinLibrary.getNuclearButton();
-            default -> StrikeButtonSkinLibrary.getTorpedoButton();
-        };
-        boolean enabled = switch (mode) {
-            case 1 -> strikeActionEnabled(ctx, "TACTICAL_CARRIER_SORTIE");
-            case 2 -> strikeActionEnabled(ctx, "TACTICAL_ATOMIC_STRIKE");
-            default -> strikeActionEnabled(ctx, "TACTICAL_TORPEDO_STRIKE");
-        };
-        if (art != null) {
-            g2.drawImage(art, rect.x, rect.y, rect.width, rect.height, null);
-            if (!enabled) {
-                // Keep the panel readable at full brightness; only annotate disabled state.
-                int bx = rect.x + 10;
-                int by = rect.y + rect.height - 26;
-                int bw = 126;
-                int bh = 18;
-                g2.setColor(new Color(14, 22, 32, 210));
-                g2.fillRoundRect(bx, by, bw, bh, 8, 8);
-                g2.setColor(new Color(255, 180, 140, 210));
-                g2.drawRoundRect(bx, by, bw, bh, 8, 8);
-                Font oldFont = g2.getFont();
-                g2.setFont(new Font("Consolas", Font.BOLD, 10));
-                g2.drawString("STRIKE UNAVAILABLE", bx + 8, by + 12);
-                g2.setFont(oldFont);
-            }
-            g2.setColor(withAlpha(new Color(178, 220, 255, 220), enabled ? 220 : 176));
-            g2.drawRoundRect(rect.x, rect.y, rect.width, rect.height, 12, 12);
-            return;
-        }
-        drawFallbackPanel(g2, rect, "STRIKE CONTROL", enabled ? "READY" : "UNAVAILABLE",
-                "Select strike type", "Launch selected strike", new Color(255, 176, 120, 220));
     }
 
     private static Turret.MissileRole currentPlayerMissileRole(Player player) {
@@ -7684,7 +7463,7 @@ public class Renderer {
             case INSTALLATION_THREAT ->
                     "Auto-resolve keeps the installation open. Taking command clears the hostile contact inside the harbor approach.";
                 case CAMPAIGN_FORCE ->
-                    "1 close  |  2 moderate  |  3 far  |  Enter take command  |  A auto-resolve";
+                    "1 short 3000m  |  2 medium 6000m  |  3 long 9000m  |  Enter take command  |  A auto-resolve";
             case CAMPAIGN_BATTLE ->
                     "F follow fleet  |  J join battle  |  I ignore  |  S offer support  |  O observe";
             case TASK_FORCE ->
@@ -7775,9 +7554,9 @@ public class Renderer {
             drawHudStatusChip(g2, "I IGNORE", inner.x + 90, chipY, 82, 22, new Color(190, 190, 220, 224), true);
         } else {
             if (forceBriefing) {
-                drawInsertionChip(g2, prompt, "CLOSE", "1 CLOSE", inner.x, chipY, 92);
-                drawInsertionChip(g2, prompt, "MODERATE", "2 MODERATE", inner.x + 104, chipY, 118);
-                drawInsertionChip(g2, prompt, "FAR", "3 FAR", inner.x + 234, chipY, 78);
+                drawInsertionChip(g2, prompt, "CLOSE", "1 SHORT 3KM", inner.x, chipY, 118);
+                drawInsertionChip(g2, prompt, "MODERATE", "2 MEDIUM 6KM", inner.x + 130, chipY, 136);
+                drawInsertionChip(g2, prompt, "FAR", "3 LONG 9KM", inner.x + 278, chipY, 118);
                 chipY += 30;
             }
             drawHudStatusChip(g2, "A AUTO-RESOLVE", inner.x, chipY, 132, 22, new Color(132, 196, 255, 224), true);
@@ -10024,13 +9803,12 @@ public class Renderer {
             boolean focused = interactive && focusedRoom == cell.roomId;
             boolean hovered = interactive && hoveredRoom == cell.roomId;
 
-            Color fill;
-            if (!filteredIn) fill = new Color(70, 78, 96, 66);
-            else if (disabled) fill = new Color(120, 120, 132, 132);
-            else if (disrupted) fill = new Color(118, 132, 255, 126);
-            else if (frac > 0.70) fill = new Color(95, 210, 255, 88);
-            else if (frac > 0.35) fill = new Color(255, 195, 90, 120);
-            else fill = new Color(255, 82, 82, 155);
+            Color fill = filteredIn
+                    ? xrayRoomIntegrityFillColor(frac, true)
+                    : new Color(70, 78, 96, 66);
+            if (filteredIn && disrupted && frac > 0.005) {
+                fill = withAlpha(mixColor(fill, new Color(118, 132, 255), 0.18), fill.getAlpha());
+            }
 
             g2.setColor(fill);
             g2.fillPolygon(p);
@@ -10040,11 +9818,6 @@ public class Renderer {
             g2.drawPolygon(p);
 
             if (hitStrength > 0.01) {
-                int a = MathUtil.clamp((int) Math.round(130 + hitStrength * 110), 0, 255);
-                g2.setStroke(XRAY_HIT_STROKE);
-                g2.setColor(new Color(255, 245, 145, a));
-                g2.drawPolygon(p);
-                g2.setStroke(oldStroke);
                 if (hitStrength > hottestHit) {
                     hottestHit = hitStrength;
                     hottestRoomLabel = xrayRoomDisplayLabel(cell.roomId);
@@ -10212,7 +9985,7 @@ public class Renderer {
 
         g2.setFont(XRAY_META_FONT);
         g2.setColor(new Color(190, 230, 255, 180));
-        g2.drawString("RED<35%  AMBER<70%  BLUE>=70%", x + 10, y + h - 34);
+        g2.drawString("BLACK=0%  RED<18%  ORANGE<45%  YELLOW<70%  GREEN>=70%", x + 10, y + h - 34);
         String filterLabel = (filterMode == null) ? "ALL" : filterMode.name();
         String focusLabel = (focusedRoom == null) ? "NONE" : xrayRoomDisplayLabel(focusedRoom);
         g2.drawString("FILTER[" + filterLabel + "] ` cycle   ' clear   CLICK room = focus/protect   FOCUS: " + focusLabel, x + 10, y + h - 22);
@@ -10290,6 +10063,36 @@ public class Renderer {
             case DISABLED -> disabled;
             default -> true;
         };
+    }
+
+    static Color xrayRoomIntegrityFillColorForTests(double healthFraction) {
+        return xrayRoomIntegrityFillColor(healthFraction, true);
+    }
+
+    private static Color xrayRoomIntegrityFillColor(double healthFraction, boolean filteredIn) {
+        double frac = MathUtil.clamp(healthFraction, 0.0, 1.0);
+        int alpha = filteredIn ? 150 : 72;
+        if (frac <= 0.005) return new Color(0, 0, 0, filteredIn ? 190 : 94);
+
+        Color red = new Color(220, 38, 42, alpha);
+        Color orange = new Color(246, 128, 38, alpha);
+        Color yellow = new Color(242, 220, 72, alpha);
+        Color green = new Color(64, 214, 96, alpha);
+
+        if (frac < 0.18) {
+            double t = frac / 0.18;
+            return withAlpha(mixColor(Color.BLACK, red, t), alpha);
+        }
+        if (frac < 0.45) {
+            double t = (frac - 0.18) / 0.27;
+            return withAlpha(mixColor(red, orange, t), alpha);
+        }
+        if (frac < 0.70) {
+            double t = (frac - 0.45) / 0.25;
+            return withAlpha(mixColor(orange, yellow, t), alpha);
+        }
+        double t = (frac - 0.70) / 0.30;
+        return withAlpha(mixColor(yellow, green, t), alpha);
     }
 
     private static double xrayPowerRoutingIntensity(Ship ship, ShipRoomLayout.RoomDef room) {
@@ -14006,7 +13809,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 case INSTALLATION_THREAT ->
                         "Auto-resolve keeps the installation open. Taking command clears the hostile contact inside the harbor approach.";
                 case CAMPAIGN_FORCE ->
-                        "1 close  |  2 moderate  |  3 far  |  Enter take command  |  A auto-resolve";
+                        "1 short 3000m  |  2 medium 6000m  |  3 long 9000m  |  Enter take command  |  A auto-resolve";
                 case CAMPAIGN_BATTLE ->
                         "J join battle  |  I ignore";
                 case TASK_FORCE ->
@@ -14037,9 +13840,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
         if (prompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_FORCE) {
             return new Rectangle[]{
-                    new Rectangle(inner.x, chipY, 92, 22),
-                    new Rectangle(inner.x + 104, chipY, 118, 22),
-                    new Rectangle(inner.x + 234, chipY, 78, 22),
+                    new Rectangle(inner.x, chipY, 118, 22),
+                    new Rectangle(inner.x + 130, chipY, 136, 22),
+                    new Rectangle(inner.x + 278, chipY, 118, 22),
                     new Rectangle(inner.x, chipY + 30, 132, 22),
                     new Rectangle(inner.x + 146, chipY + 30, 142, 22),
                     new Rectangle(inner.x + 302, chipY + 30, 132, 22)
@@ -14074,7 +13877,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             titleLines = Math.max(1, wrapHudText(metrics.getFontMetrics(titleFont), prompt.title, w - 52).size());
             bodyLines = Math.max(1, wrapHudMultilineText(metrics.getFontMetrics(bodyFont), prompt.body, w - 52).size());
             footerLines = Math.max(1, wrapHudText(metrics.getFontMetrics(footerFont),
-                    "1 close  |  2 moderate  |  3 far  |  Enter take command  |  A auto-resolve", w - 52).size());
+                    "1 short 3000m  |  2 medium 6000m  |  3 long 9000m  |  Enter take command  |  A auto-resolve", w - 52).size());
         } finally {
             metrics.dispose();
         }
@@ -14123,24 +13926,25 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.drawLine(enemyX, rect.y + 8, enemyX, rect.y + rect.height - 8);
         g2.setFont(new Font("Consolas", Font.BOLD, 11));
         g2.setColor(new Color(142, 211, 246, 220));
-        g2.drawString("FRIENDLY DEPLOY", rect.x + 10, rect.y + 16);
+        g2.drawString("ALLIED ENTRY SIDE", rect.x + 10, rect.y + 16);
         g2.setColor(new Color(185, 195, 210, 190));
         g2.drawString("MANEUVER SPACE", rect.x + friendlyW + 12, rect.y + 16);
         g2.setColor(new Color(255, 154, 138, 220));
-        g2.drawString("HOSTILE CONTACTS", enemyX + 10, rect.y + 16);
+        g2.drawString("ENEMY ENTRY SIDE", enemyX + 10, rect.y + 16);
         g2.setFont(new Font("Consolas", Font.BOLD, 10));
         g2.setColor(new Color(255, 184, 164, 235));
-        g2.drawString("RED START FORMATION", hostileZone.x + 10, hostileZone.y + 16);
+        g2.drawString("RED START FORMATION - APPROACHING FROM RIGHT", hostileZone.x + 10, hostileZone.y + 16);
         g2.drawString("RED UNITS: " + hostileCount, hostileZone.x + 10, hostileZone.y + hostileZone.height - 10);
         g2.setFont(new Font("Consolas", Font.PLAIN, 10));
         g2.setColor(new Color(115, 232, 156, 205));
-        g2.drawString("GREEN SUPPORT LEFT FLANK", rect.x + 10, rect.y + rect.height - 10);
+        g2.drawString("BLUE / GREEN SPAWN LEFT SIDE", rect.x + 10, rect.y + rect.height - 10);
         g2.setColor(new Color(255, 155, 132, 205));
         g2.drawString("RED SPAWNS RIGHT SIDE", Math.max(rect.x + friendlyW + 12, enemyX + 10), rect.y + rect.height - 10);
         int standoffX = rect.x + (int) Math.round(rect.width * 0.50);
         g2.setColor(new Color(255, 235, 150, 52));
         g2.drawLine(standoffX, rect.y + 24, standoffX, rect.y + rect.height - 24);
-        g2.drawString("STANDOFF GAP", standoffX + 6, rect.y + rect.height / 2);
+        g2.drawString("SELECTED START RANGE: " + encounterRangeDisplay(prompt.insertionRange),
+                standoffX + 6, rect.y + rect.height / 2);
         int arrowY = hostileZone.y + hostileZone.height / 2;
         int arrowStart = hostileZone.x + 18;
         int arrowEnd = Math.max(standoffX + 16, hostileZone.x - 30);
@@ -14160,6 +13964,15 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.drawString("BLUE ENTRY", Math.min(rect.x + rect.width - 62, px + 12), Math.max(rect.y + 24, py - 8));
         g2.setColor(new Color(210, 222, 238, 172));
         g2.drawRoundRect(rect.x, rect.y, rect.width, rect.height, 10, 10);
+    }
+
+    private static String encounterRangeDisplay(String insertionRange) {
+        if (insertionRange == null) return "6KM";
+        return switch (insertionRange.trim().toUpperCase(Locale.US)) {
+            case "CLOSE" -> "3KM";
+            case "FAR" -> "9KM";
+            default -> "6KM";
+        };
     }
 
     private static int deploymentAssetCount(UiState.StrategicEncounterPrompt prompt, boolean friendly) {
@@ -14253,7 +14066,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             titleLines = Math.max(1, wrapHudText(metrics.getFontMetrics(titleFont), prompt.title, w - 52).size());
             bodyLines = Math.max(1, wrapHudMultilineText(metrics.getFontMetrics(bodyFont), prompt.body, w - 52).size());
             footerLines = Math.max(1, wrapHudText(metrics.getFontMetrics(footerFont),
-                    "1 close  |  2 moderate  |  3 far  |  Enter take command  |  A auto-resolve", w - 52).size());
+                    "1 short 3000m  |  2 medium 6000m  |  3 long 9000m  |  Enter take command  |  A auto-resolve", w - 52).size());
         } finally {
             metrics.dispose();
         }
@@ -19526,6 +19339,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static void drawTurrets(Graphics2D g2, Ship ship) {
         if (ship == null || ship.turrets == null) return;
         if (ship.role == ShipRole.FIGHTER || ship.role == ShipRole.BOMBER || ship.role == ShipRole.DRONE) return;
+        if (!shouldRenderGameplayTurretsForShip(g2, ship)) return;
 
         Color accent = factionTrimColor(ship.faction);
         for (Turret t : ship.turrets) {
@@ -19583,9 +19397,26 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
     }
 
+    static boolean shouldRenderGameplayTurretsForShip(Graphics2D g2, Ship ship) {
+        if (g2 == null || ship == null || ship.turrets == null || ship.turrets.isEmpty()) return false;
+        if (ship.role == ShipRole.FIGHTER || ship.role == ShipRole.BOMBER || ship.role == ShipRole.DRONE) return false;
+        return tacticalShipScreenDiameterForTurretRendering(g2, ship) >= GAMEPLAY_TURRET_RENDER_MIN_SCREEN_DIAMETER;
+    }
+
+    static double tacticalShipScreenDiameterForTurretRendering(Graphics2D g2, Ship ship) {
+        if (g2 == null || ship == null || !Double.isFinite(ship.radius) || ship.radius <= 0.0) return 0.0;
+        AffineTransform tx = g2.getTransform();
+        double scaleX = Math.hypot(tx.getScaleX(), tx.getShearX());
+        double scaleY = Math.hypot(tx.getScaleY(), tx.getShearY());
+        double scale = Math.max(scaleX, scaleY);
+        if (!Double.isFinite(scale) || scale <= 0.0) scale = 1.0;
+        return ship.radius * 2.0 * scale;
+    }
+
     private static final double GAMEPLAY_TURRET_GLOBAL_SCALE = 0.22;
     private static final double MISSILE_POD_TURRET_SPRITE_SCALE = 0.50;
     private static final double CIWS_TURRET_SPRITE_SCALE = 0.50;
+    private static final double GAMEPLAY_TURRET_RENDER_MIN_SCREEN_DIAMETER = 52.0;
 
     static double gameplayTurretGlobalScaleForTests() {
         return GAMEPLAY_TURRET_GLOBAL_SCALE;
@@ -19597,6 +19428,10 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     static double ciwsTurretSpriteScaleForTests() {
         return CIWS_TURRET_SPRITE_SCALE;
+    }
+
+    static double gameplayTurretRenderMinScreenDiameterForTests() {
+        return GAMEPLAY_TURRET_RENDER_MIN_SCREEN_DIAMETER;
     }
 
     private static double[] ciwsVisualMount(Ship ship) {

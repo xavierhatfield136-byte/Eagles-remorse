@@ -275,7 +275,7 @@ class CampaignPersistentFleetShopTest {
 
     @Test
     void commissionedHullAppearsInFleetHubAndLaunchesIntoNextMission() throws Exception {
-        GameContext ctx = campaignShopContext(100_000, 20_000, 5, 5);
+        GameContext ctx = campaignShopContext(100_000, 20_000, 5, 5, "linear_campaign");
         ctx.campaign.pendingEpisodeSector = 6;
         ctx.campaign.routeArrivalSourceSector = 5;
 
@@ -348,7 +348,12 @@ class CampaignPersistentFleetShopTest {
     }
 
     private static GameContext campaignShopContext(int credits, int ore, int hangarTier, int sector) {
-        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        return campaignShopContext(credits, ore, hangarTier, sector, "");
+    }
+
+    private static GameContext campaignShopContext(int credits, int ore, int hangarTier, int sector, String startupPreset) {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false,
+                0, false, 1, "", "", startupPreset));
         CampaignSystem.CampaignState st = new CampaignSystem.CampaignState();
         st.enabled = true;
         st.sector = sector;

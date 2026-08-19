@@ -1347,7 +1347,7 @@ class CampaignOvermapEncounterFlowTest {
 
         assertTrue(CampaignSystem.engageSelectedCampaignContact(ctx));
         assertTrue(CampaignSystem.setPendingEncounterDeploymentPoint(ctx, 0.38, 0.16));
-        assertEquals("CLOSE", ctx.ui.strategicEncounterPrompt.insertionRange);
+        assertEquals("MODERATE", ctx.ui.strategicEncounterPrompt.insertionRange);
         assertEquals(0.38, ctx.ui.strategicEncounterPrompt.deploymentX, 0.001);
         assertEquals(0.16, ctx.ui.strategicEncounterPrompt.deploymentY, 0.001);
 

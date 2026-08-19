@@ -2,9 +2,6 @@ import app.config.GameConfig;
 import app.config.GameMode;
 import org.junit.jupiter.api.Test;
 
-import java.awt.Canvas;
-import java.awt.Point;
-import java.awt.event.MouseEvent;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -31,30 +28,15 @@ public class CustomBattleMothershipStrikeAvailabilityTest {
     }
 
     @Test
-    void mothershipInMissionModeGetsCombatHudStrikePanelClickTargets() {
+    void mothershipInMissionModeDoesNotGetCombatHudStrikePanelClickTargets() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 9000, 6000, true, 3344L, false));
         SpawnSystem.initWorld(ctx);
 
         assertNotNull(ctx.player);
         assertEquals(ShipRole.MOTHERSHIP, ctx.player.role);
 
-        int viewW = 1920;
-        int viewH = 1080;
-        boolean foundStrikeHudClickTarget = false;
-        for (int y = 0; y < viewH && !foundStrikeHudClickTarget; y += 4) {
-            for (int x = 0; x < viewW; x += 4) {
-                Renderer.HudPanelClickTarget target = Renderer.hudPanelClickTargetAt(ctx, viewW, viewH, x, y);
-                if (target == null) continue;
-                if (target.kind == Renderer.HudPanelClickTarget.Kind.STRIKE_SELECT_TORPEDO
-                        || target.kind == Renderer.HudPanelClickTarget.Kind.STRIKE_SELECT_AIRWING
-                        || target.kind == Renderer.HudPanelClickTarget.Kind.STRIKE_SELECT_NUCLEAR
-                        || target.kind == Renderer.HudPanelClickTarget.Kind.STRIKE_LAUNCH) {
-                    foundStrikeHudClickTarget = true;
-                    break;
-                }
-            }
-        }
-        assertTrue(foundStrikeHudClickTarget, "mothership combat HUD should expose strike panel click targets in mission modes");
+        assertFalse(anyCombatHudStrikeClickTarget(ctx, 1920, 1080),
+                "combat HUD should not expose strike panel click targets");
     }
 
     @Test
@@ -63,27 +45,12 @@ public class CustomBattleMothershipStrikeAvailabilityTest {
         SpawnSystem.initWorld(ctx);
         ctx.player = new Player(ShipRole.FRIGATE, 1200.0, 1200.0);
 
-        int viewW = 1920;
-        int viewH = 1080;
-        boolean foundStrikeHudClickTarget = false;
-        for (int y = 0; y < viewH && !foundStrikeHudClickTarget; y += 4) {
-            for (int x = 0; x < viewW; x += 4) {
-                Renderer.HudPanelClickTarget target = Renderer.hudPanelClickTargetAt(ctx, viewW, viewH, x, y);
-                if (target == null) continue;
-                if (target.kind == Renderer.HudPanelClickTarget.Kind.STRIKE_SELECT_TORPEDO
-                        || target.kind == Renderer.HudPanelClickTarget.Kind.STRIKE_SELECT_AIRWING
-                        || target.kind == Renderer.HudPanelClickTarget.Kind.STRIKE_SELECT_NUCLEAR
-                        || target.kind == Renderer.HudPanelClickTarget.Kind.STRIKE_LAUNCH) {
-                    foundStrikeHudClickTarget = true;
-                    break;
-                }
-            }
-        }
-        assertFalse(foundStrikeHudClickTarget, "non-mothership combat HUD should not expose strike panel click targets");
+        assertFalse(anyCombatHudStrikeClickTarget(ctx, 1920, 1080),
+                "non-mothership combat HUD should not expose strike panel click targets");
     }
 
     @Test
-    void mothershipHudNuclearLaunchDoesNotOpenBlockingConfirmOverlay() {
+    void mothershipHudNuclearLaunchTargetIsRemoved() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 9000, 6000, true, 2468L, false));
         SpawnSystem.initWorld(ctx);
 
@@ -102,46 +69,18 @@ public class CustomBattleMothershipStrikeAvailabilityTest {
         ctx.campaign.campaignFuel = 120;
         ctx.campaign.campaignSupplies = 120;
 
-        int viewW = 1920;
-        int viewH = 1080;
-        Point selectNuclear = firstHudPointForKind(ctx, viewW, viewH, Renderer.HudPanelClickTarget.Kind.STRIKE_SELECT_NUCLEAR);
-        Point launch = firstHudPointForKind(ctx, viewW, viewH, Renderer.HudPanelClickTarget.Kind.STRIKE_LAUNCH);
-        assertNotNull(selectNuclear, "expected STRIKE_SELECT_NUCLEAR click target in mothership HUD");
-        assertNotNull(launch, "expected STRIKE_LAUNCH click target in mothership HUD");
-
-        assertTrue(UISystem.handleHudPanelClick(ctx, leftClick(selectNuclear.x, selectNuclear.y), viewW, viewH));
-        int projectilesBefore = ctx.projectiles.size();
-        assertTrue(UISystem.handleHudPanelClick(ctx, leftClick(launch.x, launch.y), viewW, viewH));
-
-        assertFalse(ctx.ui.campaignActionConfirm.active,
-                "combat HUD strike launch should fire immediately in mission modes, not open a blocking confirm overlay");
-        assertEquals(0, ctx.campaign.strategicAtomicCharges);
-        assertTrue(ctx.projectiles.size() > projectilesBefore, "nuclear strike should spawn an inbound strike object");
+        assertFalse(anyCombatHudStrikeClickTarget(ctx, 1920, 1080),
+                "removed combat HUD should not expose nuclear strike launch targets");
+        assertEquals(1, ctx.campaign.strategicAtomicCharges);
     }
 
-    private static Point firstHudPointForKind(GameContext ctx, int viewW, int viewH, Renderer.HudPanelClickTarget.Kind kind) {
+    private static boolean anyCombatHudStrikeClickTarget(GameContext ctx, int viewW, int viewH) {
         for (int y = 0; y < viewH; y += 4) {
             for (int x = 0; x < viewW; x += 4) {
                 Renderer.HudPanelClickTarget target = Renderer.hudPanelClickTargetAt(ctx, viewW, viewH, x, y);
-                if (target != null && target.kind == kind) {
-                    return new Point(x, y);
-                }
+                if (target != null && target.kind != null && target.kind.name().startsWith("STRIKE_")) return true;
             }
         }
-        return null;
-    }
-
-    private static MouseEvent leftClick(int x, int y) {
-        return new MouseEvent(
-                new Canvas(),
-                MouseEvent.MOUSE_PRESSED,
-                System.currentTimeMillis(),
-                0,
-                x,
-                y,
-                1,
-                false,
-                MouseEvent.BUTTON1
-        );
+        return false;
     }
 }

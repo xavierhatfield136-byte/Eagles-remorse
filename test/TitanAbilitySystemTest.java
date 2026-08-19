@@ -308,7 +308,7 @@ class TitanAbilitySystemTest {
         GameContext ctx = testContext();
         FleetShip titan = new FleetShip(ShipRole.MOBILE_STATION_TITAN, Faction.ALLY, 0.0, 0.0);
         FleetShip carrier = new FleetShip(ShipRole.CARRIER, Faction.ALLY, 180.0, 0.0);
-        carrier.takePenetratingInternalDamage(12, carrier.x, carrier.y, 1.0, 0.0);
+        carrier.scaleCurrentHullIntegrity(0.92);
         carrier.shield = Math.max(0.0, carrier.shieldMax * 0.25);
         int hpBefore = carrier.hp;
 

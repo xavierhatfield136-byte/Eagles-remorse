@@ -459,9 +459,6 @@ public final class UiState {
     public void setStrategicEncounterDeploymentPoint(double x, double y) {
         strategicEncounterPrompt.deploymentX = MathUtil.clamp(x, 0.05, 0.42);
         strategicEncounterPrompt.deploymentY = MathUtil.clamp(y, 0.14, 0.86);
-        strategicEncounterPrompt.insertionRange = strategicEncounterPrompt.deploymentX >= 0.34
-                ? "CLOSE"
-                : strategicEncounterPrompt.deploymentX <= 0.17 ? "FAR" : "MODERATE";
     }
 
     private static String normalizeInsertionRange(String insertionRange) {

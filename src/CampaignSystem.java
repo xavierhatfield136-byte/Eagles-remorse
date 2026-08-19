@@ -80,6 +80,9 @@ public final class CampaignSystem extends CampaignSystemModels {
     private static final double CAMPAIGN_FORCE_MIN_SEPARATION = 180.0;
     private static final double CAMPAIGN_FORCE_TARGET_SEPARATION = 210.0;
     private static final double CAMPAIGN_FORCE_ENCOUNTER_LOADING_SEC = 0.95;
+    private static final double ENCOUNTER_INSERTION_SHORT_METERS = 3000.0;
+    private static final double ENCOUNTER_INSERTION_MEDIUM_METERS = 6000.0;
+    private static final double ENCOUNTER_INSERTION_LONG_METERS = 9000.0;
     private static final double CAMPAIGN_OPENING_ENCOUNTER_GRACE_SEC = 180.0;
     private static final double CAMPAIGN_START_SPAWN_PROTECTION_RADIUS = 2600.0;
     private static final double CAMPAIGN_SENSOR_SWEEP_COOLDOWN_SEC = 18.0;
@@ -5750,20 +5753,6 @@ public final class CampaignSystem extends CampaignSystemModels {
                 false,
                 "",
                 actionCtx -> requestCampaignAllySupport(actionCtx, false)));
-        if (hasSelectedStrikeTarget) {
-            out.add(action("LAUNCH_STRIKE",
-                    "LAUNCH STRIKE",
-                    "Open strategic strike controls for the selected hostile contact.",
-                    "Switch to strike actions for torpedoes, carrier sorties, and atomic weapons.",
-                    CampaignActionCategory.STRIKES,
-                    true,
-                    true,
-                    "",
-                    CampaignActionState.WARNING,
-                    false,
-                    "",
-                    actionCtx -> openCampaignCommandTab(actionCtx, UiState.CampaignCommandTab.STRIKES)));
-        }
         out.add(action("CONTACT_NEARBY_SHIPS",
                 "CONTACT NEARBY SHIPS",
                 "Review nearby contacts and traffic memory.",
@@ -23052,7 +23041,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         List<String> namedReturns = campaignNamedReturnLines(ctx, 1);
         if (!namedReturns.isEmpty()) out.add("Named Return: " + namedReturns.get(0));
         out.addAll(campaignWarRoomFocusLines(ctx, 4));
-        out.add("Actions: Plot Route | Inspect Fleet | Repairs | Trade | Launch Strike | Captain's Log");
+        out.add("Actions: Plot Route | Inspect Fleet | Repairs | Trade | Captain's Log");
         for (String actionLine : campaignWarRoomActionLines(ctx, 6)) {
             out.add(actionLine);
         }
@@ -34207,8 +34196,8 @@ public final class CampaignSystem extends CampaignSystemModels {
         CampaignState st = state(ctx);
         if (ctx == null || ctx.ui == null || st == null || force == null) return false;
         if (!sweepGhostFleetsBeforeForceEncounterPrompt(ctx, st, force)) return false;
-        String body = "Direct hostile fleet contact. Choose insertion distance with 1 Close, 2 Moderate, or 3 Far, "
-                + "then engage to command the battle or auto-resolve campaign-layer attrition.";
+        String body = "Direct hostile fleet contact. Choose a starting range: 1 Short 3000m, 2 Medium 6000m, "
+                + "or 3 Long 9000m. Click the mission-zone map to choose where Blue enters before taking command.";
         String location = "Overmap force contact";
         String strength = "CONTACT " + (int) Math.round(force.strength)
                 + "  |  " + campaignForceIntentLabel(force.intent).toUpperCase(Locale.US)
@@ -34430,14 +34419,14 @@ public final class CampaignSystem extends CampaignSystemModels {
     private static String campaignInsertionDetail(GameContext ctx, CampaignState st, CampaignForce force) {
         double radius = playerCampaignSensorRange(ctx);
         if (force == null || st == null || !Double.isFinite(radius) || radius <= 1.0) {
-            return "Distance sampling unavailable; insertion defaults to moderate.";
+            return "Distance sampling unavailable; insertion defaults to medium 6000m.";
         }
         double dist = Math.hypot(force.x - st.playerGalaxyX, force.y - st.playerGalaxyY);
         double ratio = MathUtil.clamp(dist / radius, 0.0, 1.0);
-        String pick = " Click the mission-zone map to choose the blue fleet entry point.";
-        if (ratio <= 0.30) return "Primary contact is close on sensors; tactical entry will start compressed." + pick;
-        if (ratio >= 0.78) return "Primary contact is near sensor edge; tactical entry will preserve long approach distance." + pick;
-        return "Primary contact is mid-sensor range; tactical entry will preserve a moderate approach." + pick;
+        String pick = " Red enters from the hostile side; Blue and nearby green support enter from the allied side.";
+        if (ratio <= 0.30) return "Primary contact is close on sensors; short range starts 3000m from target." + pick;
+        if (ratio >= 0.78) return "Primary contact is near sensor edge; long range starts 9000m from target." + pick;
+        return "Primary contact is mid-sensor range; medium range starts 6000m from target." + pick;
     }
 
     private static boolean sweepGhostFleetsBeforeForceEncounterPrompt(GameContext ctx, CampaignState st, CampaignForce candidate) {
@@ -38305,7 +38294,12 @@ public final class CampaignSystem extends CampaignSystemModels {
                 : new ArrayList<>();
         clearBattleEncounterWorld(ctx);
         clearLocalEncounterMapIdentity(st);
-        positionPlayerForOpenSpaceFleetClash(ctx, st, deploymentPointForCampaignForceEncounter(ctx, st, deploymentX, deploymentY));
+        double desiredStandoff = encounterInsertionDistanceMeters(range);
+        double[][] standoffPoints = encounterInsertionStandoffPoints(ctx,
+                deploymentPointForCampaignForceEncounter(ctx, st, deploymentX, deploymentY),
+                hostileApproach,
+                desiredStandoff);
+        positionPlayerForOpenSpaceFleetClash(ctx, st, standoffPoints[0]);
         resetPersistentFleetSpawnHandles(st);
         spawnPersistentBlueFleet(ctx, st);
         spawnCoalitionSupportFleet(ctx, st, false, false, force);
@@ -38327,9 +38321,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         st.authoredObjectiveKills = 0;
         st.objectiveKillBaseline = st.campaignKills;
         int hostileZone = missionSubzoneIndex(2, 1);
-        double[] ingress = openSpaceFleetClashApproachPoint(ctx, st, 1, hostileApproach,
-                tacticalIngressDepthForOvermapDistance(ctx, st, force, range));
-        ingress = enforceEncounterStandoff(ctx, ingress[0], ingress[1], 1700.0);
+        double[] ingress = standoffPoints[1];
         EncounterForceManifest manifest = encounterManifestForForce(ctx, st, force,
                 force.faction == Faction.ENEMY ? CAMPAIGN_RED_FORCE_CONTACT_MAX_SHIPS : 4);
         if (manifest == null || manifest.ships.isEmpty()) {
@@ -38402,6 +38394,89 @@ public final class CampaignSystem extends CampaignSystemModels {
             y = GameMath.clamp(y, margin, Math.max(margin, ctx.WORLD_H - margin));
         }
         return new double[]{x, y};
+    }
+
+    static double encounterInsertionDistanceMetersForTests(String insertionRange) {
+        return encounterInsertionDistanceMeters(insertionRange);
+    }
+
+    private static double encounterInsertionDistanceMeters(String insertionRange) {
+        return switch (normalizeEncounterInsertionRange(insertionRange)) {
+            case "CLOSE" -> ENCOUNTER_INSERTION_SHORT_METERS;
+            case "FAR" -> ENCOUNTER_INSERTION_LONG_METERS;
+            default -> ENCOUNTER_INSERTION_MEDIUM_METERS;
+        };
+    }
+
+    private static double[][] encounterInsertionStandoffPoints(GameContext ctx,
+                                                               double[] requestedPlayerPoint,
+                                                               TacticalApproachDirection hostileApproach,
+                                                               double desiredDistance) {
+        double margin = Math.max(220.0, MISSION_SUBZONE_CLAMP_MARGIN);
+        double minX = margin;
+        double minY = margin;
+        double maxX = ctx == null ? Math.max(minX, margin + desiredDistance + 1200.0) : Math.max(minX, ctx.WORLD_W - margin);
+        double maxY = ctx == null ? Math.max(minY, margin + 2400.0) : Math.max(minY, ctx.WORLD_H - margin);
+        double distance = Math.max(ENCOUNTER_INSERTION_SHORT_METERS, desiredDistance);
+        double px = requestedPlayerPoint == null || requestedPlayerPoint.length < 2 || !Double.isFinite(requestedPlayerPoint[0])
+                ? minX
+                : requestedPlayerPoint[0];
+        double py = requestedPlayerPoint == null || requestedPlayerPoint.length < 2 || !Double.isFinite(requestedPlayerPoint[1])
+                ? (minY + maxY) * 0.5
+                : requestedPlayerPoint[1];
+        py = GameMath.clamp(py, minY, maxY);
+
+        TacticalApproachDirection approach = hostileApproach == null ? TacticalApproachDirection.EAST : hostileApproach;
+        double tx;
+        double ty;
+        switch (approach) {
+            case WEST -> {
+                double available = Math.max(0.0, maxX - minX);
+                double actual = Math.min(distance, available);
+                px = GameMath.clamp(px, minX + actual, maxX);
+                if (px - actual < minX) px = Math.min(maxX, minX + actual);
+                tx = px - actual;
+                ty = py;
+            }
+            case NORTH -> {
+                double available = Math.max(0.0, maxY - minY);
+                double actual = Math.min(distance, available);
+                px = GameMath.clamp(px, minX, maxX);
+                py = GameMath.clamp(py, minY + actual, maxY);
+                if (py - actual < minY) py = Math.min(maxY, minY + actual);
+                tx = px;
+                ty = py - actual;
+            }
+            case SOUTH -> {
+                double available = Math.max(0.0, maxY - minY);
+                double actual = Math.min(distance, available);
+                px = GameMath.clamp(px, minX, maxX);
+                py = GameMath.clamp(py, minY, maxY - actual);
+                if (py + actual > maxY) py = Math.max(minY, maxY - actual);
+                tx = px;
+                ty = py + actual;
+            }
+            case EAST -> {
+                double available = Math.max(0.0, maxX - minX);
+                double actual = Math.min(distance, available);
+                px = GameMath.clamp(px, minX, maxX - actual);
+                if (px + actual > maxX) px = Math.max(minX, maxX - actual);
+                tx = px + actual;
+                ty = py;
+            }
+            default -> {
+                double available = Math.max(0.0, maxX - minX);
+                double actual = Math.min(distance, available);
+                px = GameMath.clamp(px, minX, maxX - actual);
+                tx = px + actual;
+                ty = py;
+            }
+        }
+        px = GameMath.clamp(px, minX, maxX);
+        py = GameMath.clamp(py, minY, maxY);
+        tx = GameMath.clamp(tx, minX, maxX);
+        ty = GameMath.clamp(ty, minY, maxY);
+        return new double[][]{{px, py}, {tx, ty}};
     }
 
     private static double playerInsertionDepthForRange(String insertionRange) {

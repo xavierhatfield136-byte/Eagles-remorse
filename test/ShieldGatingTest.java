@@ -90,6 +90,36 @@ class ShieldGatingTest {
     }
 
     @Test
+    void redFleetTeleporterTitanArmorTakesDamageAndCanBePenetrated() {
+        FleetShip red = doctrinalShip(ShipRole.FLEET_TELEPORTER_TITAN, Faction.ENEMY);
+        red.shield = 0.0;
+        red.shieldActive = false;
+
+        ShipRoomLayout.RoomId armorRoom = ShipRoomLayout.RoomId.BOW_ARMOR;
+        double armorBefore = roomHp(red, armorRoom);
+        assertTrue(armorBefore > 0.0, "red teleporter titan should have damageable bow armor");
+        assertEquals(0.0, roomHpMax(red, ShipRoomLayout.RoomId.BOW_ARMOR_INNER), 1e-6,
+                "red teleporter titan should not get yellow's inner armor layer");
+        assertEquals(0, red.armorGateHitCap(),
+                "red teleporter titan armor should not use yellow's armor gate");
+
+        red.takeDamage(42, red.x + red.radius, red.y, -1.0, 0.0);
+
+        assertTrue(roomHp(red, armorRoom) < armorBefore,
+                "red teleporter titan bow armor should lose HP on a direct hit");
+
+        int hpBefore = red.hp;
+        for (int hit = 0; hit < 96 && red.hp == hpBefore; hit++) {
+            red.takeDamage(96, red.x + red.radius, red.y, -1.0, 0.0);
+        }
+
+        assertEquals(0.0, roomHp(red, armorRoom), 1e-6,
+                "red teleporter titan bow armor should be breakable");
+        assertTrue(red.hp < hpBefore,
+                "red teleporter titan should eventually take hull damage after armor breaks");
+    }
+
+    @Test
     void yellowArmorGateBlocksInteriorPenetrationForFirstFiveHits() {
         FleetShip yellow = doctrinalShip(ShipRole.PATROL, Faction.TEAM_D);
 
@@ -108,6 +138,58 @@ class ShieldGatingTest {
                 "yellow rear armor gate should start counting down independently once the stern is hit");
     }
 
+    @Test
+    void yellowArmorTakesDamageOnEveryArmoredHullFace() {
+        for (ShipRole role : ShipRole.values()) {
+            if (role == ShipRole.FIGHTER || role == ShipRole.BOMBER || role == ShipRole.DRONE) continue;
+            for (int face = 0; face < 4; face++) {
+                FleetShip yellow = doctrinalShip(role, Faction.TEAM_D);
+                yellow.shield = 0.0;
+                yellow.shieldActive = false;
+
+                ShipRoomLayout.RoomId armorRoom = armorRoomForFace(face, false);
+                double before = roomHp(yellow, armorRoom);
+                double max = roomHpMax(yellow, armorRoom);
+                assertTrue(max > 0.0, role + " should have live yellow armor room " + armorRoom);
+
+                yellow.takeDamage(14, hitXForFace(yellow, face), hitYForFace(yellow, face),
+                        impactVxForFace(face), impactVyForFace(face));
+
+                double after = roomHp(yellow, armorRoom);
+                assertTrue(after < before,
+                        role + " " + armorRoom + " should lose armor HP after a direct hit");
+            }
+        }
+    }
+
+    @Test
+    void yellowArmorCanBeBrokenAndPenetratedOnEveryArmoredHullFace() {
+        for (ShipRole role : ShipRole.values()) {
+            if (role == ShipRole.FIGHTER || role == ShipRole.BOMBER || role == ShipRole.DRONE) continue;
+            for (int face = 0; face < 4; face++) {
+                FleetShip yellow = doctrinalShip(role, Faction.TEAM_D);
+                yellow.shield = 0.0;
+                yellow.shieldActive = false;
+
+                int hpBefore = yellow.hp;
+                ShipRoomLayout.RoomId outerArmor = armorRoomForFace(face, false);
+                ShipRoomLayout.RoomId innerArmor = armorRoomForFace(face, true);
+
+                for (int hit = 0; hit < 96 && yellow.hp == hpBefore; hit++) {
+                    yellow.takeDamage(42, hitXForFace(yellow, face), hitYForFace(yellow, face),
+                            impactVxForFace(face), impactVyForFace(face));
+                }
+
+                assertEquals(0.0, roomHp(yellow, outerArmor), 1e-6,
+                        role + " " + outerArmor + " should be breakable");
+                assertEquals(0.0, roomHp(yellow, innerArmor), 1e-6,
+                        role + " " + innerArmor + " should be breakable after the outer armor");
+                assertTrue(yellow.hp < hpBefore,
+                        role + " should eventually take hull damage through " + outerArmor);
+            }
+        }
+    }
+
     private static FleetShip doctrinalShip(ShipRole role, Faction faction) {
         FleetShip ship = new FleetShip(role, faction, 0.0, 0.0);
         DoctrineRegistry.applyToShip(ship);
@@ -118,5 +200,59 @@ class ShieldGatingTest {
             ship.shield = 0.0;
         }
         return ship;
+    }
+
+    private static ShipRoomLayout.RoomId armorRoomForFace(int face, boolean inner) {
+        return switch (face) {
+            case Ship.SHIELD_FACE_REAR -> inner ? ShipRoomLayout.RoomId.AFT_ARMOR_INNER : ShipRoomLayout.RoomId.AFT_ARMOR;
+            case Ship.SHIELD_FACE_LEFT -> inner ? ShipRoomLayout.RoomId.DORSAL_ARMOR_INNER : ShipRoomLayout.RoomId.DORSAL_ARMOR;
+            case Ship.SHIELD_FACE_RIGHT -> inner ? ShipRoomLayout.RoomId.VENTRAL_ARMOR_INNER : ShipRoomLayout.RoomId.VENTRAL_ARMOR;
+            default -> inner ? ShipRoomLayout.RoomId.BOW_ARMOR_INNER : ShipRoomLayout.RoomId.BOW_ARMOR;
+        };
+    }
+
+    private static double hitXForFace(Ship ship, int face) {
+        return switch (face) {
+            case Ship.SHIELD_FACE_REAR -> ship.x - ship.radius;
+            case Ship.SHIELD_FACE_LEFT, Ship.SHIELD_FACE_RIGHT -> ship.x;
+            default -> ship.x + ship.radius;
+        };
+    }
+
+    private static double hitYForFace(Ship ship, int face) {
+        return switch (face) {
+            case Ship.SHIELD_FACE_LEFT -> ship.y - ship.radius;
+            case Ship.SHIELD_FACE_RIGHT -> ship.y + ship.radius;
+            default -> ship.y;
+        };
+    }
+
+    private static double impactVxForFace(int face) {
+        return switch (face) {
+            case Ship.SHIELD_FACE_REAR -> 1.0;
+            default -> -1.0;
+        };
+    }
+
+    private static double impactVyForFace(int face) {
+        return switch (face) {
+            case Ship.SHIELD_FACE_LEFT -> 1.0;
+            case Ship.SHIELD_FACE_RIGHT -> -1.0;
+            default -> 0.0;
+        };
+    }
+
+    private static double roomHp(Ship ship, ShipRoomLayout.RoomId roomId) {
+        for (Ship.RoomStatus room : ship.roomStatusSnapshot()) {
+            if (room != null && room.roomId == roomId) return room.hp;
+        }
+        return 0.0;
+    }
+
+    private static double roomHpMax(Ship ship, ShipRoomLayout.RoomId roomId) {
+        for (Ship.RoomStatus room : ship.roomStatusSnapshot()) {
+            if (room != null && room.roomId == roomId) return room.hpMax;
+        }
+        return 0.0;
     }
 }

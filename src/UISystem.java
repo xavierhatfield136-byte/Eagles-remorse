@@ -1248,59 +1248,11 @@ public final class UISystem {
             case MISSILE_AAA -> setPlayerMissileRole(ctx, Turret.MissileRole.INTERCEPT, "MISSILE MODE: AAA");
             case CLOAK_CHARGE -> setPlayerCloakMode(ctx, Ship.CloakControlMode.CHARGE);
             case CLOAK_ACTIVE -> setPlayerCloakMode(ctx, Ship.CloakControlMode.ACTIVE);
-            case STRIKE_SELECT_TORPEDO -> {
-                ctx.ui.combatStrikeSelection = 0;
-                EventSystem.showBanner(ctx, "STRIKE MODE: TORPEDO", 0.8);
-            }
-            case STRIKE_SELECT_AIRWING -> {
-                ctx.ui.combatStrikeSelection = 1;
-                EventSystem.showBanner(ctx, "STRIKE MODE: AIR WING", 0.8);
-            }
-            case STRIKE_SELECT_NUCLEAR -> {
-                ctx.ui.combatStrikeSelection = 2;
-                EventSystem.showBanner(ctx, "STRIKE MODE: NUCLEAR", 0.8);
-            }
-            case STRIKE_LAUNCH -> {
-                int mode = MathUtil.clamp(ctx.ui.combatStrikeSelection, 0, 2);
-                switch (mode) {
-                    case 1 -> CampaignSystem.launchSelectedCampaignSortie(ctx);
-                    case 2 -> {
-                        if (CampaignSystem.isStrategicGalaxyMapMode(ctx) || ctx.ui.mapOpen) {
-                            CampaignSystem.beginCampaignAtomicStrikeConfirm(ctx);
-                        } else {
-                            CampaignSystem.launchSelectedCampaignAtomicStrike(ctx);
-                        }
-                    }
-                    default -> CampaignSystem.launchSelectedCampaignTorpedoStrike(ctx);
-                }
-            }
-            case INTERNAL_VIEW -> toggleTacticalView(ctx);
-            case CREW_PRIORITY_AUTO -> setCrewPriority(ctx, Ship.CrewPriority.AUTO_REPAIR);
-            case CREW_PRIORITY_FIRE -> setCrewPriority(ctx, Ship.CrewPriority.FIRE_SUPPRESSION);
-            case CREW_PRIORITY_REACTOR -> setCrewPriority(ctx, Ship.CrewPriority.REACTOR);
-            case CREW_PRIORITY_ENGINES -> setCrewPriority(ctx, Ship.CrewPriority.ENGINES);
-            case CREW_PRIORITY_WEAPONS -> setCrewPriority(ctx, Ship.CrewPriority.WEAPONS);
-            case CREW_PRIORITY_SHIELDS -> setCrewPriority(ctx, Ship.CrewPriority.SHIELDS);
-            case CREW_PRIORITY_SENSORS -> setCrewPriority(ctx, Ship.CrewPriority.SENSORS);
-            case CREW_PRIORITY_BATTLE -> setCrewPriority(ctx, Ship.CrewPriority.BATTLE_STATIONS);
-            case CREW_PRIORITY_CANCEL -> setCrewPriority(ctx, Ship.CrewPriority.AUTO_REPAIR);
             default -> {
                 return false;
             }
         }
         return true;
-    }
-
-    private static void setCrewPriority(GameContext ctx, Ship.CrewPriority priority) {
-        if (ctx == null || ctx.player == null) return;
-        ctx.player.setCrewPriority(priority);
-        if (priority == Ship.CrewPriority.BATTLE_STATIONS) {
-            ctx.player.crewOrder = Ship.CrewOrder.GUNNERY;
-        } else if (priority != null && priority != Ship.CrewPriority.AUTO_REPAIR) {
-            ctx.player.crewOrder = Ship.CrewOrder.DAMAGE_CONTROL;
-        }
-        String label = (priority == null) ? "AUTO REPAIR" : priority.name().replace('_', ' ');
-        EventSystem.showBanner(ctx, "CREW PRIORITY: " + label, 0.9);
     }
 
     public static boolean handleFleetNetClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {

@@ -22,6 +22,8 @@ public class Turret {
     public static final double GREEN_DIRECT_BEAM_DPS_MULT = 0.82;
     public static final double GREEN_DIRECT_BEAM_WIDTH_MULT = 0.52;
     public static final double GREEN_DIRECT_BEAM_MAX_WIDTH = 22.0;
+    public static final double GLOBAL_NON_MISSILE_PROJECTILE_RATE_MULT = 0.50;
+    public static final double GLOBAL_NON_MISSILE_PROJECTILE_DAMAGE_MULT = 2.00;
 
     public enum Kind {
         GUN,
@@ -261,6 +263,10 @@ public class Turret {
             cycleMul *= 0.90;
             damageMul *= 1.18;
         }
+        if (appliesGlobalNonMissileProjectileCompression(host, this, prof, missileTarget)) {
+            cycleMul *= GLOBAL_NON_MISSILE_PROJECTILE_RATE_MULT;
+            damageMul *= GLOBAL_NON_MISSILE_PROJECTILE_DAMAGE_MULT;
+        }
         damageMul *= Math.max(1.0, host.doctrineOffenseDamageMultiplier);
         cycleMul = Math.max(0.20, cycleMul);
         damageMul = Math.max(0.20, damageMul);
@@ -452,6 +458,38 @@ public class Turret {
             }
             return p;
         }
+    }
+
+    static boolean appliesGlobalNonMissileProjectileCompressionForTest(Ship host, Turret turret, Ship target) {
+        return appliesGlobalNonMissileProjectileCompression(host, turret,
+                host == null ? null : DoctrineRegistry.forFaction(host.faction), target);
+    }
+
+    private static boolean appliesGlobalNonMissileProjectileCompression(Ship host,
+                                                                        Turret turret,
+                                                                        DoctrineProfile prof,
+                                                                        Ship target) {
+        if (host == null || turret == null) return false;
+        if (turret.kind != Kind.GUN) return false;
+        if (host.role == ShipRole.MINER) return false;
+        if (isPointDefenseGun(host, turret, target)) return false;
+        if (isDirectLaserGun(host, turret, prof)) return false;
+        return true;
+    }
+
+    private static boolean isPointDefenseGun(Ship host, Turret turret, Ship target) {
+        if (host == null || turret == null) return false;
+        if (usesCiwsPelletsAgainst(host, turret, target)) return true;
+        if (host.role == ShipRole.PD_CRAFT || host.role == ShipRole.CIWS_CORVETTE) return true;
+        if (turret.weaponProfile == null || turret.weaponProfile.family() == null) return false;
+        return turret.weaponProfile.family() == CustomWeaponFamily.POINT_DEFENSE;
+    }
+
+    private static boolean isDirectLaserGun(Ship host, Turret turret, DoctrineProfile prof) {
+        if (host == null || turret == null) return false;
+        if (host.faction == Faction.TEAM_C) return true;
+        return prof != null && prof.doctrine == Doctrine.ENERGY_NAVY
+                && host.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT;
     }
 
     static double greenBeamLength(Ship host, Ship target, double projectileSpeed) {
