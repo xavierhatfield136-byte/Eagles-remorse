@@ -362,6 +362,46 @@ class CampaignOvermapCheckpointTest {
     }
 
     @Test
+    void strandedLargeOvermapCheckpointWithZeroSuppliesCanEngageFreeCourse() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+
+        st.strategicOvermapMode = true;
+        st.currentGalaxyLocationId = "poi-01";
+        st.dockedGalaxyLocationId = "";
+        st.selectedGalaxyLocationId = "";
+        st.playerGalaxyX = 19667.724383608704;
+        st.playerGalaxyY = 38018.53329497877;
+        st.selectedFreeGalaxyTargetX = 19421.170535456396;
+        st.selectedFreeGalaxyTargetY = 38393.171094916455;
+        st.campaignFuel = 94;
+        st.campaignSupplies = 0;
+        st.campaignAmmo = 108;
+        CampaignSystem.grantCampaignOre(ctx, 8643);
+
+        CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(ctx, 6);
+        checkpoint.campaignFiniteEconomyInitialized = true;
+        checkpoint.sourceVersion = 5;
+        assertEquals(5000, checkpoint.worldW);
+        assertEquals(5000, checkpoint.worldH);
+
+        GameContext restored = initializedCampaignContext();
+        assertTrue(applyCheckpoint(restored, checkpoint));
+        assertEquals(40, restored.campaign.campaignSupplies);
+
+        assertTrue(CampaignSystem.selectCampaignFreeTravelTarget(restored,
+                st.selectedFreeGalaxyTargetX, st.selectedFreeGalaxyTargetY));
+        assertEquals(st.selectedFreeGalaxyTargetX, restored.campaign.selectedFreeGalaxyTargetX, 1e-6);
+        assertEquals(st.selectedFreeGalaxyTargetY, restored.campaign.selectedFreeGalaxyTargetY, 1e-6);
+
+        assertTrue(CampaignSystem.startTravelToSelectedLocation(restored),
+                "restored free-course save should engage travel instead of being clamped to the tactical map corner");
+        assertTrue(restored.campaign.galaxyTravel.traveling);
+        assertEquals(st.selectedFreeGalaxyTargetX, restored.campaign.galaxyTravel.targetX, 1e-6);
+        assertEquals(st.selectedFreeGalaxyTargetY, restored.campaign.galaxyTravel.targetY, 1e-6);
+    }
+
+    @Test
     void checkpointPreservesDetachedStrategicDivisionOrders() throws Exception {
         GameContext ctx = initializedCampaignContext();
         startSector(ctx, 10);

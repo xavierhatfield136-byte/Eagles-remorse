@@ -345,7 +345,7 @@ class MissileRoleBehaviorTest {
     }
 
     @Test
-    void tacticalStrikeTorpedoBypassesShieldAndArmorOnBattleshipAndCiwsCorvette() {
+    void tacticalStrikeTorpedoStripsShieldsButRespectsArmor() {
         Faction.clearCampaignAlliances();
         GameContext ctx = new GameContext(new GameConfig(GameMode.SHOOTING_RANGE, 5000, 5000, true, 7878L, false));
         Ship launcher = new FleetShip(ShipRole.MOTHERSHIP, Faction.ALLY, 0.0, 0.0);
@@ -353,19 +353,22 @@ class MissileRoleBehaviorTest {
         Ship battleship = new FleetShip(ShipRole.BATTLESHIP, Faction.ENEMY, 280.0, 0.0);
         battleship.shield = Math.max(battleship.shield, 240.0);
         battleship.shieldMax = Math.max(battleship.shieldMax, battleship.shield);
+        ShipRoomLayout.RoomId battleshipArmor = ShipRoomLayout.RoomId.BOW_ARMOR;
+        double armorBefore = roomHp(battleship, battleshipArmor);
+        int battleshipEventsBefore = battleship.recentRoomDamageEvents().size();
 
         Ship corvette = new FleetShip(ShipRole.CIWS_CORVETTE, Faction.ENEMY, 420.0, 0.0);
         corvette.shield = Math.max(corvette.shield, 140.0);
         corvette.shieldMax = Math.max(corvette.shieldMax, corvette.shield);
 
-        Missile strikeBattleship = new Missile(0.0, 0.0, 0.0, battleship, GameContext.DT, 360.0, Math.toRadians(360.0), 14, 900, 10.0, Faction.ALLY);
+        Missile strikeBattleship = new Missile(0.0, 0.0, Math.PI, battleship, GameContext.DT, 360.0, Math.toRadians(360.0), 14, 900, 10.0, Faction.ALLY);
         strikeBattleship.strikeVisual = Missile.StrikeVisual.TORPEDO;
-        strikeBattleship.x = battleship.x;
+        strikeBattleship.x = battleship.x + battleship.radius;
         strikeBattleship.y = battleship.y;
 
-        Missile strikeCorvette = new Missile(0.0, 0.0, 0.0, corvette, GameContext.DT, 360.0, Math.toRadians(360.0), 14, 900, 10.0, Faction.ALLY);
+        Missile strikeCorvette = new Missile(0.0, 0.0, Math.PI, corvette, GameContext.DT, 360.0, Math.toRadians(360.0), 14, 900, 10.0, Faction.ALLY);
         strikeCorvette.strikeVisual = Missile.StrikeVisual.TORPEDO;
-        strikeCorvette.x = corvette.x;
+        strikeCorvette.x = corvette.x + corvette.radius;
         strikeCorvette.y = corvette.y;
 
         ctx.ships.add(launcher);
@@ -379,8 +382,27 @@ class MissileRoleBehaviorTest {
 
         assertEquals(0.0, battleship.shield, 1e-6, "tactical torpedo strike should bypass and strip battleship shields");
         assertEquals(0.0, corvette.shield, 1e-6, "tactical torpedo strike should bypass and strip corvette shields");
-        assertTrue(!battleship.alive || battleship.hp <= 0, "tactical torpedo strike should one-shot battleship-class targets");
-        assertTrue(!corvette.alive || corvette.hp <= 0, "tactical torpedo strike should one-shot smaller-than-battleship targets");
+        assertTrue(battleship.alive && battleship.hp > 0, "tactical torpedo strike should not one-shot through battleship armor");
+        assertTrue(corvette.alive && corvette.hp > 0, "tactical torpedo strike should not one-shot smaller-than-battleship targets through shields");
+        assertTrue(roomHp(battleship, battleshipArmor) < armorBefore,
+                "tactical torpedo strike should apply its follow-up hit to exterior armor");
+
+        List<Ship.RoomDamageEvent> battleshipEvents = battleship.recentRoomDamageEvents()
+                .subList(battleshipEventsBefore, battleship.recentRoomDamageEvents().size());
+        assertTrue(battleshipEvents.stream().anyMatch(hit -> hit.roomId == battleshipArmor && hit.damage > 0.0),
+                "tactical torpedo strike should record armor damage after shield strip");
+        assertFalse(battleshipEvents.stream().anyMatch(hit -> hit.roomId != null
+                        && !ShipRoomLayout.isArmorRoom(hit.roomId)
+                        && hit.damage > 0.0
+                        && !hit.fromHazard),
+                "tactical torpedo strike should not leak interior room damage through live armor");
+    }
+
+    private static double roomHp(Ship ship, ShipRoomLayout.RoomId roomId) {
+        for (Ship.RoomStatus room : ship.roomStatusSnapshot()) {
+            if (room != null && room.roomId == roomId) return room.hp;
+        }
+        return 0.0;
     }
 
 }

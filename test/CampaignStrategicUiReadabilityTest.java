@@ -2,8 +2,10 @@ import app.config.GameConfig;
 import app.config.GameMode;
 import org.junit.jupiter.api.Test;
 
+import java.awt.Canvas;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
+import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.util.List;
 
@@ -209,6 +211,72 @@ class CampaignStrategicUiReadabilityTest {
         st.selectedStrategicOverlayId = StrategicCampaignExpansionSystem.MapOverlay.INTEL.name();
         assertTrue(CampaignSystem.strategicOverlayInsightLines(ctx).stream()
                 .anyMatch(line -> line.startsWith("Intel Filter  |")));
+    }
+
+    @Test
+    void galaxyWarMapTopOverlayTabsSwitchSelectedOverlay() {
+        GameContext ctx = initializedCampaignContext();
+        ctx.campaign.strategicOvermapMode = true;
+        ctx.ui.mapOpen = true;
+        ctx.campaign.selectedStrategicOverlayId = StrategicCampaignExpansionSystem.MapOverlay.CONTROL.name();
+        int viewW = 1280;
+        int viewH = 720;
+        Rectangle frame = Renderer.getStrategicMapRect(viewW, viewH, true);
+        Rectangle[] tabs = Renderer.galaxyOverlayCommandBarRects(
+                frame.x + 190,
+                frame.y + 10,
+                Math.max(260, frame.width - 390));
+        Rectangle logistics = tabs[3];
+
+        Renderer.CampaignHubClickTarget target = Renderer.campaignHubClickTargetAt(ctx, viewW, viewH,
+                logistics.x + logistics.width / 2,
+                logistics.y + logistics.height / 2);
+
+        assertEquals(Renderer.CampaignHubClickTarget.Kind.OVERLAY, target.kind);
+        assertEquals(StrategicCampaignExpansionSystem.MapOverlay.ROUTES.name(), target.valueId);
+
+        MouseEvent click = new MouseEvent(
+                new Canvas(),
+                MouseEvent.MOUSE_PRESSED,
+                System.currentTimeMillis(),
+                0,
+                logistics.x + logistics.width / 2,
+                logistics.y + logistics.height / 2,
+                1,
+                false,
+                MouseEvent.BUTTON1);
+        assertTrue(UISystem.handleCampaignMapUiClick(ctx, click, viewW, viewH));
+        assertEquals(StrategicCampaignExpansionSystem.MapOverlay.ROUTES.name(), ctx.campaign.selectedStrategicOverlayId);
+    }
+
+    @Test
+    void galaxyLeftPanelHoverExposesFullReadoutLines() {
+        GameContext ctx = initializedCampaignContext();
+        ctx.campaign.strategicOvermapMode = true;
+        ctx.ui.mapOpen = true;
+        int viewW = 1280;
+        int viewH = 720;
+        Rectangle left = Renderer.getStrategicMapLeftPanelRect(viewW, viewH, true);
+
+        Renderer.HoverTooltip tooltip = Renderer.hoverTooltipAt(ctx, viewW, viewH,
+                left.x + left.width / 2,
+                left.y + left.height / 2);
+
+        assertTrue(tooltip != null);
+        assertTrue(tooltip.body.contains("Objective:") || tooltip.body.contains("Selected:"));
+    }
+
+    @Test
+    void galaxyActionButtonsReserveRoomForTwoTextRows() throws Exception {
+        int primaryHeight = rendererInt("galaxyPrimaryActionHeight");
+        int rowHeight = rendererInt("galaxySectionRowHeight");
+        int buttonHeight = rendererInt("galaxySectionButtonHeight");
+        int headerHeight = rendererInt("galaxySectionHeaderHeight");
+
+        assertTrue(primaryHeight >= 38, "primary actions need enough height for label and detail rows");
+        assertTrue(buttonHeight >= 32, "secondary action buttons need enough height for label and detail rows");
+        assertTrue(rowHeight >= buttonHeight + 3, "section rows should include a gutter below each button");
+        assertTrue(headerHeight >= 16, "section headers should not share vertical space with buttons");
     }
 
     @Test
@@ -478,6 +546,12 @@ class CampaignStrategicUiReadabilityTest {
                 double.class);
         method.setAccessible(true);
         return (boolean) method.invoke(null, ctx, label, x, y);
+    }
+
+    private static int rendererInt(String methodName) throws Exception {
+        java.lang.reflect.Method method = Renderer.class.getDeclaredMethod(methodName);
+        method.setAccessible(true);
+        return (int) method.invoke(null);
     }
 
     private static int opaquePixels(BufferedImage image) {

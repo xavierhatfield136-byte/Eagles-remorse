@@ -49,7 +49,26 @@ class InteriorProjectileDamagePatternTest {
     }
 
     @Test
-    void redExplosivePassesThroughDestroyedCarrierSideArmor() throws Exception {
+    void redSolidApDamagesArmorAndLeaksSmallInteriorDamage() {
+        FleetShip carrier = doctrinalShip(ShipRole.CARRIER, Faction.ALLY);
+        ShipRoomLayout.RoomId armorRoom = ShipRoomLayout.RoomId.DORSAL_ARMOR;
+        double armorBefore = roomHp(carrier, armorRoom);
+        int beforeEvents = carrier.recentRoomDamageEvents().size();
+
+        carrier.takeDamage(18, carrier.x, carrier.y - carrier.radius,
+                0.0, 1.0, Ship.InteriorHitProfile.RED_SOLID_AP);
+
+        List<Ship.RoomDamageEvent> hits = nonHazardEventsSince(carrier, beforeEvents);
+        assertTrue(roomHp(carrier, armorRoom) < armorBefore,
+                "red solid AP should still damage the exterior armor first");
+        assertTrue(hits.stream().anyMatch(hit -> hit.roomId == armorRoom),
+                "armor should receive the main slug impact");
+        assertTrue(hits.stream().anyMatch(hit -> !ShipRoomLayout.isArmorRoom(hit.roomId)),
+                "a small amount of red solid AP damage should leak into an interior room through live armor");
+    }
+
+    @Test
+    void redSolidApPassesThroughDestroyedCarrierSideArmor() throws Exception {
         FleetShip carrier = doctrinalShip(ShipRole.CARRIER, Faction.ALLY);
         ShipRoomLayout.RoomId armorRoom = ShipRoomLayout.RoomId.DORSAL_ARMOR;
         damageRoomDirectly(carrier, armorRoom, 10_000.0, false);
@@ -60,13 +79,13 @@ class InteriorProjectileDamagePatternTest {
         int beforeEvents = carrier.recentRoomDamageEvents().size();
 
         carrier.takeDamage(64, carrier.x, carrier.y - carrier.radius,
-                0.0, 1.0, Ship.InteriorHitProfile.RED_EXPLOSIVE);
+                0.0, 1.0, Ship.InteriorHitProfile.RED_SOLID_AP);
 
         List<Ship.RoomDamageEvent> hits = nonHazardEventsSince(carrier, beforeEvents);
         assertTrue(hits.stream().noneMatch(hit -> hit.roomId == armorRoom),
-                "destroyed carrier armor should not catch or detonate red APHE rounds");
+                "destroyed carrier armor should not catch red solid AP slugs");
         assertTrue(hits.stream().anyMatch(hit -> !ShipRoomLayout.isArmorRoom(hit.roomId)),
-                "red APHE should pass destroyed armor and damage live interior rooms");
+                "red solid AP should pass destroyed armor and damage live interior rooms");
         assertTrue(carrier.hp < hpBefore,
                 "carrier hull should continue taking damage after its side armor is destroyed");
     }
@@ -83,37 +102,32 @@ class InteriorProjectileDamagePatternTest {
     }
 
     @Test
-    void missilesDamageMoreRoomsThanRedExplosiveRounds() {
+    void missilesDamageMoreRoomsThanRedSolidApSlugs() {
         FleetShip redShip = doctrinalShip(ShipRole.FRIGATE, Faction.ENEMY);
         FleetShip missileShip = doctrinalShip(ShipRole.FRIGATE, Faction.ENEMY);
 
         redShip.takePenetratingInternalDamage(7, redShip.x + redShip.radius, redShip.y,
-                -1.0, 0.0, Ship.InteriorHitProfile.RED_EXPLOSIVE);
+                -1.0, 0.0, Ship.InteriorHitProfile.RED_SOLID_AP);
         missileShip.takePenetratingInternalDamage(7, missileShip.x + missileShip.radius, missileShip.y,
                 -1.0, 0.0, Ship.InteriorHitProfile.MISSILE_BLAST);
 
-        assertTrue(damagedRoomCount(redShip) >= 2, "red explosive rounds should damage nearby rooms");
         assertTrue(damagedRoomCount(missileShip) > damagedRoomCount(redShip),
-                "missiles should damage a wider set of rooms than red explosive rounds");
+                "missiles should damage a wider set of rooms than red solid AP slugs");
     }
 
     @Test
-    void redExplosiveRoundsStayNearDetonationRoom() {
+    void redSolidApSlugsDamageLineWithoutIgnitingSplashFires() {
         FleetShip ship = doctrinalShip(ShipRole.FRIGATE, Faction.ENEMY);
 
         ship.takePenetratingInternalDamage(18, ship.x + ship.radius, ship.y,
-                -1.0, 0.0, Ship.InteriorHitProfile.RED_EXPLOSIVE);
+                -1.0, 0.0, Ship.InteriorHitProfile.RED_SOLID_AP);
 
         List<Ship.RoomDamageEvent> hits = nonHazardEventsSince(ship, 0);
-        assertTrue(hits.size() >= 2, "red APHE rounds should damage the detonation room and neighbors");
-        ShipRoomLayout.RoomDef detonation = ShipRoomLayout.roomForId(ship.role, ship.faction, hits.get(0).roomId);
-        Set<ShipRoomLayout.RoomId> allowed = new HashSet<>();
-        allowed.add(detonation.id);
-        for (ShipRoomLayout.RoomId neighbor : detonation.neighbors) allowed.add(neighbor);
-        for (Ship.RoomDamageEvent hit : hits) {
-            assertTrue(allowed.contains(hit.roomId),
-                    "red APHE splash should stay in rooms adjacent to the detonation room");
-        }
+        assertTrue(hits.size() >= 1, "red solid AP should damage at least one interior room");
+        assertTrue(hits.stream().noneMatch(hit -> ShipRoomLayout.isArmorRoom(hit.roomId)),
+                "penetrating red solid AP interior damage should not be assigned to armor rooms");
+        assertEquals(0, burningRoomCount(ship),
+                "red solid AP should not behave like an explosive shell and should not ignite splash fires");
     }
 
     @Test
@@ -133,28 +147,28 @@ class InteriorProjectileDamagePatternTest {
     }
 
     @Test
-    void redExplosiveRoundDamagesLiveRoomWhenDetonationRoomIsDead() throws Exception {
+    void redSolidApRoundDamagesLiveRoomWhenFirstRoomIsDead() throws Exception {
         FleetShip scout = doctrinalShip(ShipRole.FRIGATE, Faction.ENEMY);
         scout.takePenetratingInternalDamage(18, scout.x + scout.radius, scout.y,
-                -1.0, 0.0, Ship.InteriorHitProfile.RED_EXPLOSIVE);
-        ShipRoomLayout.RoomId detonationRoom = nonHazardEventsSince(scout, 0).get(0).roomId;
+                -1.0, 0.0, Ship.InteriorHitProfile.RED_SOLID_AP);
+        ShipRoomLayout.RoomId firstRoom = nonHazardEventsSince(scout, 0).get(0).roomId;
 
         FleetShip ship = doctrinalShip(ShipRole.FRIGATE, Faction.ENEMY);
-        damageRoomDirectly(ship, detonationRoom, 10_000.0, false);
+        damageRoomDirectly(ship, firstRoom, 10_000.0, false);
         int beforeShotEvents = ship.recentRoomDamageEvents().size();
 
         ship.takePenetratingInternalDamage(18, ship.x + ship.radius, ship.y,
-                -1.0, 0.0, Ship.InteriorHitProfile.RED_EXPLOSIVE);
+                -1.0, 0.0, Ship.InteriorHitProfile.RED_SOLID_AP);
 
         List<Ship.RoomDamageEvent> hits = nonHazardEventsSince(ship, beforeShotEvents);
-        assertTrue(hits.stream().noneMatch(hit -> hit.roomId == detonationRoom),
-                "dead detonation rooms should be skipped instead of catching red APHE");
+        assertTrue(hits.stream().noneMatch(hit -> hit.roomId == firstRoom),
+                "dead rooms should be skipped instead of catching red solid AP");
         assertTrue(hits.stream().anyMatch(hit -> hit.roomId != null && !ShipRoomLayout.isArmorRoom(hit.roomId)),
-                "red APHE should continue into live rooms when the original detonation room is dead");
+                "red solid AP should continue into live rooms when the first room is dead");
     }
 
     @Test
-    void redExplosiveHullHitsAlwaysResolveToACompartment() {
+    void redSolidApHullHitsAlwaysResolveToACompartment() {
         for (int i = 0; i < 16; i++) {
             double angle = (Math.PI * 2.0 * i) / 16.0;
             double nx = Math.cos(angle);
@@ -166,10 +180,10 @@ class InteriorProjectileDamagePatternTest {
                     ship.y + ny * ship.radius,
                     -nx,
                     -ny,
-                    Ship.InteriorHitProfile.RED_EXPLOSIVE);
+                    Ship.InteriorHitProfile.RED_SOLID_AP);
 
             assertTrue(nonHazardEventsSince(ship, 0).size() > 0,
-                    "red APHE hit at hull angle index " + i + " should damage a room");
+                    "red solid AP hit at hull angle index " + i + " should damage a room");
         }
     }
 

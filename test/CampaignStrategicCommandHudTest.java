@@ -68,6 +68,61 @@ class CampaignStrategicCommandHudTest {
     }
 
     @Test
+    void overmapPlotCourseButtonMarksSelectedFreeCourseAndEngageStartsTravel() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        ctx.ui.mapOpen = true;
+        ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.NAV;
+        assertTrue(CampaignSystem.selectCampaignFreeTravelTarget(ctx, st.playerGalaxyX + 620.0, st.playerGalaxyY + 480.0));
+
+        int viewW = 1280;
+        int viewH = 720;
+        Rectangle panel = Renderer.getStrategicMapSidebarRect(viewW, viewH, true);
+        Method actionRect = Renderer.class.getDeclaredMethod(
+                "galaxyActionRect",
+                GameContext.class,
+                Rectangle.class,
+                String.class
+        );
+        actionRect.setAccessible(true);
+        Rectangle rect = (Rectangle) actionRect.invoke(null, ctx, panel, "PLOT_COURSE");
+        assertNotNull(rect);
+
+        MouseEvent click = new MouseEvent(
+                new Canvas(),
+                MouseEvent.MOUSE_PRESSED,
+                System.currentTimeMillis(),
+                0,
+                rect.x + rect.width / 2,
+                rect.y + rect.height / 2,
+                1,
+                false,
+                MouseEvent.BUTTON1
+        );
+
+        assertTrue(UISystem.handleCampaignMapUiClick(ctx, click, viewW, viewH));
+        assertFalse(st.galaxyTravel.traveling);
+
+        Rectangle engageRect = (Rectangle) actionRect.invoke(null, ctx, panel, "ENGAGE_COURSE");
+        assertNotNull(engageRect);
+        MouseEvent engageClick = new MouseEvent(
+                new Canvas(),
+                MouseEvent.MOUSE_PRESSED,
+                System.currentTimeMillis(),
+                0,
+                engageRect.x + engageRect.width / 2,
+                engageRect.y + engageRect.height / 2,
+                1,
+                false,
+                MouseEvent.BUTTON1
+        );
+
+        assertTrue(UISystem.handleCampaignMapUiClick(ctx, engageClick, viewW, viewH));
+        assertTrue(st.galaxyTravel.traveling);
+        assertTrue(st.galaxyTravel.freeTravel);
+    }
+
+    @Test
     void transitTravelCanSurfaceDiscoveryContacts() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;

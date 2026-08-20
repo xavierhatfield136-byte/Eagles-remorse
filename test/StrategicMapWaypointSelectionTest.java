@@ -8,6 +8,7 @@ import java.awt.event.MouseEvent;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -50,6 +51,80 @@ class StrategicMapWaypointSelectionTest {
         assertEquals(loaded.id, BattlefieldSectorSystem.selectedSector(ctx).id);
         assertEquals(expectedX, ctx.ui.waypointX, 1e-6);
         assertEquals(expectedY, ctx.ui.waypointY, 1e-6);
+    }
+
+    @Test
+    void staleOvermapEncounterPromptDoesNotBlockFleetMovementClick() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        ctx.campaign.strategicOvermapMode = true;
+        ctx.ui.mapOpen = true;
+        ctx.state = GameState.MAP;
+        ctx.ui.showCampaignForceEncounterPrompt(999_999, "STALE CONTACT", "Expired", "Overmap", "INVALID");
+
+        int viewW = 1280;
+        int viewH = 720;
+        double targetX = GameMath.clamp(ctx.campaign.playerGalaxyX + 1200.0, 0.0, ctx.WORLD_W);
+        double targetY = GameMath.clamp(ctx.campaign.playerGalaxyY + 900.0, 0.0, ctx.WORLD_H);
+        ctx.ui.strategicMapFocusX = targetX;
+        ctx.ui.strategicMapFocusY = targetY;
+        Rectangle rect = Renderer.getStrategicMapInnerRect(viewW, viewH, true);
+        int clickX = rect.x + rect.width / 2;
+        int clickY = rect.y + rect.height / 2;
+        MouseEvent click = new MouseEvent(
+                new Canvas(),
+                MouseEvent.MOUSE_PRESSED,
+                System.currentTimeMillis(),
+                0,
+                clickX,
+                clickY,
+                2,
+                false,
+                MouseEvent.BUTTON1
+        );
+
+        assertFalse(UISystem.handleCampaignMapUiClick(ctx, click, viewW, viewH),
+                "stale saved encounter prompts should be cleared and let map clicks through");
+        UISystem.handleMapClick(ctx, click, viewW, viewH);
+
+        assertFalse(ctx.ui.strategicEncounterPrompt.active);
+        assertTrue(ctx.campaign.galaxyTravel.traveling, "double-clicking the overmap should start fleet travel");
+    }
+
+    @Test
+    void overmapLeftSideSurfaceClickSetsFreeCourseAfterReadoutRemoval() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        ctx.campaign.strategicOvermapMode = true;
+        ctx.ui.mapOpen = true;
+        ctx.state = GameState.MAP;
+
+        int viewW = 1280;
+        int viewH = 720;
+        Rectangle map = Renderer.getStrategicMapInnerRect(viewW, viewH, true);
+        int clickX = map.x + 34;
+        int clickY = map.y + map.height / 2;
+        MouseEvent click = new MouseEvent(
+                new Canvas(),
+                MouseEvent.MOUSE_PRESSED,
+                System.currentTimeMillis(),
+                0,
+                clickX,
+                clickY,
+                2,
+                false,
+                MouseEvent.BUTTON1
+        );
+
+        assertFalse(UISystem.handleCampaignMapUiClick(ctx, click, viewW, viewH),
+                "left side of the galaxy map should not be swallowed by decorative readouts");
+        UISystem.handleMapClick(ctx, click, viewW, viewH);
+
+        assertTrue(CampaignSystem.hasSelectedFreeTravelTarget(ctx));
+        assertTrue(ctx.campaign.galaxyTravel.traveling);
+        assertTrue(ctx.campaign.galaxyTravel.freeTravel);
     }
 
     @Test

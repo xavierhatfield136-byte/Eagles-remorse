@@ -1301,8 +1301,16 @@ public final class UISystem {
         if (ctx == null || ctx.ui == null || e == null) return false;
         if (!SwingUtilities.isLeftMouseButton(e)) return false;
         boolean galaxyMode = CampaignSystem.isStrategicGalaxyMapMode(ctx);
+        if (galaxyMode
+                && ctx.ui.strategicEncounterPrompt.active
+                && !ctx.ui.campaignHubMenu.active
+                && !ctx.ui.campaignActionConfirm.active
+                && !CampaignSystem.hasValidStrategicEncounterResponder(ctx)) {
+            dismissStaleStrategicEncounterPrompt(ctx);
+            return false;
+        }
         boolean encounterPromptBlocking = galaxyMode
-                && CampaignSystem.hasPendingStrategicEncounterChoice(ctx)
+                && CampaignSystem.hasValidStrategicEncounterResponder(ctx)
                 && !ctx.ui.campaignHubMenu.active
                 && !ctx.ui.campaignActionConfirm.active;
 
@@ -1334,6 +1342,9 @@ public final class UISystem {
                 } catch (Exception ignored) {
                     return false;
                 }
+            }
+            case OVERLAY -> {
+                return CampaignSystem.setStrategicMapOverlay(ctx, target.valueId);
             }
             case ACTION -> {
                 return galaxyMode
@@ -1599,14 +1610,14 @@ public final class UISystem {
                     clickedSupport.type.name().replace('_', ' '),
                     clickedSupport.x,
                     clickedSupport.y,
-                    true);
+                    isHostileCampaignSupportMarker(ctx, clickedSupport));
             CampaignSystem.selectCampaignContactTarget(ctx,
                     clickedSupport.label,
                     clickedSupport.subtitle,
                     CampaignSystem.usesMissionSubzones(ctx) ? "Tracked" : clickedSupport.type.name().replace('_', ' '),
                     clickedSupport.x,
                     clickedSupport.y,
-                    true,
+                    isHostileCampaignSupportMarker(ctx, clickedSupport),
                     true);
             ctx.ui.waypointX = GameMath.clamp(clickedSupport.x, 0, ctx.WORLD_W);
             ctx.ui.waypointY = GameMath.clamp(clickedSupport.y, 0, ctx.WORLD_H);
@@ -2038,6 +2049,20 @@ public final class UISystem {
         return CampaignSystem.isStrategicOvermapMode(ctx) ? STRATEGIC_GALAXY_MAP_MIN_ZOOM : STRATEGIC_MAP_MIN_ZOOM;
     }
 
+    private static double strategicMapMaxX(GameContext ctx) {
+        if (ctx == null) return 0.0;
+        return CampaignSystem.isStrategicOvermapMode(ctx)
+                ? CampaignSystem.strategicGalaxyMapWidth(ctx)
+                : ctx.WORLD_W;
+    }
+
+    private static double strategicMapMaxY(GameContext ctx) {
+        if (ctx == null) return 0.0;
+        return CampaignSystem.isStrategicOvermapMode(ctx)
+                ? CampaignSystem.strategicGalaxyMapHeight(ctx)
+                : ctx.WORLD_H;
+    }
+
     static double strategicMapViewWidth(GameContext ctx) {
         if (ctx == null) return 0.0;
         if (CampaignSystem.usesMissionSubzones(ctx) && !CampaignSystem.isStrategicOvermapMode(ctx)) {
@@ -2045,7 +2070,7 @@ public final class UISystem {
             double zoom = Math.max(MISSION_MAP_MIN_ZOOM, strategicMapZoom(ctx));
             return Math.max(1.0, CampaignSystem.missionSubzoneWidth(ctx) * 1.18 * baseZoom / zoom);
         }
-        return Math.max(1.0, ctx.WORLD_W / strategicMapZoom(ctx));
+        return Math.max(1.0, strategicMapMaxX(ctx) / strategicMapZoom(ctx));
     }
 
     static double strategicMapViewHeight(GameContext ctx) {
@@ -2055,7 +2080,7 @@ public final class UISystem {
             double zoom = Math.max(MISSION_MAP_MIN_ZOOM, strategicMapZoom(ctx));
             return Math.max(1.0, CampaignSystem.missionSubzoneHeight(ctx) * 1.12 * baseZoom / zoom);
         }
-        return Math.max(1.0, ctx.WORLD_H / strategicMapZoom(ctx));
+        return Math.max(1.0, strategicMapMaxY(ctx) / strategicMapZoom(ctx));
     }
 
     static double strategicMapFocusX(GameContext ctx) {
@@ -2066,7 +2091,8 @@ public final class UISystem {
                 ? campaignMapFocusAnchorX(ctx)
                 : ((CampaignSystem.usesMissionSubzones(ctx) && ctx.player != null) ? ctx.player.x : half);
         double focus = Double.isFinite(ctx.ui.strategicMapFocusX) ? ctx.ui.strategicMapFocusX : fallback;
-        return GameMath.clamp(focus, half, Math.max(half, ctx.WORLD_W - half));
+        double maxX = strategicMapMaxX(ctx);
+        return GameMath.clamp(focus, half, Math.max(half, maxX - half));
     }
 
     static double strategicMapFocusY(GameContext ctx) {
@@ -2077,7 +2103,8 @@ public final class UISystem {
                 ? campaignMapFocusAnchorY(ctx)
                 : ((CampaignSystem.usesMissionSubzones(ctx) && ctx.player != null) ? ctx.player.y : half);
         double focus = Double.isFinite(ctx.ui.strategicMapFocusY) ? ctx.ui.strategicMapFocusY : fallback;
-        return GameMath.clamp(focus, half, Math.max(half, ctx.WORLD_H - half));
+        double maxY = strategicMapMaxY(ctx);
+        return GameMath.clamp(focus, half, Math.max(half, maxY - half));
     }
 
     static double strategicMapWorldMinX(GameContext ctx) {
@@ -2090,20 +2117,22 @@ public final class UISystem {
 
     static double strategicMapWorldXAt(GameContext ctx, double normalizedX) {
         return GameMath.clamp(strategicMapWorldMinX(ctx) + strategicMapViewWidth(ctx) * MathUtil.clamp(normalizedX, 0.0, 1.0),
-                0.0, ctx == null ? 0.0 : ctx.WORLD_W);
+                0.0, strategicMapMaxX(ctx));
     }
 
     static double strategicMapWorldYAt(GameContext ctx, double normalizedY) {
         return GameMath.clamp(strategicMapWorldMinY(ctx) + strategicMapViewHeight(ctx) * MathUtil.clamp(normalizedY, 0.0, 1.0),
-                0.0, ctx == null ? 0.0 : ctx.WORLD_H);
+                0.0, strategicMapMaxY(ctx));
     }
 
     private static void focusStrategicMapAt(GameContext ctx, double x, double y) {
         if (ctx == null || ctx.ui == null) return;
         double halfW = strategicMapViewWidth(ctx) * 0.5;
         double halfH = strategicMapViewHeight(ctx) * 0.5;
-        ctx.ui.strategicMapFocusX = GameMath.clamp(x, halfW, Math.max(halfW, ctx.WORLD_W - halfW));
-        ctx.ui.strategicMapFocusY = GameMath.clamp(y, halfH, Math.max(halfH, ctx.WORLD_H - halfH));
+        double maxX = strategicMapMaxX(ctx);
+        double maxY = strategicMapMaxY(ctx);
+        ctx.ui.strategicMapFocusX = GameMath.clamp(x, halfW, Math.max(halfW, maxX - halfW));
+        ctx.ui.strategicMapFocusY = GameMath.clamp(y, halfH, Math.max(halfH, maxY - halfH));
     }
 
     private static double campaignMapFocusAnchorX(GameContext ctx) {

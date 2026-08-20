@@ -365,6 +365,7 @@ class CampaignOvermapEncounterFlowTest {
         setDouble(primary, "contactConfidence", 0.92);
         setBoolean(primary, "visibleToPlayer", true);
         setObject(primary, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+        addPoolRecord(st, Faction.ENEMY, ShipRole.PATROL, getInt(primary, "id"), "Capped Primary Patrol");
 
         ArrayList<Object> nearbyForces = new ArrayList<>();
         for (int i = 0; i < 12; i++) {
@@ -377,6 +378,8 @@ class CampaignOvermapEncounterFlowTest {
             setDouble(force, "contactConfidence", 0.92);
             setBoolean(force, "visibleToPlayer", true);
             setObject(force, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+            addPoolRecord(st, Faction.ENEMY, ShipRole.PATROL, getInt(force, "id"),
+                    "Capped Sensor Crowd Patrol " + i);
             nearbyForces.add(force);
         }
 

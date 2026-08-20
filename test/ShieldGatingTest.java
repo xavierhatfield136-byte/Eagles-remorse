@@ -120,22 +120,22 @@ class ShieldGatingTest {
     }
 
     @Test
-    void yellowArmorGateBlocksInteriorPenetrationForFirstFiveHits() {
+    void yellowArmorUsesLocalRoomHpInsteadOfGateCounters() {
         FleetShip yellow = doctrinalShip(ShipRole.PATROL, Faction.TEAM_D);
+        yellow.shield = 0.0;
+        yellow.shieldActive = false;
 
-        assertEquals(5, yellow.armorGateHitCap(), "yellow armor should gate five hits before penetration");
+        ShipRoomLayout.RoomId bowArmor = ShipRoomLayout.RoomId.BOW_ARMOR;
+        double armorBefore = roomHp(yellow, bowArmor);
+        int beforeEvents = yellow.recentRoomDamageEvents().size();
 
-        for (int hit = 1; hit <= yellow.armorGateHitCap(); hit++) {
-            yellow.takeDamage(12, yellow.x + yellow.radius, yellow.y, 0.0, 0.0);
-            assertEquals(yellow.armorGateHitCap() - hit, yellow.armorGateHitsRemaining(Ship.SHIELD_FACE_FORE),
-                    "yellow fore armor gate should count down per hit");
-            assertEquals(yellow.armorGateHitCap(), yellow.armorGateHitsRemaining(Ship.SHIELD_FACE_REAR),
-                    "yellow rear armor gate should stay fresh while the bow is being hit");
-        }
+        assertEquals(0, yellow.armorGateHitCap(), "armor protection should come from armor room HP, not gate counters");
 
-        yellow.takeDamage(12, yellow.x - yellow.radius, yellow.y, 0.0, 0.0);
-        assertEquals(yellow.armorGateHitCap() - 1, yellow.armorGateHitsRemaining(Ship.SHIELD_FACE_REAR),
-                "yellow rear armor gate should start counting down independently once the stern is hit");
+        yellow.takeDamage(1, yellow.x + yellow.radius, yellow.y, -1.0, 0.0);
+
+        assertTrue(roomHp(yellow, bowArmor) < armorBefore, "the local bow armor room should absorb the hit");
+        assertEquals(0, nonArmorDamageEventsSince(yellow, beforeEvents),
+                "live armor should block normal interior room damage");
     }
 
     @Test
@@ -171,23 +171,42 @@ class ShieldGatingTest {
                 yellow.shield = 0.0;
                 yellow.shieldActive = false;
 
-                int hpBefore = yellow.hp;
                 ShipRoomLayout.RoomId outerArmor = armorRoomForFace(face, false);
-                ShipRoomLayout.RoomId innerArmor = armorRoomForFace(face, true);
+                int beforeEvents = yellow.recentRoomDamageEvents().size();
 
-                for (int hit = 0; hit < 96 && yellow.hp == hpBefore; hit++) {
+                for (int hit = 0; hit < 96 && nonArmorDamageEventsSince(yellow, beforeEvents) == 0; hit++) {
                     yellow.takeDamage(42, hitXForFace(yellow, face), hitYForFace(yellow, face),
                             impactVxForFace(face), impactVyForFace(face));
                 }
 
                 assertEquals(0.0, roomHp(yellow, outerArmor), 1e-6,
                         role + " " + outerArmor + " should be breakable");
-                assertEquals(0.0, roomHp(yellow, innerArmor), 1e-6,
-                        role + " " + innerArmor + " should be breakable after the outer armor");
-                assertTrue(yellow.hp < hpBefore,
-                        role + " should eventually take hull damage through " + outerArmor);
+                assertTrue(nonArmorDamageEventsSince(yellow, beforeEvents) > 0,
+                        role + " should take interior damage through " + outerArmor + " once that armor room is destroyed");
             }
         }
+    }
+
+    @Test
+    void oneBrokenArmorRoomAllowsPenetrationWithoutBreakingOtherSides() {
+        FleetShip yellow = doctrinalShip(ShipRole.CRUISER, Faction.TEAM_D);
+        yellow.shield = 0.0;
+        yellow.shieldActive = false;
+
+        ShipRoomLayout.RoomId bowArmor = ShipRoomLayout.RoomId.BOW_ARMOR;
+        ShipRoomLayout.RoomId aftArmor = ShipRoomLayout.RoomId.AFT_ARMOR;
+        int beforeEvents = yellow.recentRoomDamageEvents().size();
+
+        for (int hit = 0; hit < 96 && nonArmorDamageEventsSince(yellow, beforeEvents) == 0; hit++) {
+            yellow.takeDamage(42, yellow.x + yellow.radius, yellow.y, -1.0, 0.0);
+        }
+
+        assertEquals(0.0, roomHp(yellow, bowArmor), 1e-6,
+                "bow armor should be the only required local armor buffer");
+        assertTrue(nonArmorDamageEventsSince(yellow, beforeEvents) > 0,
+                "hits on the broken bow armor side should reach interior rooms");
+        assertTrue(roomHp(yellow, aftArmor) > 0.0,
+                "penetrating bow armor should not require the aft armor room to be destroyed");
     }
 
     private static FleetShip doctrinalShip(ShipRole role, Faction faction) {
@@ -240,6 +259,18 @@ class ShieldGatingTest {
             case Ship.SHIELD_FACE_RIGHT -> -1.0;
             default -> 0.0;
         };
+    }
+
+    private static int nonArmorDamageEventsSince(Ship ship, int startIndex) {
+        int count = 0;
+        for (int i = Math.max(0, startIndex); i < ship.recentRoomDamageEvents().size(); i++) {
+            Ship.RoomDamageEvent event = ship.recentRoomDamageEvents().get(i);
+            if (event != null && event.roomId != null && event.damage > 0.0
+                    && !event.fromHazard && !ShipRoomLayout.isArmorRoom(event.roomId)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static double roomHp(Ship ship, ShipRoomLayout.RoomId roomId) {

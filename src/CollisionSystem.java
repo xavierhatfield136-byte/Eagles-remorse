@@ -205,8 +205,8 @@ public class CollisionSystem {
                 }
 
                 int effectiveDamage = scaleDamage(ctx, applyGreenRangeFalloff(shooter, p, s, p.damage));
-                if (p instanceof Missile missile && isArmorBypassingTorpedo(missile)) {
-                    applyArmorBypassingTorpedoImpact(missile, s);
+                if (p instanceof Missile missile && isShieldStrippingTorpedo(missile)) {
+                    applyShieldStrippingTorpedoImpact(missile, s, effectiveDamage);
                 } else {
                     s.takeDamage(
                             effectiveDamage,
@@ -586,7 +586,7 @@ public class CollisionSystem {
         AudioSystem.onExplosion(ctx, m.x, m.y);
     }
 
-    private static boolean isArmorBypassingTorpedo(Missile missile) {
+    private static boolean isShieldStrippingTorpedo(Missile missile) {
         return missile != null && missile.strikeVisual == Missile.StrikeVisual.TORPEDO;
     }
 
@@ -596,23 +596,14 @@ public class CollisionSystem {
                 || missile.role == Turret.MissileRole.INTERCEPT;
     }
 
-    private static void applyArmorBypassingTorpedoImpact(Missile missile, Ship target) {
+    private static void applyShieldStrippingTorpedoImpact(Missile missile, Ship target, int effectiveDamage) {
         if (missile == null || target == null) return;
-        double durability = Math.max(1.0, target.hp + Math.max(0.0, target.shield));
-        int trueHullDamage = Math.max(1, missile.damage);
-        if (isBattleshipOrSmaller(target.role)) {
-            trueHullDamage = Math.max(trueHullDamage, (int) Math.ceil(durability * 1.35));
-        } else {
-            trueHullDamage = Math.max(trueHullDamage, (int) Math.ceil(durability * 0.70));
-        }
-        target.shield = 0.0;
-        target.shieldActive = false;
-        target.hp = Math.max(0, target.hp - trueHullDamage);
-        if (target.hp <= 0) {
-            target.hp = 0;
-            target.alive = false;
-            target.dying = true;
-        }
+        target.collapseShield(Math.max(0.6, target.shieldRebootDelay * 0.85),
+                missile.x, missile.y, missile.vx, missile.vy);
+        int hullDamage = Math.max(1, effectiveDamage);
+        if (isBattleshipOrSmaller(target.role)) hullDamage = Math.max(hullDamage, missile.damage);
+        target.takeDamage(hullDamage, missile.x, missile.y, missile.vx, missile.vy,
+                interiorHitProfileForProjectile(null, missile));
     }
 
     private static boolean isBattleshipOrSmaller(ShipRole role) {
@@ -1450,7 +1441,7 @@ public class CollisionSystem {
         if (projectile instanceof Bullet && shooter != null) {
             DoctrineProfile profile = DoctrineRegistry.forFaction(shooter.faction);
             if (profile != null && profile.doctrine == Doctrine.KINETIC_CONSORTIUM) {
-                return Ship.InteriorHitProfile.RED_EXPLOSIVE;
+                return Ship.InteriorHitProfile.RED_SOLID_AP;
             }
         }
         return Ship.InteriorHitProfile.DEFAULT;

@@ -2215,6 +2215,20 @@ public final class CampaignSystem extends CampaignSystemModels {
         return true;
     }
 
+    public static boolean setStrategicMapOverlay(GameContext ctx, String overlayId) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || overlayId == null || overlayId.isBlank()) return false;
+        StrategicCampaignExpansionSystem.MapOverlay overlay;
+        try {
+            overlay = StrategicCampaignExpansionSystem.MapOverlay.valueOf(overlayId.trim().toUpperCase(Locale.US));
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
+        st.selectedStrategicOverlayId = overlay.name();
+        EventSystem.showBanner(ctx, "STRATEGIC OVERLAY: " + st.selectedStrategicOverlayId, 1.0);
+        return true;
+    }
+
     public static boolean cycleCampaignTaskGroup(GameContext ctx) {
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return false;
@@ -5870,9 +5884,9 @@ public final class CampaignSystem extends CampaignSystemModels {
                             : "Select a location, contact, or free-space point first.",
                     CampaignActionCategory.NAVIGATION,
                     true,
-                    hasCourse,
-                    hasCourse ? "" : "no destination selected",
-                    hasCourse ? CampaignActionState.AVAILABLE : CampaignActionState.DISABLED,
+                    hasCourse && !traveling,
+                    hasCourse ? (traveling ? "course already engaged" : "") : "no destination selected",
+                    hasCourse && !traveling ? CampaignActionState.AVAILABLE : CampaignActionState.DISABLED,
                     false,
                     "",
                     actionCtx -> {
@@ -6643,8 +6657,8 @@ public final class CampaignSystem extends CampaignSystemModels {
                 "OPEN_REPAIRS",
                 "OPEN_TRADE",
                 "APPROACH_DOCK",
-                "PLOT_COURSE",
-                "ENGAGE_COURSE"
+                "ENGAGE_COURSE",
+                "PLOT_COURSE"
         };
         for (String id : priority) {
             for (CampaignAction action : actions) {
@@ -7336,15 +7350,29 @@ public final class CampaignSystem extends CampaignSystemModels {
             }
         }
         CampaignForce force = campaignForceBySelectedContact(ctx);
-        if (force != null && force.faction == Faction.ENEMY
-                && campaignForceCanTriggerPlayerEncounter(ctx, st, force)) {
+        if (force != null) {
+            boolean forceHostile = campaignForceHostileToPlayer(ctx, force);
+            String selectedLabel = ctx.ui.selectedCampaignContactLabel == null
+                    ? ""
+                    : ctx.ui.selectedCampaignContactLabel.trim();
+            boolean selectedForceByName = !selectedLabel.isBlank() && force.name.equalsIgnoreCase(selectedLabel);
+            boolean actionableHostileForce = hostile && forceHostile && campaignForceCanTriggerPlayerEncounter(ctx, st, force);
+            if (!selectedForceByName && !actionableHostileForce) {
+                force = null;
+            }
+        }
+        if (force != null) {
+            boolean forceHostile = campaignForceHostileToPlayer(ctx, force);
             ctx.ui.selectedCampaignContactLabel = force.name;
             ctx.ui.selectedCampaignContactSubtitle = campaignForceCompactStatusLabel(st, force);
             ctx.ui.selectedCampaignContactIntel = campaignForceContactLabel(force);
             ctx.ui.selectedCampaignContactX = forceMarkerX(force);
             ctx.ui.selectedCampaignContactY = forceMarkerY(force);
-            ctx.ui.selectedCampaignContactHostile = true;
-            ctx.ui.selectedCampaignContactTrackable = true;
+            ctx.ui.selectedCampaignContactHostile = forceHostile;
+            ctx.ui.selectedCampaignContactTrackable = forceHostile && campaignForceCanOpenPlayerEncounter(ctx, st, force);
+            if (!forceHostile || !campaignForceCanTriggerPlayerEncounter(ctx, st, force)) {
+                ctx.ui.selectedCampaignContactGalaxySearchGroupId = 0;
+            }
             return;
         }
         if (hostile && st != null && isStrategicOvermapMode(st)) {
@@ -7369,15 +7397,23 @@ public final class CampaignSystem extends CampaignSystemModels {
         CampaignState st = state(ctx);
         if (ctx == null || st == null || !hasSelectedCampaignContactTarget(ctx) || !selectedCampaignContactHostile(ctx)) return false;
         CampaignForce force = campaignForceBySelectedContact(ctx);
-        if (force != null && campaignForceCanTriggerPlayerEncounter(ctx, st, force)) {
-            if (!showCampaignForceEncounterChoice(ctx, force)) {
+        if (force != null) {
+            if (campaignForceCanTriggerPlayerEncounter(ctx, st, force)) {
+                if (!showCampaignForceEncounterChoice(ctx, force)) {
+                    clearSelectedCampaignContact(ctx);
+                    EventSystem.showBanner(ctx, "CONTACT LOST: NO PHYSICAL FLEET REMAINS", 1.2);
+                    return false;
+                }
+                st.galaxyTravel.clear();
+                EventSystem.showBanner(ctx, "HOSTILE FORCE MARKED FOR INTERCEPT", 1.4);
+                return true;
+            }
+            if (campaignForceHostileToPlayer(ctx, force)) {
+                sweepGhostFleetsBeforeForceEncounterPrompt(ctx, st, force);
                 clearSelectedCampaignContact(ctx);
                 EventSystem.showBanner(ctx, "CONTACT LOST: NO PHYSICAL FLEET REMAINS", 1.2);
                 return false;
             }
-            st.galaxyTravel.clear();
-            EventSystem.showBanner(ctx, "HOSTILE FORCE MARKED FOR INTERCEPT", 1.4);
-            return true;
         }
         GalaxySearchGroup group = selectedCampaignSearchGroup(ctx);
         if (group == null) {
@@ -8901,8 +8937,8 @@ public final class CampaignSystem extends CampaignSystemModels {
         CampaignState st = state(ctx);
         if (ctx == null || st == null || !isStrategicGalaxyMapMode(ctx)) return false;
         st.selectedGalaxyLocationId = "";
-        st.selectedFreeGalaxyTargetX = GameMath.clamp(x, 0.0, ctx.WORLD_W);
-        st.selectedFreeGalaxyTargetY = GameMath.clamp(y, 0.0, ctx.WORLD_H);
+        st.selectedFreeGalaxyTargetX = GameMath.clamp(x, 0.0, strategicGalaxyMapWidth(ctx));
+        st.selectedFreeGalaxyTargetY = GameMath.clamp(y, 0.0, strategicGalaxyMapHeight(ctx));
         EventSystem.showBanner(ctx,
                 "FREE COURSE SELECTED  X " + (int) Math.round(st.selectedFreeGalaxyTargetX)
                         + "  Y " + (int) Math.round(st.selectedFreeGalaxyTargetY),
@@ -8938,8 +8974,8 @@ public final class CampaignSystem extends CampaignSystemModels {
             UISystem.addPing(ctx, location.x, location.y, 2.2);
         } else {
             st.selectedGalaxyLocationId = "";
-            st.selectedFreeGalaxyTargetX = GameMath.clamp(bookmark.x, 0.0, ctx.WORLD_W);
-            st.selectedFreeGalaxyTargetY = GameMath.clamp(bookmark.y, 0.0, ctx.WORLD_H);
+            st.selectedFreeGalaxyTargetX = GameMath.clamp(bookmark.x, 0.0, strategicGalaxyMapWidth(ctx));
+            st.selectedFreeGalaxyTargetY = GameMath.clamp(bookmark.y, 0.0, strategicGalaxyMapHeight(ctx));
             UISystem.addPing(ctx, st.selectedFreeGalaxyTargetX, st.selectedFreeGalaxyTargetY, 2.2);
         }
         EventSystem.showBanner(ctx, "BOOKMARK: " + bookmark.label.toUpperCase(Locale.US), 1.1);
@@ -9124,8 +9160,8 @@ public final class CampaignSystem extends CampaignSystemModels {
             return;
         }
         st.selectedGalaxyLocationId = "";
-        st.selectedFreeGalaxyTargetX = GameMath.clamp(stop.x, 0.0, ctx.WORLD_W);
-        st.selectedFreeGalaxyTargetY = GameMath.clamp(stop.y, 0.0, ctx.WORLD_H);
+        st.selectedFreeGalaxyTargetX = GameMath.clamp(stop.x, 0.0, strategicGalaxyMapWidth(ctx));
+        st.selectedFreeGalaxyTargetY = GameMath.clamp(stop.y, 0.0, strategicGalaxyMapHeight(ctx));
         UISystem.addPing(ctx, st.selectedFreeGalaxyTargetX, st.selectedFreeGalaxyTargetY, 1.9);
     }
 
@@ -9213,8 +9249,8 @@ public final class CampaignSystem extends CampaignSystemModels {
     private static boolean startTravelToFreeTarget(GameContext ctx, CampaignState st, CampaignLocation current) {
         if (ctx == null || st == null || !hasSelectedFreeTravelTarget(ctx)) return false;
         ensureGalaxyFleetPosition(st, current);
-        double targetX = GameMath.clamp(st.selectedFreeGalaxyTargetX, 0.0, ctx.WORLD_W);
-        double targetY = GameMath.clamp(st.selectedFreeGalaxyTargetY, 0.0, ctx.WORLD_H);
+        double targetX = GameMath.clamp(st.selectedFreeGalaxyTargetX, 0.0, strategicGalaxyMapWidth(ctx));
+        double targetY = GameMath.clamp(st.selectedFreeGalaxyTargetY, 0.0, strategicGalaxyMapHeight(ctx));
         double dist = Math.hypot(targetX - st.playerGalaxyX, targetY - st.playerGalaxyY);
         if (dist <= 24.0) {
             EventSystem.showBanner(ctx, "COURSE ALREADY HELD AT SELECTED COORDINATES", 1.1);
@@ -12505,6 +12541,19 @@ public final class CampaignSystem extends CampaignSystemModels {
                 && !exactFleetIntel) {
             return null;
         }
+        if (!physicalFleet && !DevTools.isDebugOverlay() && force.faction == Faction.ENEMY) {
+            String labelPrefix = rosterState == CampaignForceRosterSystem.ForceRosterState.SCRIPTED_NON_PHYSICAL
+                    ? "Hostile Operation Trace"
+                    : "Hostile Intel Trace";
+            String label = labelPrefix + " - " + campaignForceMapDisplayName(force);
+            String subtitle = "NON-PHYSICAL CONTACT  |  roster " + rosterState.name().replace('_', ' ')
+                    + "  |  concrete ships " + roster.concreteShipCount()
+                    + "  |  source " + (intel == null ? "last known" : intel.source.name().replace('_', ' '));
+            double markerX = intel != null && intel.exactPosition() ? intel.knownX : forceMarkerX(force);
+            double markerY = intel != null && intel.exactPosition() ? intel.knownY : forceMarkerY(force);
+            return new CampaignSupportMarker(SupportMarkerType.INTEL, label, subtitle, force.faction, markerX, markerY,
+                    Math.max(90.0, force.uncertaintyRadius), 34, false, force.id, 0);
+        }
         if (!DevTools.isDebugOverlay() && force.faction == Faction.ENEMY) {
             if (intel == null || intel.precision == CampaignIntelPrecision.UNKNOWN
                     || intel.precision == CampaignIntelPrecision.STRATEGIC_ONLY) return null;
@@ -12532,17 +12581,6 @@ public final class CampaignSystem extends CampaignSystemModels {
         double markerY = intel != null && intel.exactPosition() ? intel.knownY : forceMarkerY(force);
         SupportMarkerType type = campaignForceMarkerType(force);
         int fleetLevel = campaignForceFleetProfile(ctx, st, force).level.level;
-        if (!physicalFleet && !DevTools.isDebugOverlay() && !exactFleetIntel && force.faction == Faction.ENEMY) {
-            if (force.faction != Faction.ENEMY) return null;
-            String label = rosterState == CampaignForceRosterSystem.ForceRosterState.SCRIPTED_NON_PHYSICAL
-                    ? "Hostile Operation Trace"
-                    : "Hostile Intel Trace";
-            String subtitle = "NON-PHYSICAL CONTACT  |  roster " + rosterState.name().replace('_', ' ')
-                    + "  |  concrete ships " + roster.concreteShipCount()
-                    + "  |  source " + (intel == null ? "last known" : intel.source.name().replace('_', ' '));
-            return new CampaignSupportMarker(SupportMarkerType.INTEL, label, subtitle, force.faction, markerX, markerY,
-                    Math.max(90.0, force.uncertaintyRadius), 34, false, force.id, 0);
-        }
         if (!DevTools.isDebugOverlay() && force.faction == Faction.ENEMY && intel != null) {
             String label = intel.confidence >= 0.80 ? force.name : "Live Hostile Contact";
             String subtitle = "EXACT LIVE CONTACT  |  source " + intel.source.name().replace('_', ' ')
@@ -13956,6 +13994,52 @@ public final class CampaignSystem extends CampaignSystemModels {
     public static int recommendedStrategicTheaterHeight(GameConfig config) {
         int base = recommendedWorldHeight(config);
         return Math.max(base, base * 4);
+    }
+
+    static double strategicGalaxyMapWidth(GameContext ctx) {
+        double max = ctx == null || ctx.config == null
+                ? recommendedWorldWidth()
+                : Math.max(ctx.WORLD_W, recommendedWorldWidth(ctx.config));
+        CampaignState st = state(ctx);
+        if (st != null) {
+            max = Math.max(max, finiteMapExtent(st.playerGalaxyX));
+            max = Math.max(max, finiteMapExtent(st.selectedFreeGalaxyTargetX));
+            max = Math.max(max, finiteMapExtent(st.galaxyTravel.targetX));
+            for (CampaignLocation location : allCampaignLocations(st)) {
+                if (location != null) max = Math.max(max, finiteMapExtent(location.x));
+            }
+            for (CampaignForce force : st.campaignForces) {
+                if (force == null) continue;
+                max = Math.max(max, finiteMapExtent(force.x));
+                max = Math.max(max, finiteMapExtent(force.targetX));
+            }
+        }
+        return Math.max(1.0, max);
+    }
+
+    static double strategicGalaxyMapHeight(GameContext ctx) {
+        double max = ctx == null || ctx.config == null
+                ? recommendedStrategicTheaterHeight(null)
+                : Math.max(ctx.WORLD_H, recommendedStrategicTheaterHeight(ctx.config));
+        CampaignState st = state(ctx);
+        if (st != null) {
+            max = Math.max(max, finiteMapExtent(st.playerGalaxyY));
+            max = Math.max(max, finiteMapExtent(st.selectedFreeGalaxyTargetY));
+            max = Math.max(max, finiteMapExtent(st.galaxyTravel.targetY));
+            for (CampaignLocation location : allCampaignLocations(st)) {
+                if (location != null) max = Math.max(max, finiteMapExtent(location.y));
+            }
+            for (CampaignForce force : st.campaignForces) {
+                if (force == null) continue;
+                max = Math.max(max, finiteMapExtent(force.y));
+                max = Math.max(max, finiteMapExtent(force.targetY));
+            }
+        }
+        return Math.max(1.0, max);
+    }
+
+    private static double finiteMapExtent(double value) {
+        return Double.isFinite(value) ? Math.max(1.0, value + 1200.0) : 1.0;
     }
 
     private static boolean canWarpBetweenZones(int sourceSector, int targetSector) {
@@ -34191,12 +34275,20 @@ public final class CampaignSystem extends CampaignSystemModels {
         return force.contactConfidence >= 0.34 && force.lastKnownAgeSec < 20.0;
     }
 
+    private static boolean campaignForceHostileToPlayer(GameContext ctx, CampaignForce force) {
+        if (force == null || force.faction == null) return false;
+        if (ctx != null && ctx.player != null && ctx.player.faction != null) {
+            return !force.faction.isFriendlyTo(ctx.player.faction);
+        }
+        return force.faction == Faction.ENEMY || force.faction == Faction.DARK_YELLOW;
+    }
+
     private static boolean showCampaignForceEncounterChoice(GameContext ctx, CampaignForce force) {
         CampaignState st = state(ctx);
         if (ctx == null || ctx.ui == null || st == null || force == null) return false;
         if (!sweepGhostFleetsBeforeForceEncounterPrompt(ctx, st, force)) return false;
-        String body = "Direct hostile fleet contact. Choose a starting range: 1 Short 3000m, 2 Medium 6000m, "
-                + "or 3 Long 9000m. Click the mission-zone map to choose where Blue enters before taking command.";
+        String body = "Adjust starting distance and review enemy formation. Click the allied deployment space to set "
+                + "Blue entry before taking command.";
         String location = "Overmap force contact";
         String strength = "CONTACT " + (int) Math.round(force.strength)
                 + "  |  " + campaignForceIntentLabel(force.intent).toUpperCase(Locale.US)
@@ -38226,8 +38318,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (force.kind == CampaignForceKind.PLAYER_FLEET) return true;
         CampaignForceRosterSystem.ForceRosterState rosterState =
                 CampaignForceRosterSystem.resolveRosterState(ctx, st, force);
-        return rosterState == CampaignForceRosterSystem.ForceRosterState.CONCRETE
-                || rosterState == CampaignForceRosterSystem.ForceRosterState.INTEL_ONLY;
+        return rosterState == CampaignForceRosterSystem.ForceRosterState.CONCRETE;
     }
 
     private static boolean autoResolveCampaignForceEncounter(GameContext ctx, CampaignState st, CampaignForce force) {
@@ -47810,6 +47901,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         ctx.orePriceBaseMul = Math.max(0.0, cp.orePriceBaseMul);
         setCampaignOre(ctx, st, Math.max(0, cp.campaignOre));
         repairZeroedTravelStoresAfterLoad(ctx, st, cp);
+        repairStrandedCheckpointSuppliesAfterLoad(ctx, st, cp);
 
         restorePlayerFromCheckpoint(ctx.player, cp);
         syncCampaignOreToFlagship(ctx, st);
@@ -47857,6 +47949,23 @@ public final class CampaignSystem extends CampaignSystemModels {
         addCampaignLogEntry(st, "recovery", "Travel stores restored",
                 "Checkpoint resources were all zero after a save migration",
                 "Fuel, supplies, and ammunition were restored so the overmap fleet can move again.", true);
+    }
+
+    private static void repairStrandedCheckpointSuppliesAfterLoad(GameContext ctx,
+                                                                  CampaignState st,
+                                                                  CampaignCheckpointStore.Checkpoint cp) {
+        if (st == null || cp == null || st.campaignSupplies > 0) return;
+        if (!st.strategicOvermapMode || st.galaxyTravel.traveling) return;
+        if (!isBlank(st.dockedGalaxyLocationId) && campaignLocationById(st, st.dockedGalaxyLocationId) != null) return;
+        if (st.campaignFuel <= 0 || st.campaignAmmo <= 0) return;
+        int ore = Math.max(currentCampaignOre(ctx), cp.campaignOre);
+        boolean economyAlive = ore > 0 || st.campaignFiniteEconomyInitialized || cp.sourceVersion >= 5;
+        if (!economyAlive) return;
+        st.campaignSupplies = 40;
+        pushTheaterEvent(st, "SAVE REPAIR: issued emergency supplies to stranded overmap fleet");
+        addCampaignLogEntry(st, "recovery", "Emergency supplies issued",
+                "Checkpoint restored the fleet away from dock with zero supplies",
+                "A small supply reserve was issued so the overmap fleet can engage a course.", true);
     }
 
     private static String serializeGalaxyLocationStates(CampaignState st) {

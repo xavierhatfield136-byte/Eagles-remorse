@@ -8,6 +8,7 @@ import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.FontMetrics;
 import java.awt.GradientPaint;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
@@ -278,12 +279,17 @@ public final class MainMenuBattlePanel extends JPanel implements MainMenuPanel.M
     private void paintOverlay(Graphics2D g2, int w, int h) {
         int pad = MenuDisplay.scaled(18, uiScale);
         g2.setFont(MenuDisplay.font("Consolas", Font.BOLD, 12, uiScale));
+        FontMetrics titleFm = g2.getFontMetrics();
+        int titleY = pad + titleFm.getAscent();
         g2.setColor(new Color(125, 214, 231, 210));
-        g2.drawString("TACTICAL ATTRACT MODE", pad, pad + MenuDisplay.scaled(4, uiScale));
+        g2.drawString("TACTICAL ATTRACT MODE", pad, titleY);
         g2.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 12, uiScale));
+        FontMetrics subtitleFm = g2.getFontMetrics();
+        int subtitleY = titleY + Math.max(MenuDisplay.scaled(14, uiScale),
+                titleFm.getDescent() + subtitleFm.getAscent() + MenuDisplay.scaled(4, uiScale));
         g2.setColor(new Color(198, 211, 226, 166));
         g2.drawString("Real fleet sandbox - all factions, disposable state",
-                pad, pad + MenuDisplay.scaled(22, uiScale));
+                pad, subtitleY);
 
         String status = factionStatus();
         Font oldFont = g2.getFont();

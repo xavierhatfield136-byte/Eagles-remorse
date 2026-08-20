@@ -51,7 +51,7 @@ class RoomRepairLockoutTest {
     }
 
     @Test
-    void nonGreenLineShipsHaveOuterArmorButOnlyYellowHasInnerArmor() {
+    void nonGreenLineShipsUseSingleOuterArmorLayer() {
         FleetShip redTitan = doctrinalShip(ShipRole.BULWARK_TITAN, Faction.ENEMY);
         FleetShip blueTitan = doctrinalShip(ShipRole.BULWARK_TITAN, Faction.ALLY);
         FleetShip yellowTitan = doctrinalShip(ShipRole.BULWARK_TITAN, Faction.TEAM_D);
@@ -59,15 +59,15 @@ class RoomRepairLockoutTest {
         assertTrue(roomMax(redTitan, ShipRoomLayout.RoomId.DORSAL_ARMOR) > 0.0,
                 "red ships keep a damageable outer armor belt");
         assertEquals(0.0, roomMax(redTitan, ShipRoomLayout.RoomId.DORSAL_ARMOR_INNER), 1e-6,
-                "red ships do not get yellow's inner armor layer");
+                "red ships should not get an inner armor layer");
         assertTrue(roomMax(blueTitan, ShipRoomLayout.RoomId.DORSAL_ARMOR) > 0.0,
                 "blue ships keep a damageable outer armor belt");
         assertEquals(0.0, roomMax(blueTitan, ShipRoomLayout.RoomId.DORSAL_ARMOR_INNER), 1e-6,
-                "blue ships do not get yellow's inner armor layer");
+                "blue ships should not get an inner armor layer");
         assertTrue(roomMax(yellowTitan, ShipRoomLayout.RoomId.DORSAL_ARMOR) > 0.0,
                 "yellow ships keep the outer armor layer");
-        assertTrue(roomMax(yellowTitan, ShipRoomLayout.RoomId.DORSAL_ARMOR_INNER) > 0.0,
-                "yellow ships keep the second inner armor layer");
+        assertEquals(0.0, roomMax(yellowTitan, ShipRoomLayout.RoomId.DORSAL_ARMOR_INNER), 1e-6,
+                "yellow ships should not get a second inner armor layer");
     }
 
     private static void assertRepairLockedAfterDamage(FleetShip ship, ShipRoomLayout.RoomId roomId) throws Exception {

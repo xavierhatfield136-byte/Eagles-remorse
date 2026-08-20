@@ -590,7 +590,7 @@ public abstract class Ship {
         DEFAULT,
         BLUE_PIERCE,
         LASER_LINE,
-        RED_EXPLOSIVE,
+        RED_SOLID_AP,
         MISSILE_BLAST
     }
 
@@ -1374,7 +1374,8 @@ public abstract class Ship {
             hullDamage = Math.max(0, (int) Math.round(remainingArmorDamage));
             if (armorGateAbsorbed || hullDamage <= 0) {
                 registerHullImpact(Math.max(1, (int) Math.round(dmg * 0.22)), impact, armorRoom);
-                applyPatternedInteriorDamageThroughArmor(dmg, impact, interiorRoom, interiorProfile, impactVx, impactVy);
+                applyPatternedInteriorDamageThroughArmor(dmg, impact, interiorRoom, interiorProfile, impactVx, impactVy,
+                        armorRoom, hullDamage <= 0);
                 syncHullFromRoomIntegrity();
                 evaluateCondemnedStateFromRooms();
                 return;
@@ -1382,7 +1383,8 @@ public abstract class Ship {
         } else {
             if (armorGateAbsorbed) {
                 registerHullImpact(Math.max(1, (int) Math.round(dmg * 0.22)), impact, primaryRoom);
-                applyPatternedInteriorDamageThroughArmor(dmg, impact, interiorRoom, interiorProfile, impactVx, impactVy);
+                applyPatternedInteriorDamageThroughArmor(dmg, impact, interiorRoom, interiorProfile, impactVx, impactVy,
+                        null, false);
                 syncHullFromRoomIntegrity();
                 evaluateCondemnedStateFromRooms();
                 return;
@@ -1405,13 +1407,13 @@ public abstract class Ship {
                                                            ShipRoomLayout.RoomDef interiorRoom,
                                                            InteriorHitProfile interiorProfile,
                                                            double impactVx,
-                                                           double impactVy) {
+                                                           double impactVy,
+                                                           ShipRoomLayout.RoomDef armorRoom,
+                                                           boolean stoppedByLiveArmor) {
         if (interiorProfile == null || interiorProfile == InteriorHitProfile.DEFAULT) return;
-        int hullBefore = hp;
-        RoomDamageResult split = applySystemDamageFromHullHit(
-                Math.max(1, (int) Math.round(damage * 0.55)),
-                impact, interiorRoom, hullBefore, interiorProfile, impactVx, impactVy);
-        if (split != null) lastRoomDamageResult = split;
+        if (interiorProfile == InteriorHitProfile.RED_SOLID_AP) {
+            applyRedSolidApThroughArmor(damage, impact, interiorRoom, armorRoom, stoppedByLiveArmor, impactVx, impactVy);
+        }
     }
 
     public void takePenetratingInternalDamage(int dmg, double hitX, double hitY, double impactVx, double impactVy) {
@@ -3275,7 +3277,7 @@ public abstract class Ship {
     }
 
     private boolean hasInnerArmorLayer() {
-        return faction != null && faction.isYellowLineage() && hasOuterArmorLayer();
+        return false;
     }
 
     private double totalRoomIntegrityFraction() {
@@ -3609,22 +3611,10 @@ public abstract class Ship {
     }
 
     private List<ShipRoomLayout.RoomDef> resolveArmorRoomsForImpact(HullGeometry.ImpactSample impact,
-                                                                    ShipRoomLayout.RoomDef primaryRoom) {
+                                                                     ShipRoomLayout.RoomDef primaryRoom) {
         ensureRoomSystemsInitialized();
         ShipRoomLayout.RoomDef first = resolveArmorRoomForImpact(impact, primaryRoom);
         if (first == null || first.id == null) return List.of();
-
-        if (faction != null && faction.isYellowLineage()) {
-            ShipRoomLayout.RoomId outerId = ShipRoomLayout.outerArmorRoomFor(first.id);
-            ShipRoomLayout.RoomId innerId = ShipRoomLayout.innerArmorRoomFor(first.id);
-            ShipRoomLayout.RoomDef outer = ShipRoomLayout.roomForId(role, faction, outerId);
-            ShipRoomLayout.RoomDef inner = ShipRoomLayout.roomForId(role, faction, innerId);
-            ArrayList<ShipRoomLayout.RoomDef> layers = new ArrayList<>(2);
-            if (outer != null && roomHasLiveHp(outer.id)) layers.add(outer);
-            if (inner != null && roomHasLiveHp(inner.id)) layers.add(inner);
-            if (!layers.isEmpty()) return layers;
-        }
-
         return List.of(first);
     }
 
@@ -3671,11 +3661,6 @@ public abstract class Ship {
         ShipRoomLayout.RoomDef outer = ShipRoomLayout.roomForId(role, faction, outerId);
         if (outer != null && roomHasLiveHp(outer.id)) return outer;
 
-        if (faction != null && faction.isYellowLineage()) {
-            ShipRoomLayout.RoomId innerId = ShipRoomLayout.innerArmorRoomFor(requestedId);
-            ShipRoomLayout.RoomDef inner = ShipRoomLayout.roomForId(role, faction, innerId);
-            if (inner != null && roomHasLiveHp(inner.id)) return inner;
-        }
         return null;
     }
 
@@ -3754,6 +3739,13 @@ public abstract class Ship {
     private void damageRoom(ShipRoomLayout.RoomDef room, double damage,
                             double normalizedX, double normalizedY, boolean fromHazard,
                             boolean allowSaturation) {
+        damageRoom(room, damage, normalizedX, normalizedY, fromHazard, allowSaturation, true);
+    }
+
+    private void damageRoom(ShipRoomLayout.RoomDef room, double damage,
+                            double normalizedX, double normalizedY, boolean fromHazard,
+                            boolean allowSaturation,
+                            boolean allowIncidentalHazards) {
         if (room == null || damage <= 0.0) return;
         ensureRoomSystemsInitialized();
 
@@ -3865,7 +3857,7 @@ public abstract class Ship {
             }
         }
 
-        if (!armorRoom && !fromHazard) {
+        if (allowIncidentalHazards && !armorRoom && !fromHazard) {
             hazardRolls++;
             double fracLost = (before - after) / Math.max(1e-6, max);
             double ignitionChance = 0.10 + fracLost * 0.50;
@@ -5716,6 +5708,12 @@ public abstract class Ship {
             crewCasualtyRate = MathUtil.clamp(crewCasualtyRate + casualtySpike, 0.0, 0.75);
             return split.finish(this, hullBefore);
         }
+        if (interiorProfile == InteriorHitProfile.RED_SOLID_AP) {
+            applyRedSolidApInteriorDamage(hullDamage, nx, ny, targets, weights, split);
+            double casualtySpike = (hpMax <= 0) ? 0.0 : (hullDamage / (double) hpMax) * 0.24;
+            crewCasualtyRate = MathUtil.clamp(crewCasualtyRate + casualtySpike, 0.0, 0.75);
+            return split.finish(this, hullBefore);
+        }
 
         for (int i = 0; i < targets.size(); i++) {
             ShipRoomLayout.RoomDef room = targets.get(i);
@@ -5726,8 +5724,6 @@ public abstract class Ship {
             split.absorb(lastRoomDamageResult);
             if (interiorProfile == InteriorHitProfile.LASER_LINE) {
                 igniteRoomFire(room.id, 0.30 + 0.18 * weights[i]);
-            } else if (interiorProfile == InteriorHitProfile.RED_EXPLOSIVE) {
-                igniteRoomFire(room.id, 0.20 + 0.22 * weights[i]);
             } else if (interiorProfile == InteriorHitProfile.MISSILE_BLAST) {
                 igniteRoomFire(room.id, 0.34 + 0.32 * weights[i]);
             }
@@ -5738,6 +5734,60 @@ public abstract class Ship {
         double casualtySpike = (hpMax <= 0) ? 0.0 : (hullDamage / (double) hpMax) * 0.36;
         crewCasualtyRate = MathUtil.clamp(crewCasualtyRate + casualtySpike, 0.0, 0.75);
         return split.finish(this, hullBefore);
+    }
+
+    private void applyRedSolidApThroughArmor(int damage,
+                                             HullGeometry.ImpactSample impact,
+                                             ShipRoomLayout.RoomDef interiorRoom,
+                                             ShipRoomLayout.RoomDef armorRoom,
+                                             boolean stoppedByLiveArmor,
+                                             double impactVx,
+                                             double impactVy) {
+        if (damage <= 0) return;
+        ShipRoomLayout.RoomDef target = nextLiveInteriorRoomForApSlug(impact, interiorRoom, impactVx, impactVy);
+        if (target == null) return;
+        double armorFrac = armorRoom == null || armorRoom.id == null ? 0.0 : roomHealthFraction(armorRoom.id);
+        boolean liveArmor = stoppedByLiveArmor && armorFrac > 1e-6;
+        double leakScale = liveArmor ? 0.14 : 0.72;
+        int leakDamage = Math.max(1, (int) Math.round(damage * leakScale));
+        int hullBefore = hp;
+        double targetBefore = roomHp.getOrDefault(target.id, roomHpMax.getOrDefault(target.id, 0.0));
+        HullDamageSplit split = new HullDamageSplit(target, targetBefore);
+        double nx = (impact == null) ? Double.NaN : impact.normalizedX;
+        double ny = (impact == null) ? Double.NaN : impact.normalizedY;
+        if (liveArmor) {
+            damageRoom(target, leakDamage * roomIntegrityDamageBudgetMultiplier() * 0.42, nx, ny, false, false, false);
+            split.absorb(lastRoomDamageResult);
+            disruptRoomFromSolidAp(target.id, 0.16);
+        } else {
+            List<ShipRoomLayout.RoomDef> targets = resolveInteriorLineRooms(impact, target, impactVx, impactVy, 0.0);
+            double[] weights = interiorPatternWeights(InteriorHitProfile.RED_SOLID_AP, targets.size());
+            applyRedSolidApInteriorDamage(leakDamage, nx, ny, targets, weights, split);
+        }
+        lastRoomDamageResult = split.finish(this, hullBefore);
+    }
+
+    private ShipRoomLayout.RoomDef nextLiveInteriorRoomForApSlug(HullGeometry.ImpactSample impact,
+                                                                 ShipRoomLayout.RoomDef interiorRoom,
+                                                                 double impactVx,
+                                                                 double impactVy) {
+        if (interiorRoom != null && interiorRoom.id != null
+                && !ShipRoomLayout.isArmorRoom(interiorRoom.id)
+                && roomHasLiveHp(interiorRoom.id)) {
+            return interiorRoom;
+        }
+        List<ShipRoomLayout.RoomDef> line = resolveInteriorLineRooms(impact, interiorRoom, impactVx, impactVy, 0.0);
+        for (ShipRoomLayout.RoomDef room : line) {
+            if (room != null && room.id != null && !ShipRoomLayout.isArmorRoom(room.id) && roomHasLiveHp(room.id)) {
+                return room;
+            }
+        }
+        for (ShipRoomLayout.RoomDef room : ShipRoomLayout.profileFor(role, faction)) {
+            if (room != null && room.id != null && !ShipRoomLayout.isArmorRoom(room.id) && roomHasLiveHp(room.id)) {
+                return room;
+            }
+        }
+        return null;
     }
 
     private void applyBluePierceInteriorDamage(int hullDamage,
@@ -5767,6 +5817,41 @@ public abstract class Ship {
             damageRoom(room, dmg, nx, ny, false, false);
             split.absorb(lastRoomDamageResult);
         }
+    }
+
+    private void applyRedSolidApInteriorDamage(int hullDamage,
+                                               double nx,
+                                               double ny,
+                                               List<ShipRoomLayout.RoomDef> targets,
+                                               double[] weights,
+                                               HullDamageSplit split) {
+        if (targets == null || targets.isEmpty() || weights == null || weights.length == 0) return;
+        double carriedDamage = 0.0;
+        double baseDamage = hullDamage * roomIntegrityDamageBudgetMultiplier()
+                * interiorPatternDamageMultiplier(InteriorHitProfile.RED_SOLID_AP);
+        for (int i = 0; i < targets.size(); i++) {
+            ShipRoomLayout.RoomDef room = targets.get(i);
+            if (room == null || room.id == null) continue;
+            double weight = weights[Math.min(i, weights.length - 1)];
+            double dmg = Math.max(1.0, baseDamage * weight) + carriedDamage;
+            carriedDamage = 0.0;
+
+            double max = roomHpMax.getOrDefault(room.id, 0.0);
+            double before = roomHp.getOrDefault(room.id, max);
+            if (before <= 1e-6) {
+                carriedDamage += dmg;
+                continue;
+            }
+
+            damageRoom(room, dmg, nx, ny, false, false, false);
+            split.absorb(lastRoomDamageResult);
+            disruptRoomFromSolidAp(room.id, i == 0 ? 0.20 : 0.10);
+        }
+    }
+
+    private void disruptRoomFromSolidAp(ShipRoomLayout.RoomId roomId, double seconds) {
+        if (roomId == null || seconds <= 0.0) return;
+        roomDisruptionRepairProgress.putIfAbsent(roomId, 0.0);
     }
 
     private void applyPatternedInteriorFollowOnEffects(InteriorHitProfile interiorProfile,
@@ -5800,14 +5885,13 @@ public abstract class Ship {
         List<ShipRoomLayout.RoomDef> resolved = switch (interiorProfile) {
             case BLUE_PIERCE -> resolveInteriorLineRooms(impact, primaryRoom, impactVx, impactVy, 0.0);
             case LASER_LINE -> resolveInteriorLineRooms(impact, primaryRoom, impactVx, impactVy, 0.0);
-            case RED_EXPLOSIVE -> resolveInteriorBlastRooms(impact, primaryRoom, 0.26);
+            case RED_SOLID_AP -> resolveInteriorLineRooms(impact, primaryRoom, impactVx, impactVy, 0.0);
             case MISSILE_BLAST -> resolveInteriorBlastRooms(impact, primaryRoom, 0.42);
             case DEFAULT -> (primaryRoom == null) ? List.of() : List.of(primaryRoom);
         };
         int minimumRooms = switch (interiorProfile) {
-            case RED_EXPLOSIVE -> 2;
             case MISSILE_BLAST -> 3;
-            case BLUE_PIERCE, LASER_LINE, DEFAULT -> 1;
+            case BLUE_PIERCE, LASER_LINE, RED_SOLID_AP, DEFAULT -> 1;
         };
         return expandInteriorPatternTargets(resolved, primaryRoom, minimumRooms);
     }
@@ -5937,6 +6021,11 @@ public abstract class Ship {
                     weights[i] = (i == 0) ? 1.0 : 0.75;
                 }
             }
+            case RED_SOLID_AP -> {
+                for (int i = 0; i < n; i++) {
+                    weights[i] = (i == 0) ? 1.0 : Math.pow(0.68, i);
+                }
+            }
             case LASER_LINE -> {
                 double total = 0.0;
                 for (int i = 0; i < n; i++) {
@@ -5945,7 +6034,7 @@ public abstract class Ship {
                 }
                 normalizeWeights(weights, total);
             }
-            case RED_EXPLOSIVE, MISSILE_BLAST -> {
+            case MISSILE_BLAST -> {
                 double total = 0.0;
                 for (int i = 0; i < n; i++) {
                     weights[i] = (i == 0) ? 1.0 : Math.pow(0.62, i);
@@ -5963,7 +6052,7 @@ public abstract class Ship {
         return switch (interiorProfile) {
             case BLUE_PIERCE -> 0.66;
             case LASER_LINE -> 0.84;
-            case RED_EXPLOSIVE -> 0.92;
+            case RED_SOLID_AP -> 0.72;
             case MISSILE_BLAST, DEFAULT -> 1.0;
         };
     }
@@ -6773,7 +6862,7 @@ public abstract class Ship {
     }
 
     private int configuredArmorGateHitCap() {
-        return (faction != null && faction.isYellowLineage() && hasInnerArmorLayer()) ? 5 : 0;
+        return 0;
     }
 
     private boolean consumeShieldGateHit(int face) {

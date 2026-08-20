@@ -311,7 +311,7 @@ public final class TacticalCombatDepthSystem {
             if (distance > 260.0 + ship.radius) continue;
             int damage = Math.max(1, (int) Math.round((1.0 - Math.min(1.0, distance / 300.0)) * 18.0));
             ship.takeDamage(damage, asteroid.x, asteroid.y, ship.x - asteroid.x, ship.y - asteroid.y,
-                    Ship.InteriorHitProfile.RED_EXPLOSIVE);
+                    Ship.InteriorHitProfile.MISSILE_BLAST);
         }
         Explosion.spawnDeath(asteroid.x, asteroid.y);
         marker(ctx, "VOLATILE ORE DETONATION");

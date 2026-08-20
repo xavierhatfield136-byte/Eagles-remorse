@@ -167,8 +167,11 @@ public final class MainMenuPanel extends JPanel {
         continueCampaignLabel.setForeground(new Color(196, 219, 192, 220));
         for (int i = 0; i < campaignSlotButtons.length; i++) {
             campaignSlotButtons[i] = createMenuButton(CAMPAIGN_SLOT_LABELS[i], new Color(68, 111, 154), uiScale);
+            campaignSlotButtons[i].setName("campaignSlotButton" + i);
             campaignSlotDeleteButtons[i] = createMenuButton("Delete", new Color(107, 56, 68), uiScale);
+            campaignSlotDeleteButtons[i].setName("campaignSlotDeleteButton" + i);
             campaignSlotLabels[i] = bodyLabel("", uiScale);
+            campaignSlotLabels[i].setName("campaignSlotSummaryLabel" + i);
             campaignSlotLabels[i].setForeground(new Color(204, 222, 238, 216));
         }
 
@@ -486,6 +489,7 @@ public final class MainMenuPanel extends JPanel {
         JPanel commandPanel = transparentPanel();
         commandPanel.setLayout(new BorderLayout(MenuDisplay.scaled(28, uiScale), 0));
         JPanel continueCard = createSectionPanel(new Color(83, 170, 111, 165), uiScale);
+        continueCard.setName("continueCampaignCard");
         continueCard.add(eyebrowLabel("Continue Campaign", uiScale, new Color(152, 229, 168)));
         continueCard.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
         continueCard.add(sectionTitle("Return To The War", uiScale));
@@ -493,8 +497,8 @@ public final class MainMenuPanel extends JPanel {
         continueCard.add(continueCampaignLabel);
         continueCard.add(Box.createVerticalStrut(MenuDisplay.scaled(12, uiScale)));
         continueCard.add(continueCampaignButton);
-        continueCard.setPreferredSize(new Dimension(MenuDisplay.scaled(340, uiScale), MenuDisplay.scaled(190, uiScale)));
-        continueCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, MenuDisplay.scaled(190, uiScale)));
+        continueCard.setPreferredSize(new Dimension(MenuDisplay.scaled(340, uiScale), MenuDisplay.scaled(222, uiScale)));
+        continueCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, MenuDisplay.scaled(222, uiScale)));
 
         JLabel commandHint = metaLabel("Select a command vector", uiScale);
         commandHint.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -570,6 +574,7 @@ public final class MainMenuPanel extends JPanel {
         slotPanel.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
         for (int i = 0; i < campaignSlotButtons.length; i++) {
             JPanel row = transparentPanel();
+            row.setName("campaignSlotRow" + i);
             row.setLayout(new BorderLayout(MenuDisplay.scaled(10, uiScale), 0));
             campaignSlotButtons[i].setPreferredSize(new Dimension(MenuDisplay.scaled(104, uiScale), MenuDisplay.scaled(38, uiScale)));
             campaignSlotDeleteButtons[i].setPreferredSize(new Dimension(MenuDisplay.scaled(88, uiScale), MenuDisplay.scaled(38, uiScale)));
@@ -580,7 +585,8 @@ public final class MainMenuPanel extends JPanel {
             row.add(slotButtons, BorderLayout.WEST);
             row.add(campaignSlotLabels[i], BorderLayout.CENTER);
             row.setAlignmentX(Component.LEFT_ALIGNMENT);
-            row.setMaximumSize(new Dimension(Integer.MAX_VALUE, MenuDisplay.scaled(64, uiScale)));
+            row.setPreferredSize(new Dimension(MenuDisplay.scaled(520, uiScale), MenuDisplay.scaled(78, uiScale)));
+            row.setMaximumSize(new Dimension(Integer.MAX_VALUE, MenuDisplay.scaled(78, uiScale)));
             slotPanel.add(row);
             if (i < campaignSlotButtons.length - 1) {
                 slotPanel.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
@@ -1157,9 +1163,6 @@ public final class MainMenuPanel extends JPanel {
                 g2.setPaint(new GradientPaint(0, 0, new Color(67, 171, 203, 170),
                         w, 0, new Color(224, 133, 71, 128)));
                 g2.fillRect(0, 0, w, rail);
-                g2.setColor(new Color(255, 255, 255, 20));
-                int separatorY = MenuDisplay.scaled(136, scale);
-                g2.drawLine(MenuDisplay.scaled(34, scale), separatorY, w - MenuDisplay.scaled(34, scale), separatorY);
                 g2.dispose();
                 super.paintComponent(g);
             }
@@ -1390,9 +1393,6 @@ public final class MainMenuPanel extends JPanel {
                 g2.fillRect(0, 0, MenuDisplay.scaled(5, scale), h);
                 g2.setColor(new Color(255, 255, 255, 26));
                 g2.drawRoundRect(0, 0, w - 1, h - 1, 8, 8);
-                g2.setColor(new Color(255, 255, 255, 18));
-                g2.drawLine(MenuDisplay.scaled(18, scale), MenuDisplay.scaled(48, scale),
-                        w - MenuDisplay.scaled(18, scale), MenuDisplay.scaled(48, scale));
                 g2.dispose();
                 super.paintComponent(g);
             }
@@ -2010,12 +2010,17 @@ public final class MainMenuPanel extends JPanel {
 
             int pad = MenuDisplay.scaled(18, uiScale);
             g2.setFont(MenuDisplay.font("Consolas", Font.BOLD, 12, uiScale));
+            FontMetrics titleFm = g2.getFontMetrics();
+            int titleY = pad + titleFm.getAscent();
             g2.setColor(new Color(125, 214, 231, 210));
-            g2.drawString("TACTICAL ATTRACT MODE", pad, pad + MenuDisplay.scaled(4, uiScale));
+            g2.drawString("TACTICAL ATTRACT MODE", pad, titleY);
             g2.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 12, uiScale));
+            FontMetrics subtitleFm = g2.getFontMetrics();
+            int subtitleY = titleY + Math.max(MenuDisplay.scaled(14, uiScale),
+                    titleFm.getDescent() + subtitleFm.getAscent() + MenuDisplay.scaled(4, uiScale));
             g2.setColor(new Color(198, 211, 226, 166));
             g2.drawString("Disposable combat sandbox - no campaign state attached",
-                    pad, pad + MenuDisplay.scaled(22, uiScale));
+                    pad, subtitleY);
             g2.dispose();
         }
 

@@ -49,6 +49,74 @@ class OwnerPlaytestVerticalSliceOneTest {
     }
 
     @Test
+    void selectingFriendlyYellowFleetNeverMarksItAsHostile() {
+        GameContext ctx = campaign(62008L);
+        CampaignSystem.CampaignForceSummary yellow = forceFor(ctx, Faction.BRIGHT_YELLOW);
+
+        CampaignSystem.selectCampaignContactTarget(ctx,
+                yellow.name,
+                yellow.statusLabel,
+                yellow.intelLabel,
+                yellow.x,
+                yellow.y,
+                true,
+                true);
+
+        assertFalse(CampaignSystem.selectedCampaignContactHostile(ctx),
+                "friendly Bright Yellow fleets should keep friendly selection state even from broad fleet click paths");
+    }
+
+    @Test
+    void zeroShipRedScoutCannotMasqueradeAsLiveFleetContact() throws Exception {
+        GameContext ctx = campaign(62009L);
+        ctx.ui.mapOpen = true;
+        CampaignSystem.CampaignForceSummary red = CampaignSystem.campaignForceSummaries(ctx).stream()
+                .filter(force -> force.faction == Faction.ENEMY)
+                .filter(force -> force.kind == CampaignSystem.CampaignForceKind.PATROL_GROUP
+                        || force.kind == CampaignSystem.CampaignForceKind.TASK_FORCE
+                        || force.kind == CampaignSystem.CampaignForceKind.STRIKE_DETACHMENT)
+                .findFirst().orElseThrow();
+        Object force = physicalForce(ctx, red.id);
+        clearForceShips(ctx, red.id, force);
+        setField(force, "strength", 64.0);
+        setField(force, "readiness", 100.0);
+        setField(force, "visibleToPlayer", true);
+        setField(force, "contactConfidence", 1.0);
+        setField(force, "x", ctx.campaign.playerGalaxyX + 40.0);
+        setField(force, "y", ctx.campaign.playerGalaxyY + 40.0);
+        setEnum(force, "intent", "INTERCEPTING");
+        setEnum(force, "state", "PURSUING");
+        setEnum(force, "contactState", "KNOWN");
+        CampaignSystem.recordCampaignFleetIntelObservation(ctx, red.id,
+                CampaignSystem.CampaignIntelObservationSource.PLAYER_SENSOR,
+                CampaignSystem.CampaignIntelPrecision.EXACT,
+                ctx.campaign.campaignIntelTick,
+                ctx.campaign.campaignIntelTick + 5,
+                1.0,
+                ctx.campaign.playerGalaxyX + 40.0,
+                ctx.campaign.playerGalaxyY + 40.0,
+                0.0);
+
+        CampaignSystem.CampaignSupportMarker marker = CampaignSystem.activeSupportMarkers(ctx).stream()
+                .filter(candidate -> candidate.sourceForceId == red.id)
+                .findFirst().orElse(null);
+        assertTrue(marker == null
+                        || marker.type == CampaignSystem.SupportMarkerType.INTEL && !marker.interactive,
+                "zero-ship Red scouts may leave intel traces, but not clickable live fleet contacts");
+
+        CampaignSystem.selectCampaignContactTarget(ctx,
+                red.name,
+                "",
+                "",
+                ctx.campaign.playerGalaxyX + 40.0,
+                ctx.campaign.playerGalaxyY + 40.0,
+                true,
+                true);
+        assertFalse(CampaignSystem.engageSelectedCampaignContact(ctx),
+                "zero-ship Red scout contacts must not open a fleet encounter");
+    }
+
+    @Test
     void routineTerritoryStateDoesNotMasqueradeAsAnUnlabeledFleetCircle() {
         CampaignSystem.CampaignTerritoryOverlayView routine = territoryView(
                 StrategicCampaignExpansionSystem.TerritoryControlState.SECURE,
@@ -318,6 +386,15 @@ class OwnerPlaytestVerticalSliceOneTest {
                 GameContext.class, CampaignSystem.CampaignState.class, double.class);
         method.setAccessible(true);
         method.invoke(null, ctx, ctx.campaign, seconds);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void clearForceShips(GameContext ctx, int forceId, Object force) throws Exception {
+        Field shipIds = force.getClass().getDeclaredField("shipIds");
+        shipIds.setAccessible(true);
+        ((java.util.Set<Integer>) shipIds.get(force)).clear();
+        ctx.campaign.shipCampaignForceIds.entrySet().removeIf(entry -> entry.getValue() == forceId);
+        ctx.campaign.campaignShipPool.values().removeIf(record -> record.forceId == forceId);
     }
 
     private static int intField(Object target, String name) throws Exception {

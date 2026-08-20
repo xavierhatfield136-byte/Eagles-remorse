@@ -11,6 +11,7 @@ import javax.swing.JComboBox;
 import javax.swing.JTextField;
 import java.awt.Component;
 import java.awt.Container;
+import java.awt.Dimension;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
@@ -114,6 +115,25 @@ class MainMenuPanelMultiplayerEntryTest {
 
             assertNotNull(controls);
             assertEquals("Controls", controls.getText());
+        } finally {
+            panel.stopBackgroundTimerForTests();
+        }
+    }
+
+    @Test
+    void campaignMenuCardsKeepEnoughVerticalRoomForWrappedText() {
+        MainMenuPanel panel = menu();
+
+        try {
+            JComponent continueCard = (JComponent) findByName(panel, "continueCampaignCard");
+            JComponent firstSlotRow = (JComponent) findByName(panel, "campaignSlotRow0");
+
+            assertNotNull(continueCard);
+            assertNotNull(firstSlotRow);
+            assertTrue(minHeight(continueCard) >= 222,
+                    "continue campaign card should not collapse around its wrapped status label");
+            assertTrue(minHeight(firstSlotRow) >= 78,
+                    "campaign save slot rows should have room for button and summary text");
         } finally {
             panel.stopBackgroundTimerForTests();
         }
@@ -359,5 +379,11 @@ class MainMenuPanelMultiplayerEntryTest {
             }
         }
         return null;
+    }
+
+    private static int minHeight(JComponent component) {
+        Dimension preferred = component.getPreferredSize();
+        Dimension maximum = component.getMaximumSize();
+        return Math.min(preferred == null ? 0 : preferred.height, maximum == null ? 0 : maximum.height);
     }
 }
