@@ -100,7 +100,7 @@ public class CollisionSystem {
                     ImpactVisualPoints impactPoints = resolveImpactVisualPoints(s, p.x, p.y, p.vx, p.vy);
                     double shieldBefore = s.shield;
                     int hpBefore = s.hp;
-                    int effectiveDamage = scaleDamage(ctx, p.getEffectiveDamage());
+                    int effectiveDamage = scaleDamage(ctx, applyGreenRangeFalloff(shooter, p, s, p.getEffectiveDamage()));
                     boolean redKineticSuperweaponShot = isRedKineticSuperweaponShot(shooter, p);
                     if (redKineticSuperweaponShot) {
                         int shieldCrack = Math.max(0, (int) Math.round(effectiveDamage * 0.35));
@@ -204,11 +204,12 @@ public class CollisionSystem {
                     else if (p.damage >= 3) ScreenShake.kick(1.8);
                 }
 
+                int effectiveDamage = scaleDamage(ctx, applyGreenRangeFalloff(shooter, p, s, p.damage));
                 if (p instanceof Missile missile && isArmorBypassingTorpedo(missile)) {
                     applyArmorBypassingTorpedoImpact(missile, s);
                 } else {
                     s.takeDamage(
-                            scaleDamage(ctx, p.damage),
+                            effectiveDamage,
                             p.x,
                             p.y,
                             p.vx,
@@ -216,7 +217,7 @@ public class CollisionSystem {
                             interiorHitProfileForProjectile(shooter, p)
                     );
                 }
-                logDamageEvent(ctx, "projectile:" + System.identityHashCode(p), p.damage, impactStyle, s, p.x, p.y);
+                logDamageEvent(ctx, "projectile:" + System.identityHashCode(p), effectiveDamage, impactStyle, s, p.x, p.y);
                 if (p instanceof Missile m) {
                     applyMissileBlast(ctx, m, s, ships);
                 }
@@ -1145,8 +1146,9 @@ public class CollisionSystem {
         markPlayerHitContribution(ctx, beam, target);
         double shieldBefore = target.shield;
         int hpBefore = target.hp;
-        target.takeDamage(scaleDamage(ctx, damage), hitX, hitY, dirX, dirY, Ship.InteriorHitProfile.LASER_LINE);
-        logDamageEvent(ctx, "phaser_beam:" + System.identityHashCode(beam), damage, VFX.ImpactStyle.BEAM, target, hitX, hitY);
+        int effectiveDamage = scaleDamage(ctx, applyGreenRangeFalloff(null, beam, target, damage));
+        target.takeDamage(effectiveDamage, hitX, hitY, dirX, dirY, Ship.InteriorHitProfile.LASER_LINE);
+        logDamageEvent(ctx, "phaser_beam:" + System.identityHashCode(beam), effectiveDamage, VFX.ImpactStyle.BEAM, target, hitX, hitY);
 
         boolean shieldHit = target.shield < shieldBefore - 1e-6;
         boolean hullHit = target.hp < hpBefore;
@@ -1196,6 +1198,9 @@ public class CollisionSystem {
 
     private static int scaleBeamDamage(PhaserBeam beam, int damage, double impactFraction) {
         if (beam == null || damage <= 0) return 0;
+        if (!beam.penetratesTargets() && beam.faction == Faction.TEAM_C) {
+            return damage;
+        }
 
         double frac = MathUtil.clamp(impactFraction, 0.0, 1.0);
         double falloff;
@@ -1210,6 +1215,42 @@ public class CollisionSystem {
         }
         falloff = MathUtil.clamp(falloff, 0.34, 1.0);
         return Math.max(1, (int) Math.round(damage * falloff));
+    }
+
+    static double greenRangeFalloffMultiplier(double distanceMeters) {
+        if (!Double.isFinite(distanceMeters) || distanceMeters <= 1000.0) return 1.0;
+        if (distanceMeters <= 2000.0) {
+            double t = (distanceMeters - 1000.0) / 1000.0;
+            return 1.0 + (0.50 - 1.0) * t;
+        }
+        if (distanceMeters <= 3000.0) {
+            double t = (distanceMeters - 2000.0) / 1000.0;
+            return 0.50 + (0.25 - 0.50) * t;
+        }
+        return 0.25;
+    }
+
+    private static int applyGreenRangeFalloff(Ship shooter, Projectile projectile, Ship target, int damage) {
+        if (damage <= 0 || projectile == null || target == null) return damage;
+        Faction sourceFaction = (shooter != null && shooter.faction != null) ? shooter.faction : projectile.faction;
+        if (sourceFaction != Faction.TEAM_C) return damage;
+
+        double sx;
+        double sy;
+        if (projectile instanceof PhaserBeam beam) {
+            sx = beam.startX();
+            sy = beam.startY();
+        } else if (shooter != null) {
+            sx = shooter.x;
+            sy = shooter.y;
+        } else {
+            sx = projectile.originX;
+            sy = projectile.originY;
+        }
+
+        double distance = Math.hypot(target.x - sx, target.y - sy);
+        double multiplier = greenRangeFalloffMultiplier(distance);
+        return Math.max(1, (int) Math.round(damage * multiplier));
     }
 
     private static ImpactVisualPoints resolveImpactVisualPoints(Ship ship,

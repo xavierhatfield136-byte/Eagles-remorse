@@ -56,6 +56,7 @@ public class GameContext {
     public final List<Salvage> salvage = new ArrayList<>();
     public final List<DamageEvent> damageEvents = new ArrayList<>();
     public final List<AudioEvent> audioEvents = new ArrayList<>();
+    public boolean suppressAudio = false;
     public final List<FleetCommMessage> fleetCommLog = new ArrayList<>();
     public final EntityQueryIndex entityQuery = new EntityQueryIndex();
     public boolean multiplayerBattle = false;

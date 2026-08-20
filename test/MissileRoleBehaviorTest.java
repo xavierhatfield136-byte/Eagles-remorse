@@ -169,6 +169,83 @@ class MissileRoleBehaviorTest {
     }
 
     @Test
+    void bombersLaunchAntiShipTorpedoesAtStandardMissileSpeed() {
+        FleetShip bomber = new FleetShip(ShipRole.BOMBER, Faction.ALLY, 0.0, 0.0);
+        Turret rack = bomber.turrets.stream()
+                .filter(turret -> turret.kind == Turret.Kind.MISSILE)
+                .findFirst()
+                .orElse(null);
+        assertNotNull(rack, "bomber should mount a missile rack");
+        assertEquals(Turret.MissileRole.ANTI_HEAVY, rack.missileRole,
+                "bomber racks should be anti-ship torpedo racks");
+
+        Ship target = new FleetShip(ShipRole.CRUISER, Faction.ENEMY, 900.0, 0.0);
+        rack.setReady();
+        Projectile fired = rack.fire(bomber, target, GameContext.DT);
+
+        assertTrue(fired instanceof Missile, "expected bomber rack to launch a torpedo");
+        Missile torpedo = (Missile) fired;
+        assertEquals(Turret.MissileRole.ANTI_HEAVY, torpedo.role, "bomber torpedoes should be anti-heavy");
+        assertEquals(Missile.MAX_RUNTIME_SPEED_M_PER_SEC, torpedo.speed, 1e-6,
+                "bomber anti-ship torpedoes should use the standard missile speed cap");
+    }
+
+    @Test
+    void antiShipTorpedoesRetargetOnlyNonSmallCraftWhenOriginalTargetDies() {
+        Faction.clearCampaignAlliances();
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 5000, 5000, true, 9090L, false));
+        Ship shooter = new FleetShip(ShipRole.BOMBER, Faction.ALLY, 0.0, 0.0);
+        Ship destroyedTarget = new FleetShip(ShipRole.CRUISER, Faction.ENEMY, 600.0, 0.0);
+        destroyedTarget.alive = false;
+        destroyedTarget.hp = 0;
+        Ship fighter = new FleetShip(ShipRole.FIGHTER, Faction.ENEMY, 120.0, 0.0);
+        Ship replacement = new FleetShip(ShipRole.CRUISER, Faction.ENEMY, 900.0, 0.0);
+
+        Missile torpedo = new Missile(0.0, 0.0, 0.0, destroyedTarget, GameContext.DT,
+                360.0, Math.toRadians(280.0), 5, 240, 7.0, Faction.ALLY);
+        torpedo.role = Turret.MissileRole.ANTI_HEAVY;
+        torpedo.applyRoleSpeedCap(torpedo.role, GameContext.DT);
+        ctx.ships.add(shooter);
+        ctx.ships.add(destroyedTarget);
+        ctx.ships.add(fighter);
+        ctx.ships.add(replacement);
+        ctx.projectiles.add(torpedo);
+
+        PhysicsSystem.update(ctx, GameContext.DT);
+
+        assertTrue(torpedo.alive, "torpedo should stay alive when a non-fighter target remains");
+        assertSame(replacement, torpedo.target,
+                "anti-ship torpedoes should skip fighters and retarget another ship");
+    }
+
+    @Test
+    void antiShipTorpedoesDetonateWhenNoNonSmallCraftTargetsRemain() {
+        Faction.clearCampaignAlliances();
+        Explosion.active.clear();
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 5000, 5000, true, 9191L, false));
+        Ship shooter = new FleetShip(ShipRole.BOMBER, Faction.ALLY, 0.0, 0.0);
+        Ship destroyedTarget = new FleetShip(ShipRole.CRUISER, Faction.ENEMY, 600.0, 0.0);
+        destroyedTarget.alive = false;
+        destroyedTarget.hp = 0;
+        Ship fighter = new FleetShip(ShipRole.FIGHTER, Faction.ENEMY, 120.0, 0.0);
+
+        Missile torpedo = new Missile(0.0, 0.0, 0.0, destroyedTarget, GameContext.DT,
+                360.0, Math.toRadians(280.0), 5, 240, 7.0, Faction.ALLY);
+        torpedo.role = Turret.MissileRole.ANTI_HEAVY;
+        torpedo.applyRoleSpeedCap(torpedo.role, GameContext.DT);
+        ctx.ships.add(shooter);
+        ctx.ships.add(destroyedTarget);
+        ctx.ships.add(fighter);
+        ctx.projectiles.add(torpedo);
+
+        PhysicsSystem.update(ctx, GameContext.DT);
+
+        assertFalse(torpedo.alive, "torpedo should detonate instead of loitering when only fighters remain");
+        assertTrue(ctx.projectiles.isEmpty(), "detonated torpedo should be removed from active projectiles");
+        assertFalse(Explosion.active.isEmpty(), "detonation should spawn an explosion effect");
+    }
+
+    @Test
     void secondaryBurstFollowersReuseLeaderRuntimeSpeed() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 5000, 5000, true, 1224L, false));
         Player player = new Player(ShipRole.FRIGATE, 0.0, 0.0);

@@ -524,20 +524,49 @@ public final class PhysicsSystem {
         if (missile.projectileTarget != null) {
             return;
         }
+        boolean antiShipTorpedo = missile.role == Turret.MissileRole.ANTI_HEAVY;
         if (missile.target != null
                 && missile.target.alive
                 && !missile.target.dying
                 && missile.target.hp > 0
-                && (!missile.preferSmallCraft || missile.target.isSmallCraft())) {
+                && (!missile.preferSmallCraft || missile.target.isSmallCraft())
+                && (!antiShipTorpedo || missile.faction == null || missile.target.faction == null
+                || missile.faction.isHostileTo(missile.target.faction))
+                && (!antiShipTorpedo || !missile.target.isSmallCraft())) {
             return;
         }
         if (missile.target != null && (!missile.target.alive || missile.target.dying || missile.target.hp <= 0)) {
             targetDied = true;
         }
+        if (antiShipTorpedo) {
+            missile.target = findAntiShipTorpedoRetarget(ctx, missile);
+            if (missile.target == null) {
+                missile.alive = false;
+                Explosion.spawnDeath(missile.x, missile.y);
+            }
+            return;
+        }
         if (!missile.canRetarget) return;
         boolean urgent = targetDied || missile.role == Turret.MissileRole.INTERCEPT;
         if (projectilePlan != null && !projectilePlan.shouldRetargetMissile(missile, urgent)) return;
         missile.target = findMissileRetarget(ctx, missile);
+    }
+
+    private static Ship findAntiShipTorpedoRetarget(GameContext ctx, Missile missile) {
+        if (ctx == null || ctx.ships == null || missile == null || missile.faction == null) return null;
+        Ship best = null;
+        double bestD2 = Double.POSITIVE_INFINITY;
+        for (Ship ship : ctx.ships) {
+            if (!isAlive(ship)) continue;
+            if (ship.isSmallCraft()) continue;
+            if (ship.faction == null || missile.faction.isFriendlyTo(ship.faction)) continue;
+            double d2 = GameMath.dist2(missile.x, missile.y, ship.x, ship.y);
+            if (d2 < bestD2) {
+                bestD2 = d2;
+                best = ship;
+            }
+        }
+        return best;
     }
 
     private static Ship findMissileRetarget(GameContext ctx, Missile missile) {

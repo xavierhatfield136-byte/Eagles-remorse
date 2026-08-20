@@ -7,6 +7,7 @@
  */
 public abstract class Projectile {
     public double x, y;
+    public final double originX, originY;
     public double vx, vy;     // per-tick delta
     public double radius;
     public int damage;
@@ -26,6 +27,8 @@ public abstract class Projectile {
     protected Projectile(double x, double y, double vx, double vy, double radius, int damage, int life, Faction faction) {
         this.x = x;
         this.y = y;
+        this.originX = x;
+        this.originY = y;
         this.vx = vx;
         this.vy = vy;
         this.radius = radius;

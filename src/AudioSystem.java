@@ -514,6 +514,7 @@ public final class AudioSystem {
                 if (ctx.ui.voiceCaptionT <= 0.0) ctx.ui.clearVoiceCaption();
         }
         ctx.decayPortraitExpressions(dt);
+        if (audioSuppressed(ctx)) return;
 
         RuntimeState st = stateFor(ctx);
         double now = nowSec();
@@ -756,6 +757,7 @@ public final class AudioSystem {
 
     private static void touchGreenWeaponLoop(GameContext ctx, RuntimeState st, double now, String eventId, Ship source, double holdSec) {
         if (ctx == null || st == null || eventId == null || eventId.isBlank()) return;
+        if (audioSuppressed(ctx)) return;
         if (source != null && !shouldPlayWorldSfxAt(ctx, source.x, source.y)) return;
         double ttl = Math.max(0.10, holdSec);
         double activeUntilBeforeTouch = st.greenWeaponLoopUntilSec;
@@ -818,6 +820,7 @@ public final class AudioSystem {
 
     private static void touchWarpSpoolLoop(GameContext ctx, RuntimeState st, double now, double sourceX, double sourceY) {
         if (ctx == null || st == null) return;
+        if (audioSuppressed(ctx)) return;
         if (!shouldPlayWorldSfxAt(ctx, sourceX, sourceY)) return;
         st.warpSpoolLoopUntilSec = now + WARP_LOOP_KEEPALIVE_SEC;
         ensureWarpSpoolLoopRunning(ctx);
@@ -1513,6 +1516,7 @@ public final class AudioSystem {
 
     private static void triggerSfxEvent(GameContext ctx, RuntimeState st, String eventId, double now, double sourceX, double sourceY) {
         if (ctx == null || st == null || eventId == null || eventId.isBlank()) return;
+        if (audioSuppressed(ctx)) return;
         if (!shouldPlayWorldSfxAt(ctx, sourceX, sourceY)) return;
         SfxManifest.EventSpec spec = SfxManifest.byId(eventId);
         if (spec == null) return;
@@ -1547,6 +1551,7 @@ public final class AudioSystem {
 
     private static synchronized void ensureAmbientLoop(GameContext ctx, RuntimeState st, double now) {
         if (ctx == null || st == null) return;
+        if (audioSuppressed(ctx)) return;
         if (TELEMETRY_ONLY) return;
         Clip clip = ambientClip;
         if (clip != null && clip.isOpen()) {
@@ -1588,6 +1593,7 @@ public final class AudioSystem {
 
     private static synchronized void ensureGreenWeaponLoopRunning(GameContext ctx, RuntimeState st) {
         if (ctx == null || st == null || TELEMETRY_ONLY) return;
+        if (audioSuppressed(ctx)) return;
         String eventId = st.greenWeaponLoopEventId;
         if (eventId == null || eventId.isBlank()) return;
         Clip clip = greenWeaponLoopClip;
@@ -1600,6 +1606,7 @@ public final class AudioSystem {
 
     private static synchronized void ensureWarpSpoolLoopRunning(GameContext ctx) {
         if (ctx == null || TELEMETRY_ONLY) return;
+        if (audioSuppressed(ctx)) return;
         Clip clip = warpSpoolLoopClip;
         if (clip != null && clip.isOpen()) {
             if (!clip.isRunning()) clip.loop(Clip.LOOP_CONTINUOUSLY);
@@ -1632,6 +1639,7 @@ public final class AudioSystem {
     }
 
     private static Clip startEventLoopClip(GameContext ctx, String eventId) {
+        if (audioSuppressed(ctx)) return null;
         if (TELEMETRY_ONLY || eventId == null || eventId.isBlank()) return null;
         SfxManifest.EventSpec spec = SfxManifest.byId(eventId);
         if (spec == null) return null;
@@ -1958,12 +1966,18 @@ public final class AudioSystem {
     }
 
     private static boolean shouldPlayWorldSfxAt(GameContext ctx, double sourceX, double sourceY) {
+        if (audioSuppressed(ctx)) return false;
         if (!Double.isFinite(sourceX) || !Double.isFinite(sourceY)) return true;
         if (ctx == null || ctx.player == null) return true;
         return GameMath.dist2(sourceX, sourceY, audioListenerX(ctx), audioListenerY(ctx)) <= WORLD_SFX_HEARING_RADIUS2;
     }
 
+    private static boolean audioSuppressed(GameContext ctx) {
+        return ctx != null && ctx.suppressAudio;
+    }
+
     private static boolean shouldPlayWarpSfx(GameContext ctx, Ship source) {
+        if (audioSuppressed(ctx)) return false;
         if (ctx == null || source == null) return true;
         if (source == ctx.player) return true;
         if (!Double.isFinite(source.x) || !Double.isFinite(source.y)) return false;

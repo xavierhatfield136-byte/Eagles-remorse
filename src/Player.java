@@ -685,7 +685,7 @@ public class Player extends Ship {
             } else if (faction == Faction.TEAM_C) {
                 t.aimAt(dt, this, target);
             } else {
-                t.aimAtLead(dt, this, target, Turret.effectiveGunProjectileSpeed(t));
+                t.aimAtLead(dt, this, target, Turret.effectiveGunProjectileSpeed(this, t));
             }
         }
     }
@@ -715,7 +715,7 @@ public class Player extends Ship {
                 } else if (faction == Faction.TEAM_C) {
                     t.aimAt(dt, this, target);
                 } else {
-                    t.aimAtLead(dt, this, target, Turret.effectiveGunProjectileSpeed(t));
+                    t.aimAtLead(dt, this, target, Turret.effectiveGunProjectileSpeed(this, t));
                 }
             } else if (t.kind == Turret.Kind.MISSILE) {
                 t.aimAt(dt, this, target);

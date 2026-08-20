@@ -70,7 +70,8 @@ class WeaponDoctrineBalanceTest {
         EnergyBolt bolt = assertInstanceOf(EnergyBolt.class, shot);
 
         assertTrue(bolt.isBeamBolt(), "beam-bolt volley package should render as the beam projectile");
-        assertEquals(Ship.BEAM_BOLT_SPEED, Math.hypot(bolt.vx, bolt.vy) / GameContext.DT, 1e-6);
+        assertEquals(Ship.BEAM_BOLT_SPEED * Turret.BLUE_SHOCK_CANNON_SPEED_MULT,
+                Math.hypot(bolt.vx, bolt.vy) / GameContext.DT, 1e-6);
     }
 
     @Test
@@ -122,7 +123,7 @@ class WeaponDoctrineBalanceTest {
     }
 
     @Test
-    void teamCBeamDamageFallsOffAtLongRange() throws Exception {
+    void teamCRegularBeamUsesMeteredRangeFalloffInsteadOfBeamLengthTaper() throws Exception {
         FleetShip beamShip = new FleetShip(ShipRole.BATTLESHIP, Faction.TEAM_C, 0.0, 0.0);
         Turret gun = firstGun(beamShip);
         assertTrue(gun != null, "expected a primary gun on the Team C battleship");
@@ -134,8 +135,42 @@ class WeaponDoctrineBalanceTest {
         int closeDamage = (Integer) scale.invoke(null, beam, 12, 0.20);
         int farDamage = (Integer) scale.invoke(null, beam, 12, 0.85);
 
-        assertTrue(closeDamage > farDamage,
-                "phaser damage should taper off over long range (close=" + closeDamage + ", far=" + farDamage + ")");
+        assertEquals(closeDamage, farDamage,
+                "Team C regular beams should use explicit meter thresholds, not percent-of-beam-length taper");
+    }
+
+    @Test
+    void greenRangeFalloffUsesRequestedDistanceBreakpoints() {
+        assertEquals(1.0, CollisionSystem.greenRangeFalloffMultiplier(1000.0), 1e-9);
+        assertEquals(0.5, CollisionSystem.greenRangeFalloffMultiplier(2000.0), 1e-9);
+        assertEquals(0.25, CollisionSystem.greenRangeFalloffMultiplier(3000.0), 1e-9);
+        assertEquals(0.25, CollisionSystem.greenRangeFalloffMultiplier(4200.0), 1e-9);
+    }
+
+    @Test
+    void greenRangeFalloffScalesProjectileDamageAtImpact() throws Exception {
+        FleetShip shooter = new FleetShip(ShipRole.FRIGATE, Faction.TEAM_C, 0.0, 0.0);
+        FleetShip target = new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 2000.0, 0.0);
+        Projectile shot = new Bullet(0.0, 0.0, 0.0, GameContext.DT, 100.0, 100, 120, 3.0, Faction.TEAM_C);
+        Method falloff = CollisionSystem.class.getDeclaredMethod(
+                "applyGreenRangeFalloff", Ship.class, Projectile.class, Ship.class, int.class);
+        falloff.setAccessible(true);
+
+        assertEquals(50, (Integer) falloff.invoke(null, shooter, shot, target, 100));
+    }
+
+    @Test
+    void greenPointDefenseUsesGreenPelletsAgainstMissiles() {
+        FleetShip ship = new FleetShip(ShipRole.CIWS_CORVETTE, Faction.TEAM_C, 0.0, 0.0);
+        List<Projectile> projectiles = new ArrayList<>();
+        projectiles.add(new Missile(120.0, 0.0, Math.PI, null, GameContext.DT, Faction.ENEMY));
+
+        ship.tryCIWS(GameContext.DT, projectiles, List.of(ship));
+
+        assertTrue(projectiles.stream().anyMatch(p -> p instanceof CIWSPellet && p.faction == Faction.TEAM_C),
+                "green point defense should fire green CIWS pellets");
+        assertFalse(projectiles.stream().anyMatch(p -> p instanceof PointDefenseLaser),
+                "green point defense should not fire guaranteed-hit laser pulses");
     }
 
     @Test

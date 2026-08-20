@@ -166,13 +166,22 @@ public final class UiState {
         public String name = "";
         public String forceName = "";
         public ShipRole role = ShipRole.PATROL;
+        public CampaignSystem.FleetFormationRole formationRole = CampaignSystem.FleetFormationRole.SCREEN_LEFT;
         public Faction faction = Faction.ALLY;
         public double condition = 100.0;
 
         public BriefingAsset(String name, String forceName, ShipRole role, Faction faction, double condition) {
+            this(name, forceName, role, faction, condition, null);
+        }
+
+        public BriefingAsset(String name, String forceName, ShipRole role, Faction faction, double condition,
+                             CampaignSystem.FleetFormationRole formationRole) {
             this.name = (name == null || name.isBlank()) ? "Ship" : name.trim();
             this.forceName = (forceName == null) ? "" : forceName.trim();
             this.role = role == null ? ShipRole.PATROL : role;
+            this.formationRole = formationRole == null
+                    ? CampaignSystem.fleetFormationRole(this.role, 0, CampaignSystem.CampaignForceKind.LOCAL_FORCE)
+                    : formationRole;
             this.faction = faction == null ? Faction.ALLY : faction;
             this.condition = MathUtil.clamp(condition, 0.0, 100.0);
         }

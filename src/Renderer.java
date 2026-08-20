@@ -13934,6 +13934,10 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setFont(new Font("Consolas", Font.BOLD, 10));
         g2.setColor(new Color(255, 184, 164, 235));
         g2.drawString("RED START FORMATION - APPROACHING FROM RIGHT", hostileZone.x + 10, hostileZone.y + 16);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 9));
+        g2.setColor(new Color(255, 202, 188, 220));
+        g2.drawString(ellipsizeToWidth(g2, deploymentCompositionSummary(prompt, false), hostileZone.width - 20),
+                hostileZone.x + 10, hostileZone.y + 29);
         g2.drawString("RED UNITS: " + hostileCount, hostileZone.x + 10, hostileZone.y + hostileZone.height - 10);
         g2.setFont(new Font("Consolas", Font.PLAIN, 10));
         g2.setColor(new Color(115, 232, 156, 205));
@@ -13993,10 +13997,13 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         for (int i = 0; i < max; i++) {
             UiState.BriefingAsset asset = assets != null && i < assets.size() ? assets.get(i) : null;
             boolean green = asset != null && asset.faction == Faction.TEAM_C;
+            double[] formationPoint = deploymentFormationPoint(asset, i, friendly);
             double baseX = friendly
                     ? (green ? 0.18 + (i % 4) * 0.060 : 0.08 + (i % 4) * 0.060)
-                    : 0.66 + (i % 4) * 0.072;
-            double baseY = 0.34 + (i / 4) * 0.20 + ((i % 2) * 0.04);
+                    : formationPoint[0];
+            double baseY = friendly
+                    ? 0.34 + (i / 4) * 0.20 + ((i % 2) * 0.04)
+                    : formationPoint[1];
             int x = rect.x + (int) Math.round(baseX * rect.width);
             int y = rect.y + (int) Math.round(MathUtil.clamp(baseY, 0.26, 0.84) * rect.height);
             int r = 4 + ((asset != null && asset.role != null && asset.role.isTitanOrMothership()) ? 3 : 0);
@@ -14006,22 +14013,81 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 g2.setColor(new Color(6, 12, 20, 190));
                 g2.drawOval(x - r, y - r, r * 2, r * 2);
             } else {
-                int marker = r + 3;
-                Polygon tri = new Polygon(
-                        new int[]{x - marker, x - marker, x + marker + 2},
-                        new int[]{y - marker, y + marker, y},
-                        3
-                );
-                g2.fillPolygon(tri);
-                g2.setColor(new Color(12, 4, 6, 215));
-                g2.drawPolygon(tri);
-                if (i < 4) {
-                    g2.setFont(new Font("Consolas", Font.BOLD, 9));
-                    g2.setColor(new Color(255, 204, 190, 230));
-                    g2.drawString("R" + (i + 1), x + marker + 4, y + 3);
+                int size = Math.max(14, r * 4 + 8);
+                Rectangle sprite = new Rectangle(x - size / 2, y - size / 2, size, size);
+                drawCanonicalHullSprite(g2, asset == null ? ShipRole.PATROL : asset.role,
+                        asset == null ? Faction.ENEMY : asset.faction, sprite, 0.78f,
+                        deploymentAssetColor(false, asset));
+                g2.setColor(new Color(12, 4, 6, 220));
+                g2.drawOval(x - r - 2, y - r - 2, (r + 2) * 2, (r + 2) * 2);
+                if (i < 8 && asset != null) {
+                    g2.setFont(new Font("Consolas", Font.BOLD, 8));
+                    g2.setColor(new Color(255, 214, 196, 235));
+                    g2.drawString(deploymentRoleAbbrev(asset.role), x + r + 4, y + 3);
                 }
             }
         }
+    }
+
+    private static double[] deploymentFormationPoint(UiState.BriefingAsset asset, int index, boolean friendly) {
+        if (friendly || asset == null) {
+            return new double[]{0.66 + (index % 4) * 0.072, 0.34 + (index / 4) * 0.20 + ((index % 2) * 0.04)};
+        }
+        CampaignSystem.FleetFormationRole role = asset.formationRole == null
+                ? CampaignSystem.FleetFormationRole.SCREEN_LEFT
+                : asset.formationRole;
+        double row = Math.min(0.16, (index / 6) * 0.055);
+        double jitter = ((index % 3) - 1) * 0.018;
+        return switch (role) {
+            case VANGUARD, SCOUT_WING -> new double[]{0.63 + jitter, 0.45 + ((index & 1) == 0 ? -0.08 : 0.08) + row};
+            case FLAGSHIP -> new double[]{0.74 + jitter, 0.50 + row};
+            case SCREEN_LEFT -> new double[]{0.73 + jitter, 0.36 + row};
+            case SCREEN_RIGHT -> new double[]{0.73 + jitter, 0.64 - row};
+            case CARRIER_CORE, SUPPORT_REAR -> new double[]{0.84 + jitter, 0.50 + ((index & 1) == 0 ? -0.07 : 0.07) + row};
+            case REARGUARD, TRANSPORT_GROUP, MINER_GROUP -> new double[]{0.90 + jitter, 0.50 + ((index & 1) == 0 ? -0.10 : 0.10) + row};
+        };
+    }
+
+    private static String deploymentCompositionSummary(UiState.StrategicEncounterPrompt prompt, boolean friendly) {
+        List<UiState.BriefingAsset> assets = prompt == null ? List.of() : (friendly ? prompt.friendlyAssets : prompt.enemyAssets);
+        if (assets == null || assets.isEmpty()) return "composition estimate unavailable";
+        int titans = 0;
+        int capitals = 0;
+        int line = 0;
+        int pickets = 0;
+        int support = 0;
+        for (UiState.BriefingAsset asset : assets) {
+            ShipRole role = asset == null ? null : asset.role;
+            if (role == null) continue;
+            if (role.isTitanOrMothership()) titans++;
+            else if (role.isCapitalCombatant() || role.isCarrierHull()) capitals++;
+            else if (role == ShipRole.PICKET || role == ShipRole.CIWS_CORVETTE || role == ShipRole.PATROL) pickets++;
+            else if (role == ShipRole.MINER || role == ShipRole.HAULER || role == ShipRole.TRANSPORT) support++;
+            else line++;
+        }
+        ArrayList<String> parts = new ArrayList<>();
+        if (titans > 0) parts.add("TITAN " + titans);
+        if (capitals > 0) parts.add("CAP " + capitals);
+        if (line > 0) parts.add("LINE " + line);
+        if (pickets > 0) parts.add("PICKET " + pickets);
+        if (support > 0) parts.add("SUPPORT " + support);
+        return parts.isEmpty() ? "composition estimate unavailable" : String.join(" / ", parts);
+    }
+
+    private static String deploymentRoleAbbrev(ShipRole role) {
+        if (role == null) return "UNK";
+        if (role.isTitanOrMothership()) return "TIT";
+        if (role == ShipRole.DREADNOUGHT) return "DND";
+        if (role == ShipRole.BATTLESHIP) return "BBS";
+        if (role == ShipRole.BATTLECRUISER) return "BC";
+        if (role == ShipRole.CRUISER || role == ShipRole.LIGHT_CRUISER || role == ShipRole.MEDIUM_CRUISER) return "CR";
+        if (role == ShipRole.CARRIER || role == ShipRole.DRONE_CARRIER) return "CV";
+        if (role == ShipRole.MISSILE_BOAT) return "MSL";
+        if (role == ShipRole.CIWS_CORVETTE) return "PD";
+        if (role == ShipRole.FRIGATE) return "FR";
+        if (role == ShipRole.PICKET || role == ShipRole.PATROL) return "PK";
+        if (role == ShipRole.MINER || role == ShipRole.HAULER || role == ShipRole.TRANSPORT) return "SUP";
+        return "LN";
     }
 
     private static Color deploymentAssetColor(boolean friendly, UiState.BriefingAsset asset) {

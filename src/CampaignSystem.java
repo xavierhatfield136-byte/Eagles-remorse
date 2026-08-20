@@ -19981,9 +19981,8 @@ public final class CampaignSystem extends CampaignSystemModels {
             poolMembers.sort((a, b) -> Integer.compare(
                     shipManifestPriority(b == null ? null : b.role),
                     shipManifestPriority(a == null ? null : a.role)));
-            int persistentSlots = Math.max(slots, poolMembers.size());
             for (CampaignShipPoolRecord record : poolMembers) {
-                if (manifest.ships.size() >= persistentSlots) break;
+                if (manifest.ships.size() >= slots) break;
                 manifest.ships.add(new EncounterShipManifestEntry(
                         record.id,
                         record.role,
@@ -20530,7 +20529,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                     hostile ? approach : oppositeApproachDirection(approach),
                     tacticalIngressDepthForOvermapDistance(ctx, st, force, range));
             if (hostile) {
-                ingress = enforceEncounterStandoff(ctx, ingress[0], ingress[1], 1700.0);
+                ingress = enforceEncounterStandoff(ctx, ingress[0], ingress[1], encounterInsertionDistanceMeters(range));
             }
             double side = (slot % 2 == 0) ? -1.0 : 1.0;
             double spread = 150.0 + (slot / 2) * 145.0;
@@ -34298,7 +34297,8 @@ public final class CampaignSystem extends CampaignSystemModels {
                     force.name,
                     entry.role,
                     force.faction,
-                    entry.condition));
+                    entry.condition,
+                    entry.formationRole));
         }
     }
 

@@ -362,6 +362,44 @@ class CampaignForceOwnershipTest {
     }
 
     @Test
+    void finitePoolBackedEncounterManifestObeysRequestedShipCap() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+
+        Object red = createCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Regression Red Stacked Patrol Marker", 2600.0, 2500.0);
+        int forceId = (int) readField(red, "id");
+        st.campaignShipPool.clear();
+        for (int i = 0; i < 287; i++) {
+            ShipRole role = (i % 7 == 0) ? ShipRole.CRUISER
+                    : (i % 5 == 0) ? ShipRole.FRIGATE
+                    : ShipRole.PATROL;
+            CampaignSystem.CampaignShipPoolRecord record = new CampaignSystem.CampaignShipPoolRecord(
+                    st.nextCampaignShipRecordId++,
+                    Faction.ENEMY,
+                    role,
+                    CampaignSystem.CampaignShipPoolStatus.ACTIVE,
+                    "regression-red-yard",
+                    forceId,
+                    100.0,
+                    "Stacked Patrol Hull " + i);
+            st.campaignShipPool.put(record.id, record);
+        }
+
+        Object manifest = invokePrivate("encounterManifestForForce",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, red.getClass(), int.class},
+                ctx, st, red, 24);
+        Object ships = readField(manifest, "ships");
+
+        assertTrue(ships instanceof List<?>, "expected finite-pool manifest ships");
+        List<?> list = (List<?>) ships;
+        assertTrue(list.size() > 0 && list.size() <= 24,
+                "finite-pool backed contacts must cap tactical assets instead of spawning the whole strategic reserve");
+        assertTrue(list.size() < 287,
+                "oversized strategic rosters must not be copied wholesale into one encounter manifest");
+    }
+
+    @Test
     void deepRedMiningAndDefenseForcesEscalateIntoHeavyHullManifests() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;

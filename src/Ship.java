@@ -289,6 +289,7 @@ public abstract class Ship {
     public double primaryGunStaggerTimer = 0.0;
     public int primaryGunStaggerCursor = 0;
     public int primaryGunStaggerBurstRemaining = 0;
+    public boolean attractModeStaggerPrimaryFire = false;
 
     private static final class GunBaseline {
         final double cooldown;
@@ -6347,7 +6348,7 @@ public abstract class Ship {
      *
      * - Intercepts nearby hostile missiles.
      * - Engages nearby hostile small craft when present.
-     * - Team C keeps laser PD against missiles; all other CIWS fire visible pellets.
+     * - Fires visible faction-colored pellets instead of guaranteed laser interception.
      */
     public void tryCIWS(double dt, List<Projectile> projectiles, List<Ship> ships) {
         tryCIWS(dt, projectiles, ships, null);
@@ -6385,11 +6386,7 @@ public abstract class Ship {
 
         if (targetMissile) {
             double aim = computeCiwsLeadAim(dt, closestMissile.x, closestMissile.y, closestMissile.vx, closestMissile.vy);
-            if (faction == Faction.TEAM_C) {
-                firePointDefenseLaser(dt, projectiles, closestMissile, aim, projectilePlan);
-            } else {
-                fireCiwsPellets(dt, projectiles, aim, projectilePlan);
-            }
+            fireCiwsPellets(dt, projectiles, aim, projectilePlan);
             return;
         }
 

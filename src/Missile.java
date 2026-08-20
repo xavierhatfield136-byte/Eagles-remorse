@@ -4,7 +4,7 @@ public class Missile extends Projectile {
     public static final int INFINITE_GUIDANCE_TICKS = Integer.MAX_VALUE;
     public static final double GLOBAL_SPEED_MULT = 2.0;
     public static final double MAX_RUNTIME_SPEED_M_PER_SEC = 1000.0;
-    public static final double HEAVY_RUNTIME_SPEED_M_PER_SEC = 700.0;
+    public static final double HEAVY_RUNTIME_SPEED_M_PER_SEC = MAX_RUNTIME_SPEED_M_PER_SEC;
     private static final double NON_YELLOW_SPEED_MULT = 2.35;
     private static final double YELLOW_SPEED_MULT = 1.00;
 

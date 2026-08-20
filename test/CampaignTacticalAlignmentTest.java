@@ -97,7 +97,9 @@ class CampaignTacticalAlignmentTest {
 
     @Test
     void tacticalProjectileSpeedBudgetKeepsGunsReadableAndMakesMissilesFast() {
-        double energyNavyProjectileSpeed = DoctrineRegistry.ENERGY_NAVY.mainProjectileSpeed * Turret.GUN_PROJECTILE_SPEED_MULT;
+        double energyNavyProjectileSpeed = DoctrineRegistry.ENERGY_NAVY.mainProjectileSpeed
+                * Turret.GUN_PROJECTILE_SPEED_MULT
+                * Turret.BLUE_SHOCK_CANNON_SPEED_MULT;
         double kineticProjectileSpeed = DoctrineRegistry.KINETIC_CONSORTIUM.mainProjectileSpeed * Turret.GUN_PROJECTILE_SPEED_MULT;
         double aegisProjectileSpeed = DoctrineRegistry.AEGIS_LATTICE.mainProjectileSpeed * Turret.GUN_PROJECTILE_SPEED_MULT;
         double viperProjectileSpeed = DoctrineRegistry.VIPER_BARRAGE.mainProjectileSpeed * Turret.GUN_PROJECTILE_SPEED_MULT;
@@ -108,7 +110,7 @@ class CampaignTacticalAlignmentTest {
                 baselineMissileSpeed * 1.18,
                 Missile.MAX_RUNTIME_SPEED_M_PER_SEC);
 
-        assertTrue(energyNavyProjectileSpeed <= 640.0,
+        assertTrue(energyNavyProjectileSpeed <= 1280.0,
                 "energy-navy bolts should stay readable, got " + energyNavyProjectileSpeed);
         assertTrue(kineticProjectileSpeed <= 1020.0,
                 "kinetic rounds should stay below near-hitscan feel, got " + kineticProjectileSpeed);

@@ -98,6 +98,9 @@ public class FleetShip extends Ship {
             if (missileCount >= 2 && missileIdx == 0) return Turret.MissileRole.ANTI_MEDIUM;
             return Turret.MissileRole.ANTI_HEAVY;
         }
+        if (role == ShipRole.BOMBER) {
+            return Turret.MissileRole.ANTI_HEAVY;
+        }
         if (role == ShipRole.CARRIER || role == ShipRole.DRONE_CARRIER) {
             return Turret.MissileRole.ANTI_LIGHT;
         }

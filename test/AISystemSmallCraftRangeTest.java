@@ -189,6 +189,73 @@ class AISystemSmallCraftRangeTest {
     }
 
     @Test
+    void allCombatFactionsCanProsecuteAtThreeThousandUnitsWithoutPlayerContact() throws Exception {
+        for (Faction faction : Faction.fourTeamFactions()) {
+            GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 7000, 2600, true, 60L + faction.ordinal(), false));
+            Faction targetFaction = faction == Faction.ALLY ? Faction.ENEMY : Faction.ALLY;
+            FleetShip shooter = new FleetShip(ShipRole.FRIGATE, faction, 0.0, 1300.0);
+            FleetShip target = new FleetShip(ShipRole.FRIGATE, targetFaction, 2990.0, 1300.0);
+            DoctrineRegistry.applyToShip(shooter);
+            for (Turret turret : shooter.turrets) {
+                if (turret != null) {
+                    turret.angle = 0.0;
+                    turret.setReady();
+                }
+            }
+            ctx.ships.clear();
+            ctx.ships.add(shooter);
+            ctx.ships.add(target);
+            ctx.entityQuery.rebuild(ctx);
+
+            int fired = invokeFireIfAble(ctx, shooter, target, GameContext.DT, 2990.0);
+
+            assertTrue(fired > 0, faction + " should fire at hostile contacts inside the 3,000m prosecution envelope");
+        }
+    }
+
+    @Test
+    void safeFleetSupportShipChoosesSharedHighValueTargetOverNearbyDistraction() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 7200, 2600, true, 70L, false));
+        FleetShip flagship = new FleetShip(ShipRole.BATTLESHIP, Faction.ALLY, 0.0, 1300.0);
+        FleetShip support = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 120.0, 1300.0);
+        FleetShip nearbyDistraction = new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 1320.0, 1300.0);
+        FleetShip highValueTarget = new FleetShip(ShipRole.DREADNOUGHT, Faction.ENEMY, 2550.0, 1300.0);
+        ctx.ships.clear();
+        ctx.ships.add(flagship);
+        ctx.ships.add(support);
+        ctx.ships.add(nearbyDistraction);
+        ctx.ships.add(highValueTarget);
+        ctx.entityQuery.rebuild(ctx);
+
+        Object fleetState = invokeBuildFleetState(ctx);
+        Ship selected = invokeSelectEngagementTarget(ctx, fleetState, support);
+
+        assertTrue(selected == highValueTarget,
+                "safe support ships should concentrate on the fleet shared/high-value target");
+    }
+
+    @Test
+    void locallyThreatenedShipChoosesImmediateThreatOverSharedTarget() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 7200, 2600, true, 71L, false));
+        FleetShip flagship = new FleetShip(ShipRole.BATTLESHIP, Faction.ALLY, 0.0, 1300.0);
+        FleetShip support = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 120.0, 1300.0);
+        FleetShip immediateThreat = new FleetShip(ShipRole.BATTLECRUISER, Faction.ENEMY, 560.0, 1300.0);
+        FleetShip highValueTarget = new FleetShip(ShipRole.DREADNOUGHT, Faction.ENEMY, 2550.0, 1300.0);
+        ctx.ships.clear();
+        ctx.ships.add(flagship);
+        ctx.ships.add(support);
+        ctx.ships.add(immediateThreat);
+        ctx.ships.add(highValueTarget);
+        ctx.entityQuery.rebuild(ctx);
+
+        Object fleetState = invokeBuildFleetState(ctx);
+        Ship selected = invokeSelectEngagementTarget(ctx, fleetState, support);
+
+        assertTrue(selected == immediateThreat,
+                "ships under local threat should break from fleet focus and answer the immediate threat");
+    }
+
+    @Test
     void redHyperweaponStartsChargingImmediatelyAtLineTarget() throws Exception {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 3600, 1800, true, 53L, false));
         FleetShip redHyperweapon = new FleetShip(ShipRole.HYPERWEAPON_TITAN, Faction.ENEMY, 0.0, 900.0);
@@ -415,6 +482,23 @@ class AISystemSmallCraftRangeTest {
         Method method = AISystem.class.getDeclaredMethod("commitToTarget", Ship.class, Ship.class, double.class);
         method.setAccessible(true);
         method.invoke(null, seeker, target, duration);
+    }
+
+    private static Object invokeBuildFleetState(GameContext ctx) throws Exception {
+        Method method = AISystem.class.getDeclaredMethod("buildFleetState", GameContext.class, double.class);
+        method.setAccessible(true);
+        Object result = method.invoke(null, ctx, GameContext.DT);
+        assertNotNull(result);
+        return result;
+    }
+
+    private static Ship invokeSelectEngagementTarget(GameContext ctx, Object fleetState, Ship seeker) throws Exception {
+        Method method = AISystem.class.getDeclaredMethod(
+                "selectEngagementTarget", GameContext.class, fleetState.getClass(), Ship.class, double.class);
+        method.setAccessible(true);
+        Object result = method.invoke(null, ctx, fleetState, seeker, GameContext.DT);
+        assertTrue(result == null || result instanceof Ship);
+        return (Ship) result;
     }
 
     private static int invokeFireIfAble(GameContext ctx, Ship shooter, Ship target, double dt, double dist) throws Exception {

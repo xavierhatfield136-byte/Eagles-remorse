@@ -1177,6 +1177,7 @@ public final class AISystem {
 
     private static boolean isDetectableToObserverCached(GameContext ctx, Ship observer, Ship target,
                                                         FleetStateBuildCache buildCache) {
+        if (standardProsecutionContactAvailable(observer, target)) return true;
         if (playerFleetProsecutionContactAvailable(ctx, observer, target)) return true;
         if (redFleetProsecutionContactAvailable(ctx, observer, target)) return true;
         double sensorMul = cachedObserverSensorMultiplier(observer, buildCache);
@@ -1194,6 +1195,29 @@ public final class AISystem {
         if (observer == null || target == null || observer.faction == null || target.faction == null) return false;
         if (observer.faction != Faction.ENEMY || observer.faction.isFriendlyTo(target.faction)) return false;
         return Math.hypot(target.x - observer.x, target.y - observer.y) <= RED_FLEET_PROSECUTION_RANGE;
+    }
+
+    private static boolean standardProsecutionContactAvailable(Ship observer, Ship target) {
+        if (!isAlive(observer) || !isAlive(target)) return false;
+        if (observer.faction == null || target.faction == null || observer.faction.isFriendlyTo(target.faction)) return false;
+        if (Math.hypot(target.x - observer.x, target.y - observer.y) > STANDARD_PROSECUTION_RANGE) return false;
+        return hasStandardProsecutionWeapon(observer, target);
+    }
+
+    private static boolean hasStandardProsecutionWeapon(Ship observer, Ship target) {
+        if (observer == null) return false;
+        if (observer.hasSuperweapon) return true;
+        if (observer.turrets == null) return false;
+        for (Turret turret : observer.turrets) {
+            if (turret == null) continue;
+            if (turret.kind == Turret.Kind.GUN && !Turret.usesCiwsPelletsAgainst(observer, turret, target)) {
+                return true;
+            }
+            if (isOffensiveMissileTurret(turret)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static SharedTargetChoice reuseStableSharedTarget(GameContext ctx, int teamId, List<Ship> members,
@@ -2438,13 +2462,21 @@ public final class AISystem {
             commitToTarget(seeker, fighterIntercept, targetCommitDuration(seeker, fighterIntercept, SquadObjective.INTERCEPT));
             return rememberCachedAiIntent(seeker, IntentType.FIGHT, fighterIntercept);
         }
-        Ship shared = focusTargetForShip(state, seeker);
+        Ship shared = sharedTargetForTeam(state, seeker);
+        if (!isAlive(shared)) shared = focusTargetForShip(state, seeker);
         Ship immediate = scanImmediateThreatWithBackoff(
-                ctx, seeker, Math.max(0.0, dt), Math.max(210.0, preferredRange(seeker) * 0.62));
+                ctx, seeker, Math.max(0.0, dt), immediateThreatResponseRange(seeker));
         if (isAlive(immediate)) {
             clearEngagementScanBackoff(seeker);
             commitToTarget(seeker, immediate, targetCommitDuration(seeker, immediate, SquadObjective.INTERCEPT));
             return rememberCachedAiIntent(seeker, IntentType.FIGHT, immediate);
+        }
+
+        if (shouldCommitToSharedTarget(state, seeker, shared)
+                && canShipThreatenTarget(ctx, seeker, shared)) {
+            clearEngagementScanBackoff(seeker);
+            commitToTarget(seeker, shared, targetCommitDuration(seeker, shared, SquadObjective.HOLD));
+            return rememberCachedAiIntent(seeker, IntentType.FIGHT, shared);
         }
 
         Ship cached = cachedIntentTarget(ctx, state, seeker, shared);
@@ -2464,14 +2496,6 @@ public final class AISystem {
             clearEngagementScanBackoff(seeker);
             commitToTarget(seeker, periodic, targetCommitDuration(seeker, periodic, SquadObjective.HOLD));
             return rememberCachedAiIntent(seeker, IntentType.FIGHT, periodic);
-        }
-
-        if (shouldCommitToSharedTarget(state, seeker, shared)
-                && canShipThreatenTarget(ctx, seeker, shared)
-                && canTakeFightForTargetSelection(ctx, seeker, shared)) {
-            clearEngagementScanBackoff(seeker);
-            commitToTarget(seeker, shared, targetCommitDuration(seeker, shared, SquadObjective.HOLD));
-            return rememberCachedAiIntent(seeker, IntentType.FIGHT, shared);
         }
 
         AiScalePolicy.FramePlan scalePlan = currentScalePlan();
@@ -2543,6 +2567,16 @@ public final class AISystem {
         }
         IMMEDIATE_THREAT_SCAN_TIMERS.put(seeker.id, baseCadence * (0.88 + jitter * 0.42));
         return immediate;
+    }
+
+    private static double immediateThreatResponseRange(Ship seeker) {
+        if (seeker == null) return 420.0;
+        double preferred = preferredRange(seeker);
+        double hullBuffer = Math.max(160.0, seeker.radius * 3.4);
+        double range = Math.max(420.0, preferred * 1.08 + hullBuffer);
+        if (isPointDefenseRole(seeker)) range = Math.max(range, 920.0);
+        if (isSupportRole(seeker.role)) range = Math.max(range, preferred * 1.24 + hullBuffer);
+        return Math.min(STANDARD_PROSECUTION_RANGE, range);
     }
 
     private static double idleImmediateThreatCadence(ShipRole role) {
@@ -2980,7 +3014,8 @@ public final class AISystem {
 
     private static boolean canShipThreatenTarget(GameContext ctx, Ship seeker, Ship target) {
         if (!isAlive(seeker) || !isAlive(target)) return false;
-        boolean prosecutionContact = playerFleetProsecutionContactAvailable(ctx, seeker, target)
+        boolean prosecutionContact = standardProsecutionContactAvailable(seeker, target)
+                || playerFleetProsecutionContactAvailable(ctx, seeker, target)
                 || redFleetProsecutionContactAvailable(ctx, seeker, target);
         if (!prosecutionContact && !TargetingSystem.isDetectableToObserver(seeker, target)) return false;
         double rangeMul = (ctx == null) ? 1.0 : CampaignSystem.targetingRangeMul(ctx);
@@ -3014,6 +3049,7 @@ public final class AISystem {
 
     private static boolean hasFireAuthorityContact(GameContext ctx, Ship shooter, Ship target) {
         if (!isAlive(shooter) || !isAlive(target)) return false;
+        if (standardProsecutionContactAvailable(shooter, target)) return true;
         if (playerFleetProsecutionContactAvailable(ctx, shooter, target)) return true;
         if (redFleetProsecutionContactAvailable(ctx, shooter, target)) return true;
         if (TargetingSystem.isDetectableToObserver(ctx, shooter, target)) return true;
@@ -4369,8 +4405,9 @@ public final class AISystem {
         }
 
         boolean blueTeam = (s.faction == Faction.PLAYER || s.faction == Faction.ALLY);
-        boolean energyBoltStagger = blueTeam && s.usesStaggeredPrimaryFire();
-        boolean beamBoltVolley = blueTeam && s.usesVolleyPrimaryFire();
+        boolean menuStagger = s.attractModeStaggerPrimaryFire;
+        boolean energyBoltStagger = menuStagger || (blueTeam && s.usesStaggeredPrimaryFire());
+        boolean beamBoltVolley = !menuStagger && blueTeam && s.usesVolleyPrimaryFire();
         boolean dogfightRole = isDogfightRole(s.role);
 
         // Aim all turrets first so we can coordinate synchronized beam-bolt volleys with a single readiness check.
@@ -4383,7 +4420,7 @@ public final class AISystem {
                     // Directed-energy guns should bias direct tracking, not projectile lead.
                     t.aimAt(dt, s, target);
                 } else {
-                    t.aimAtLead(dt, s, target, Turret.effectiveGunProjectileSpeed(t));
+                    t.aimAtLead(dt, s, target, Turret.effectiveGunProjectileSpeed(s, t));
                 }
             } else {
                 t.aimAt(dt, s, target);
@@ -4783,6 +4820,9 @@ public final class AISystem {
                 && isFriendlyToPlayer(ctx, observer)
                 && !observer.faction.isFriendlyTo(target.faction)) {
             range = Math.max(range, PLAYER_FLEET_PROSECUTION_RANGE);
+        }
+        if (standardProsecutionContactAvailable(observer, target)) {
+            range = Math.max(range, STANDARD_PROSECUTION_RANGE);
         }
         if (redFleetProsecutionContactAvailable(ctx, observer, target)) {
             range = Math.max(range, RED_FLEET_PROSECUTION_RANGE);

@@ -17,8 +17,12 @@ import java.awt.*;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
 import java.awt.event.KeyEvent;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.function.Consumer;
 
 public final class MainMenuPanel extends JPanel {
@@ -40,7 +44,9 @@ public final class MainMenuPanel extends JPanel {
             "BASE", "STATIC_TURRET"
     };
     private final long backgroundStartNs = System.nanoTime();
+    private long lastBattleUpdateNs = backgroundStartNs;
     private final Timer backgroundTimer;
+    private MenuBattleView menuBattleView;
     private final JButton continueCampaignButton;
     private final JButton deleteCampaignButton;
     private final JLabel continueCampaignLabel;
@@ -63,13 +69,21 @@ public final class MainMenuPanel extends JPanel {
         setPreferredSize(preferredSize);
         setBackground(Color.BLACK);
         setFocusable(true);
-        backgroundTimer = new Timer(33, e -> repaint());
+        backgroundTimer = new Timer(33, e -> {
+            long now = System.nanoTime();
+            double delta = Math.min(0.08, Math.max(0.0, (now - lastBattleUpdateNs) / 1_000_000_000.0));
+            lastBattleUpdateNs = now;
+            if (menuBattleView != null && isShowing()) {
+                menuBattleView.update(delta);
+            }
+            repaint();
+        });
         backgroundTimer.setCoalesce(true);
         backgroundTimer.start();
 
         JLabel title = new JLabel(AppInfo.APP_NAME.toUpperCase());
         title.setForeground(Color.WHITE);
-        title.setFont(MenuDisplay.font("Consolas", Font.BOLD, 62, uiScale));
+        title.setFont(MenuDisplay.font("Consolas", Font.BOLD, 44, uiScale));
         title.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         GameMode[] missionModes = new GameMode[]{
@@ -99,20 +113,20 @@ public final class MainMenuPanel extends JPanel {
         styleField(seedField);
         scaleField(seedField, uiScale);
 
-        JButton start = createMenuButton("Launch Mission", new Color(52, 132, 184), uiScale);
+        JButton start = createMenuButton("Launch Mission", new Color(38, 105, 142), uiScale);
         JButton credits = createMenuButton("Credits", new Color(48, 62, 82), uiScale);
         JButton quit = createMenuButton("Quit", new Color(100, 63, 73), uiScale);
-        continueCampaignButton = createMenuButton("Continue Campaign", new Color(71, 139, 96), uiScale);
+        continueCampaignButton = createMenuButton("Continue Campaign", new Color(63, 134, 91), uiScale);
         deleteCampaignButton = createMenuButton("Delete Save", new Color(117, 58, 70), uiScale);
-        JButton newCampaign = createMenuButton("New Campaign", new Color(41, 112, 170), uiScale);
-        JButton campaignOps = createMenuButton("Open World Campaign", new Color(41, 112, 170), uiScale);
+        JButton newCampaign = createMenuButton("Campaign", new Color(25, 57, 82), uiScale);
+        JButton campaignOps = createMenuButton("Open World Campaign", new Color(33, 86, 128), uiScale);
         JButton linearCampaign = createMenuButton("Linear Campaign", new Color(82, 91, 126), uiScale);
-        JButton customBattle = createMenuButton("Custom Battle", new Color(64, 126, 177), uiScale);
-        JButton multiplayerButton = createMenuButton("Multiplayer", new Color(53, 123, 126), uiScale);
-        JButton customShipCreator = createMenuButton("Shipyard", new Color(66, 112, 148), uiScale);
+        JButton customBattle = createMenuButton("Custom Battle", new Color(30, 61, 88), uiScale);
+        JButton multiplayerButton = createMenuButton("Multiplayer", new Color(28, 70, 72), uiScale);
+        JButton customShipCreator = createMenuButton("Shipyard", new Color(34, 58, 78), uiScale);
         JButton galaxyMapTest = createMenuButton("Galaxy Map Test", new Color(72, 103, 150), uiScale);
-        JButton tutorialStart = createMenuButton("Commander's Academy", new Color(60, 118, 186), uiScale);
-        JButton settingsButton = createMenuButton("Settings", new Color(64, 80, 116), uiScale);
+        JButton tutorialStart = createMenuButton("Commander's Academy", new Color(31, 68, 102), uiScale);
+        JButton settingsButton = createMenuButton("Settings", new Color(43, 53, 76), uiScale);
         JButton experienceButton = createMenuButton("Accessibility", new Color(64, 80, 116), uiScale);
         JButton controlsButton = createMenuButton("Controls", new Color(65, 91, 126), uiScale);
         newCampaign.setName("newCampaignButton");
@@ -391,9 +405,9 @@ public final class MainMenuPanel extends JPanel {
         JPanel titleStack = transparentPanel();
         titleStack.setLayout(new BoxLayout(titleStack, BoxLayout.Y_AXIS));
         titleStack.add(eyebrowLabel("Fleet Command", uiScale, new Color(115, 204, 225)));
-        titleStack.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
+        titleStack.add(Box.createVerticalStrut(MenuDisplay.scaled(5, uiScale)));
         titleStack.add(title);
-        titleStack.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
+        titleStack.add(Box.createVerticalStrut(MenuDisplay.scaled(5, uiScale)));
         titleStack.add(bodyLabel("Continue your war, begin a campaign, or prepare an independent engagement.", uiScale));
 
         JPanel headerPanel = transparentPanel();
@@ -470,41 +484,70 @@ public final class MainMenuPanel extends JPanel {
         menuCards.setLayout(menuCardsLayout);
 
         JPanel commandPanel = transparentPanel();
-        commandPanel.setLayout(new BorderLayout(0, MenuDisplay.scaled(18, uiScale)));
+        commandPanel.setLayout(new BorderLayout(MenuDisplay.scaled(28, uiScale), 0));
         JPanel continueCard = createSectionPanel(new Color(83, 170, 111, 165), uiScale);
         continueCard.add(eyebrowLabel("Continue Campaign", uiScale, new Color(152, 229, 168)));
         continueCard.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
         continueCard.add(sectionTitle("Return To The War", uiScale));
         continueCard.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
         continueCard.add(continueCampaignLabel);
-        continueCard.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
+        continueCard.add(Box.createVerticalStrut(MenuDisplay.scaled(12, uiScale)));
         continueCard.add(continueCampaignButton);
-        commandPanel.add(continueCard, BorderLayout.NORTH);
+        continueCard.setPreferredSize(new Dimension(MenuDisplay.scaled(340, uiScale), MenuDisplay.scaled(190, uiScale)));
+        continueCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, MenuDisplay.scaled(190, uiScale)));
 
-        JPanel destinationGrid = transparentPanel();
-        destinationGrid.setLayout(new GridLayout(0, 2, MenuDisplay.scaled(14, uiScale), MenuDisplay.scaled(14, uiScale)));
-        destinationGrid.add(newCampaign);
-        destinationGrid.add(customBattle);
+        JLabel commandHint = metaLabel("Select a command vector", uiScale);
+        commandHint.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JPanel commandList = transparentPanel();
+        commandList.setLayout(new BoxLayout(commandList, BoxLayout.Y_AXIS));
+        commandList.add(continueCard);
+        commandList.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
+        commandList.add(commandHint);
+        commandList.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
+        addCommandButton(commandList, newCampaign, "Start or load an open-world or linear campaign.", uiScale);
+        addCommandButton(commandList, tutorialStart, "Learn fleet command through a short combat campaign.", uiScale);
+        addCommandButton(commandList, customBattle, "Build a fleet and create an independent engagement.", uiScale);
         if (multiplayerEntryPointEnabled()) {
-            destinationGrid.add(multiplayerButton);
+            addCommandButton(commandList, multiplayerButton, "Host or join a direct custom battle lobby.", uiScale);
         }
-        destinationGrid.add(tutorialStart);
-        destinationGrid.add(customShipCreator);
-        destinationGrid.add(settingsButton);
-        commandPanel.add(destinationGrid, BorderLayout.CENTER);
+        commandList.add(commandSeparator(uiScale));
+        JPanel utilityGrid = transparentPanel();
+        utilityGrid.setLayout(new GridLayout(2, 2, MenuDisplay.scaled(8, uiScale), MenuDisplay.scaled(8, uiScale)));
+        prepareCommandButton(customShipCreator, "Design and inspect custom hulls.", uiScale);
+        prepareCommandButton(settingsButton, "Adjust accessibility and control bindings.", uiScale);
+        prepareCommandButton(credits, "View the project credits.", uiScale);
+        prepareCommandButton(quit, "Exit Eagles Remorse.", uiScale);
+        utilityGrid.add(customShipCreator);
+        utilityGrid.add(settingsButton);
+        utilityGrid.add(credits);
+        utilityGrid.add(quit);
+        utilityGrid.setAlignmentX(Component.LEFT_ALIGNMENT);
+        utilityGrid.setMaximumSize(new Dimension(Integer.MAX_VALUE, MenuDisplay.scaled(84, uiScale)));
+        commandList.add(utilityGrid);
+
+        JPanel battlePanel = createMenuBattlePanel(uiScale);
+        battlePanel.setName("mainMenuBattlePanel");
+        JPanel battleShell = createBattleShell(battlePanel, uiScale);
+
+        JPanel commandSplit = transparentPanel();
+        commandSplit.setLayout(new BorderLayout(MenuDisplay.scaled(28, uiScale), 0));
+        commandList.setPreferredSize(new Dimension(MenuDisplay.scaled(360, uiScale), 1));
+        commandSplit.add(commandList, BorderLayout.WEST);
+        commandSplit.add(battleShell, BorderLayout.CENTER);
+        commandPanel.add(commandSplit, BorderLayout.CENTER);
         if (developerMenuEnabled()) {
             JButton developerTools = createMenuButton("Developer Tools", new Color(86, 77, 122), uiScale);
             developerTools.setName("developerToolsButton");
             JPanel devRow = transparentPanel();
             devRow.setLayout(new BorderLayout());
             devRow.add(developerTools, BorderLayout.EAST);
-            commandPanel.add(devRow, BorderLayout.SOUTH);
+            battleShell.add(devRow, BorderLayout.SOUTH);
             developerTools.addActionListener(e -> menuCardsLayout.show(menuCards, "developer"));
         }
 
         JPanel campaignPanel = createSectionPanel(new Color(48, 146, 197, 160), uiScale);
         campaignPanel.setLayout(new BorderLayout(0, MenuDisplay.scaled(18, uiScale)));
-        campaignPanel.add(subMenuHeader("New Campaign", "Choose Campaign Type", backFromCampaign,
+        campaignPanel.add(subMenuHeader("Campaign", "Choose Campaign Type", backFromCampaign,
                 uiScale, new Color(115, 204, 225)), BorderLayout.NORTH);
         JLabel campaignTypeLabel = bodyLabel("Selected: Open World Campaign", uiScale);
         JPanel campaignChoicePanel = verticalPanel();
@@ -646,11 +689,7 @@ public final class MainMenuPanel extends JPanel {
 
         JPanel footerPanel = transparentPanel();
         footerPanel.setLayout(new BorderLayout(MenuDisplay.scaled(12, uiScale), 0));
-        JPanel footerActions = new JPanel(new GridLayout(1, 2, MenuDisplay.scaled(10, uiScale), 0));
-        footerActions.setOpaque(false);
-        footerActions.add(credits);
-        footerActions.add(quit);
-        footerPanel.add(footerActions, BorderLayout.WEST);
+        footerPanel.add(Box.createHorizontalStrut(MenuDisplay.scaled(1, uiScale)), BorderLayout.WEST);
         JPanel footerInfo = transparentPanel();
         footerInfo.setLayout(new BoxLayout(footerInfo, BoxLayout.Y_AXIS));
         versionLabel.setAlignmentX(Component.RIGHT_ALIGNMENT);
@@ -774,6 +813,91 @@ public final class MainMenuPanel extends JPanel {
     private static boolean developerMenuEnabled() {
         return Boolean.getBoolean("game.dev.menu")
                 || "true".equalsIgnoreCase(System.getenv("GAME_DEV_MENU"));
+    }
+
+    private static void addCommandButton(JPanel parent, JButton button, String description, double uiScale) {
+        if (parent == null || button == null) return;
+        prepareCommandButton(button, description, uiScale);
+        parent.add(button);
+        parent.add(Box.createVerticalStrut(MenuDisplay.scaled(6, uiScale)));
+    }
+
+    private static void prepareCommandButton(JButton button, String description, double uiScale) {
+        if (button == null) return;
+        button.setToolTipText(description);
+        button.setHorizontalAlignment(SwingConstants.LEFT);
+        button.setPreferredSize(new Dimension(MenuDisplay.scaled(280, uiScale), MenuDisplay.scaled(38, uiScale)));
+        button.setMaximumSize(new Dimension(Integer.MAX_VALUE, MenuDisplay.scaled(38, uiScale)));
+    }
+
+    private static JComponent commandSeparator(double uiScale) {
+        JComponent separator = new JComponent() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setColor(new Color(111, 154, 185, 70));
+                int y = getHeight() / 2;
+                g2.drawLine(0, y, getWidth(), y);
+                g2.dispose();
+            }
+        };
+        separator.setOpaque(false);
+        separator.setAlignmentX(Component.LEFT_ALIGNMENT);
+        separator.setPreferredSize(new Dimension(1, MenuDisplay.scaled(16, uiScale)));
+        separator.setMaximumSize(new Dimension(Integer.MAX_VALUE, MenuDisplay.scaled(16, uiScale)));
+        return separator;
+    }
+
+    private static JPanel createBattleShell(JPanel battlePanel, double uiScale) {
+        JPanel shell = new JPanel(new BorderLayout(0, MenuDisplay.scaled(10, uiScale))) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                int w = getWidth();
+                int h = getHeight();
+                g2.setPaint(new GradientPaint(0, 0, new Color(2, 6, 12, 56), 0, h,
+                        new Color(2, 5, 10, 90)));
+                g2.fillRoundRect(0, 0, w, h, 8, 8);
+                g2.setColor(new Color(98, 150, 183, 72));
+                g2.drawRoundRect(0, 0, w - 1, h - 1, 8, 8);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        shell.setOpaque(false);
+        shell.setBorder(BorderFactory.createEmptyBorder(
+                MenuDisplay.scaled(12, uiScale),
+                MenuDisplay.scaled(12, uiScale),
+                MenuDisplay.scaled(12, uiScale),
+                MenuDisplay.scaled(12, uiScale)));
+        shell.add(battlePanel, BorderLayout.CENTER);
+        return shell;
+    }
+
+    private JPanel createMenuBattlePanel(double uiScale) {
+        try {
+            Class<?> panelClass = Class.forName("MainMenuBattlePanel");
+            Object instance = panelClass.getConstructor(double.class).newInstance(uiScale);
+            if (instance instanceof JPanel panel) {
+                if (instance instanceof MenuBattleView view) {
+                    menuBattleView = view;
+                }
+                return panel;
+            }
+        } catch (ReflectiveOperationException | LinkageError ignored) {
+            // The real ship attract mode lives in the default package with the combat classes.
+        }
+        return createMenuBattleUnavailablePanel(uiScale);
+    }
+
+    private static JPanel createMenuBattleUnavailablePanel(double uiScale) {
+        JPanel panel = transparentPanel();
+        panel.setLayout(new GridBagLayout());
+        JLabel label = bodyLabel("Tactical attract mode unavailable in this build.", uiScale);
+        label.setForeground(new Color(198, 211, 226, 180));
+        panel.add(label);
+        return panel;
     }
 
     private static JPanel formRow(String labelText, JComponent field, double uiScale) {
@@ -1004,7 +1128,7 @@ public final class MainMenuPanel extends JPanel {
     }
 
     private static JPanel createMenuContent(double scale) {
-        JPanel panel = new JPanel(new BorderLayout(0, MenuDisplay.scaled(22, scale)));
+        JPanel panel = new JPanel(new BorderLayout(0, MenuDisplay.scaled(14, scale)));
         panel.setOpaque(false);
         panel.setBorder(BorderFactory.createEmptyBorder(
                 0,
@@ -1042,10 +1166,10 @@ public final class MainMenuPanel extends JPanel {
         };
         card.setOpaque(false);
         card.setBorder(BorderFactory.createEmptyBorder(
-                MenuDisplay.scaled(48, scale),
-                MenuDisplay.scaled(54, scale),
-                MenuDisplay.scaled(32, scale),
-                MenuDisplay.scaled(54, scale)));
+                MenuDisplay.scaled(34, scale),
+                MenuDisplay.scaled(42, scale),
+                MenuDisplay.scaled(24, scale),
+                MenuDisplay.scaled(42, scale)));
         GridBagConstraints contentConstraints = new GridBagConstraints();
         contentConstraints.gridx = 0;
         contentConstraints.gridy = 0;
@@ -1089,7 +1213,7 @@ public final class MainMenuPanel extends JPanel {
         String primarySummary = checkpoint.available()
                 ? checkpoint.summaryText()
                 : "<b>No active campaign</b><br>Begin a campaign to establish your fleet.";
-        continueCampaignLabel.setText("<html><div style='width:520px;'>" + primarySummary + "</div></html>");
+        continueCampaignLabel.setText("<html><div style='width:250px;'>" + primarySummary + "</div></html>");
         for (int i = 0; i < campaignSlotButtons.length; i++) {
             ResumeCampaignState slot = loadResumeCampaignState(CAMPAIGN_SLOT_IDS[i]);
             campaignSlotButtons[i].setText(slot.available() ? "Load" : "Start");
@@ -1856,6 +1980,454 @@ public final class MainMenuPanel extends JPanel {
         }
     }
 
+    private static final class MenuBattlePanel extends JPanel {
+        private final MenuBattleSimulation simulation;
+        private final double uiScale;
+
+        MenuBattlePanel(MenuBattleSimulation simulation, double uiScale) {
+            this.simulation = simulation;
+            this.uiScale = uiScale;
+            setOpaque(false);
+            setMinimumSize(new Dimension(MenuDisplay.scaled(560, uiScale), MenuDisplay.scaled(360, uiScale)));
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+
+            int w = getWidth();
+            int h = getHeight();
+            g2.setPaint(new GradientPaint(0, 0, new Color(2, 8, 16, 126), 0, h,
+                    new Color(3, 5, 10, 54)));
+            g2.fillRect(0, 0, w, h);
+            drawBattleGrid(g2, w, h, uiScale);
+            if (simulation != null) {
+                simulation.draw(g2, w, h, uiScale);
+            }
+
+            int pad = MenuDisplay.scaled(18, uiScale);
+            g2.setFont(MenuDisplay.font("Consolas", Font.BOLD, 12, uiScale));
+            g2.setColor(new Color(125, 214, 231, 210));
+            g2.drawString("TACTICAL ATTRACT MODE", pad, pad + MenuDisplay.scaled(4, uiScale));
+            g2.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 12, uiScale));
+            g2.setColor(new Color(198, 211, 226, 166));
+            g2.drawString("Disposable combat sandbox - no campaign state attached",
+                    pad, pad + MenuDisplay.scaled(22, uiScale));
+            g2.dispose();
+        }
+
+        private static void drawBattleGrid(Graphics2D g2, int w, int h, double uiScale) {
+            g2.setColor(new Color(96, 157, 190, 25));
+            int gap = Math.max(24, MenuDisplay.scaled(58, uiScale));
+            for (int x = gap; x < w; x += gap) {
+                g2.drawLine(x, 0, x, h);
+            }
+            for (int y = gap; y < h; y += gap) {
+                g2.drawLine(0, y, w, y);
+            }
+            g2.setColor(new Color(255, 255, 255, 16));
+            for (int y = 0; y < h; y += 4) {
+                g2.drawLine(0, y, w, y);
+            }
+        }
+    }
+
+    private static final class MenuBattleSimulation {
+        private static final int MAX_SHIPS = 10;
+        private final Random random;
+        private final List<MenuShip> ships = new ArrayList<>();
+        private final List<MenuShot> shots = new ArrayList<>();
+        private final List<MenuExplosion> explosions = new ArrayList<>();
+        private double replacementTimer = 2.8;
+        private double scenarioResetTimer = 0.0;
+        private int scenarioIndex = 0;
+
+        MenuBattleSimulation(long seed) {
+            random = new Random(seed);
+            startBattleScenario();
+        }
+
+        void update(double delta) {
+            if (delta <= 0.0) return;
+            delta = Math.min(delta, 0.08);
+
+            if (scenarioResetTimer > 0.0) {
+                scenarioResetTimer -= delta;
+                updateExplosions(delta);
+                if (scenarioResetTimer <= 0.0) {
+                    startBattleScenario();
+                }
+                return;
+            }
+
+            updateShips(delta);
+            updateShots(delta);
+            updateExplosions(delta);
+            ships.removeIf(ship -> ship.hp <= 0.0);
+
+            int blue = livingShips(0);
+            int red = livingShips(1);
+            if ((blue == 0 || red == 0) && !ships.isEmpty()) {
+                scenarioResetTimer = 4.0 + random.nextDouble() * 3.0;
+                return;
+            }
+            if (ships.isEmpty()) {
+                startBattleScenario();
+                return;
+            }
+
+            replacementTimer -= delta;
+            if (replacementTimer <= 0.0) {
+                if (ships.size() < MAX_SHIPS && blue > 0 && red > 0) {
+                    spawnReplacement(blue <= red ? 0 : 1);
+                }
+                replacementTimer = 2.5 + random.nextDouble() * 3.8;
+            }
+        }
+
+        void draw(Graphics2D g2, int width, int height, double uiScale) {
+            drawContrails(g2, width, height);
+            for (MenuShot shot : shots) {
+                shot.draw(g2, width, height, uiScale);
+            }
+            for (MenuShip ship : ships) {
+                ship.draw(g2, width, height, uiScale);
+            }
+            for (MenuExplosion explosion : explosions) {
+                explosion.draw(g2, width, height);
+            }
+
+            g2.setFont(MenuDisplay.font("Consolas", Font.BOLD, 11, uiScale));
+            String status = "BLUE " + livingShips(0) + "  /  RED " + livingShips(1);
+            int x = Math.max(10, width - MenuDisplay.scaled(190, uiScale));
+            int y = Math.max(22, height - MenuDisplay.scaled(22, uiScale));
+            g2.setColor(new Color(7, 12, 20, 138));
+            g2.fillRoundRect(x - 10, y - 18, MenuDisplay.scaled(178, uiScale), 28, 8, 8);
+            g2.setColor(new Color(218, 229, 240, 188));
+            g2.drawString(status, x, y);
+        }
+
+        private void startBattleScenario() {
+            ships.clear();
+            shots.clear();
+            explosions.clear();
+            scenarioResetTimer = 0.0;
+            replacementTimer = 2.5 + random.nextDouble() * 2.5;
+            scenarioIndex++;
+
+            boolean titanPass = scenarioIndex % 5 == 0 || random.nextDouble() < 0.12;
+            int blueCount = titanPass ? 2 + random.nextInt(2) : 3 + random.nextInt(2);
+            int redCount = titanPass ? 4 + random.nextInt(3) : 3 + random.nextInt(3);
+            for (int i = 0; i < blueCount; i++) {
+                spawnShip(0, i, blueCount, titanPass && i == 0);
+            }
+            for (int i = 0; i < redCount; i++) {
+                spawnShip(1, i, redCount, false);
+            }
+        }
+
+        private void spawnReplacement(int team) {
+            spawnShip(team, livingShips(team), Math.max(3, livingShips(team) + 1), false);
+        }
+
+        private void spawnShip(int team, int index, int count, boolean titan) {
+            double lane = (index + 1.0) / (count + 1.0);
+            double x = team == 0
+                    ? 0.10 + random.nextDouble() * 0.10
+                    : 0.90 - random.nextDouble() * 0.10;
+            double y = 0.14 + lane * 0.72 + (random.nextDouble() - 0.5) * 0.05;
+            String label = titan ? "TITAN" : switch (random.nextInt(5)) {
+                case 0 -> "CRUISER";
+                case 1 -> "FRIGATE";
+                case 2 -> "MISSILE";
+                case 3 -> "CARRIER";
+                default -> "PICKET";
+            };
+            MenuShip ship = new MenuShip(team, label, x, clamp01(y), titan,
+                    random.nextDouble(), random.nextDouble() * Math.PI * 2.0);
+            ship.vx = team == 0 ? 0.020 + random.nextDouble() * 0.018 : -0.020 - random.nextDouble() * 0.018;
+            ship.vy = (random.nextDouble() - 0.5) * 0.016;
+            ship.cooldown = 0.4 + random.nextDouble() * 1.2;
+            ships.add(ship);
+        }
+
+        private void updateShips(double delta) {
+            for (MenuShip ship : ships) {
+                if (ship.hp <= 0.0) continue;
+                MenuShip target = nearestEnemy(ship);
+                if (target != null) {
+                    double dx = target.x - ship.x;
+                    double dy = target.y - ship.y;
+                    double dist = Math.max(0.001, Math.sqrt(dx * dx + dy * dy));
+                    double desiredRange = ship.titan ? 0.40 : 0.31;
+                    double approach = dist > desiredRange ? 0.030 : -0.010;
+                    double strafe = Math.sin(ship.phase) * 0.020;
+                    double targetVx = dx / dist * approach;
+                    double targetVy = dy / dist * approach + strafe;
+                    ship.vx += (targetVx - ship.vx) * Math.min(1.0, delta * 0.9);
+                    ship.vy += (targetVy - ship.vy) * Math.min(1.0, delta * 0.9);
+                    ship.cooldown -= delta;
+                    if (ship.cooldown <= 0.0 && dist < 0.58) {
+                        fire(ship, target);
+                        ship.cooldown = (ship.titan ? 0.55 : 0.78) + random.nextDouble() * 0.85;
+                    }
+                }
+                ship.phase += delta * (1.1 + ship.size * 8.0);
+                ship.x = clamp(ship.x + ship.vx * delta, 0.05, 0.95);
+                ship.y = clamp(ship.y + ship.vy * delta, 0.10, 0.92);
+            }
+        }
+
+        private void updateShots(double delta) {
+            Iterator<MenuShot> iterator = shots.iterator();
+            while (iterator.hasNext()) {
+                MenuShot shot = iterator.next();
+                shot.update(delta);
+                if (shot.target != null && shot.target.hp > 0.0) {
+                    double dx = shot.target.x - shot.x;
+                    double dy = shot.target.y - shot.y;
+                    double dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < shot.target.size * 0.65 + 0.012) {
+                        shot.target.hp -= shot.damage;
+                        explosions.add(new MenuExplosion(shot.x, shot.y, shot.team == 0
+                                ? new Color(95, 188, 255) : new Color(255, 116, 92), 0.18));
+                        if (shot.target.hp <= 0.0) {
+                            explosions.add(new MenuExplosion(shot.target.x, shot.target.y,
+                                    shot.target.team == 0 ? new Color(76, 159, 232) : new Color(235, 91, 74),
+                                    shot.target.titan ? 1.25 : 0.72));
+                        }
+                        iterator.remove();
+                        continue;
+                    }
+                }
+                if (shot.ttl <= 0.0 || shot.x < -0.08 || shot.x > 1.08 || shot.y < -0.08 || shot.y > 1.08) {
+                    iterator.remove();
+                }
+            }
+        }
+
+        private void updateExplosions(double delta) {
+            Iterator<MenuExplosion> iterator = explosions.iterator();
+            while (iterator.hasNext()) {
+                MenuExplosion explosion = iterator.next();
+                explosion.age += delta;
+                if (explosion.age >= explosion.life) {
+                    iterator.remove();
+                }
+            }
+        }
+
+        private void fire(MenuShip ship, MenuShip target) {
+            double dx = target.x - ship.x;
+            double dy = target.y - ship.y;
+            double dist = Math.max(0.001, Math.sqrt(dx * dx + dy * dy));
+            double speed = ship.titan ? 0.72 : 0.56;
+            shots.add(new MenuShot(ship.team, target, ship.x, ship.y,
+                    dx / dist * speed, dy / dist * speed, ship.titan ? 38.0 : 18.0));
+        }
+
+        private MenuShip nearestEnemy(MenuShip ship) {
+            MenuShip best = null;
+            double bestDist = Double.MAX_VALUE;
+            for (MenuShip other : ships) {
+                if (other == ship || other.team == ship.team || other.hp <= 0.0) continue;
+                double dx = other.x - ship.x;
+                double dy = other.y - ship.y;
+                double d2 = dx * dx + dy * dy;
+                if (d2 < bestDist) {
+                    bestDist = d2;
+                    best = other;
+                }
+            }
+            return best;
+        }
+
+        private int livingShips(int team) {
+            int count = 0;
+            for (MenuShip ship : ships) {
+                if (ship.team == team && ship.hp > 0.0) count++;
+            }
+            return count;
+        }
+
+        private void drawContrails(Graphics2D g2, int width, int height) {
+            for (MenuShip ship : ships) {
+                int x = (int) Math.round(ship.x * width);
+                int y = (int) Math.round(ship.y * height);
+                int tailX = (int) Math.round((ship.x - ship.vx * 5.8) * width);
+                int tailY = (int) Math.round((ship.y - ship.vy * 5.8) * height);
+                g2.setStroke(new BasicStroke((float) Math.max(1.0, ship.size * width * 0.18)));
+                g2.setColor(ship.team == 0 ? new Color(72, 174, 255, 58) : new Color(255, 108, 86, 52));
+                g2.drawLine(tailX, tailY, x, y);
+            }
+            g2.setStroke(new BasicStroke(1f));
+        }
+    }
+
+    private static final class MenuShip {
+        final int team;
+        final String label;
+        final boolean titan;
+        final double maxHp;
+        final double size;
+        double x;
+        double y;
+        double vx;
+        double vy;
+        double hp;
+        double cooldown;
+        double phase;
+
+        MenuShip(int team, String label, double x, double y, boolean titan, double sizeJitter, double phase) {
+            this.team = team;
+            this.label = label;
+            this.x = x;
+            this.y = y;
+            this.titan = titan;
+            this.size = titan ? 0.062 : 0.030 + sizeJitter * 0.010;
+            this.maxHp = titan ? 240.0 : 82.0 + this.size * 650.0;
+            this.hp = maxHp;
+            this.phase = phase;
+        }
+
+        void draw(Graphics2D g2, int width, int height, double uiScale) {
+            int px = (int) Math.round(x * width);
+            int py = (int) Math.round(y * height);
+            int len = Math.max(18, (int) Math.round(size * width));
+            int beam = Math.max(8, (int) Math.round(size * height * 0.58));
+            double angle = Math.atan2(vy, vx);
+            Color hull = team == 0 ? new Color(81, 166, 229) : new Color(224, 86, 72);
+            Color core = team == 0 ? new Color(155, 219, 255) : new Color(255, 177, 130);
+            Polygon hullShape = orientedHull(px, py, len, beam, angle);
+
+            g2.setColor(new Color(0, 0, 0, 110));
+            g2.translate(2, 3);
+            g2.fillPolygon(hullShape);
+            g2.translate(-2, -3);
+            g2.setColor(new Color(hull.getRed(), hull.getGreen(), hull.getBlue(), titan ? 232 : 218));
+            g2.fillPolygon(hullShape);
+            g2.setColor(new Color(235, 243, 250, 92));
+            g2.drawPolygon(hullShape);
+            g2.setColor(core);
+            int coreSize = Math.max(3, beam / 3);
+            g2.fillOval(px - coreSize / 2, py - coreSize / 2, coreSize, coreSize);
+
+            int barW = Math.max(22, len);
+            int barY = py + beam + 8;
+            g2.setColor(new Color(3, 7, 12, 160));
+            g2.fillRect(px - barW / 2, barY, barW, 3);
+            g2.setColor(team == 0 ? new Color(99, 216, 174, 198) : new Color(255, 154, 100, 198));
+            g2.fillRect(px - barW / 2, barY, Math.max(1, (int) Math.round(barW * hp / maxHp)), 3);
+
+            if (titan) {
+                g2.setFont(MenuDisplay.font("Consolas", Font.BOLD, 10, uiScale));
+                g2.setColor(new Color(231, 239, 247, 160));
+                g2.drawString(label, px - barW / 2, barY + 15);
+            }
+        }
+
+        private static Polygon orientedHull(int cx, int cy, int len, int beam, double angle) {
+            double cos = Math.cos(angle);
+            double sin = Math.sin(angle);
+            int[][] points = {
+                    {len / 2, 0},
+                    {len / 8, -beam / 2},
+                    {-len / 2, -beam / 3},
+                    {-len / 3, 0},
+                    {-len / 2, beam / 3},
+                    {len / 8, beam / 2}
+            };
+            Polygon polygon = new Polygon();
+            for (int[] point : points) {
+                int x = cx + (int) Math.round(point[0] * cos - point[1] * sin);
+                int y = cy + (int) Math.round(point[0] * sin + point[1] * cos);
+                polygon.addPoint(x, y);
+            }
+            return polygon;
+        }
+    }
+
+    private static final class MenuShot {
+        final int team;
+        final MenuShip target;
+        final double vx;
+        final double vy;
+        final double damage;
+        double x;
+        double y;
+        double ttl = 1.35;
+
+        MenuShot(int team, MenuShip target, double x, double y, double vx, double vy, double damage) {
+            this.team = team;
+            this.target = target;
+            this.x = x;
+            this.y = y;
+            this.vx = vx;
+            this.vy = vy;
+            this.damage = damage;
+        }
+
+        void update(double delta) {
+            x += vx * delta;
+            y += vy * delta;
+            ttl -= delta;
+        }
+
+        void draw(Graphics2D g2, int width, int height, double uiScale) {
+            int x1 = (int) Math.round(x * width);
+            int y1 = (int) Math.round(y * height);
+            int x0 = (int) Math.round((x - vx * 0.030) * width);
+            int y0 = (int) Math.round((y - vy * 0.030) * height);
+            Color color = team == 0 ? new Color(94, 196, 255, 228) : new Color(255, 111, 79, 228);
+            g2.setStroke(new BasicStroke(Math.max(1.2f, (float) MenuDisplay.scaled(2, uiScale))));
+            g2.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 70));
+            g2.drawLine(x0, y0, x1, y1);
+            g2.setStroke(new BasicStroke(1f));
+            g2.setColor(color);
+            g2.fillOval(x1 - 2, y1 - 2, 4, 4);
+        }
+    }
+
+    private static final class MenuExplosion {
+        final double x;
+        final double y;
+        final Color color;
+        final double scale;
+        final double life;
+        double age = 0.0;
+
+        MenuExplosion(double x, double y, Color color, double scale) {
+            this.x = x;
+            this.y = y;
+            this.color = color;
+            this.scale = scale;
+            this.life = 0.42 + scale * 0.28;
+        }
+
+        void draw(Graphics2D g2, int width, int height) {
+            double p = Math.max(0.0, Math.min(1.0, age / life));
+            int alpha = (int) Math.round((1.0 - p) * 210.0);
+            int radius = (int) Math.round((8.0 + p * 38.0) * scale);
+            int px = (int) Math.round(x * width);
+            int py = (int) Math.round(y * height);
+            g2.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), Math.max(0, alpha)));
+            g2.fillOval(px - radius, py - radius, radius * 2, radius * 2);
+            g2.setColor(new Color(255, 240, 181, Math.max(0, alpha / 2)));
+            g2.drawOval(px - radius - 3, py - radius - 3, radius * 2 + 6, radius * 2 + 6);
+        }
+    }
+
+    private static double clamp01(double value) {
+        return clamp(value, 0.0, 1.0);
+    }
+
+    private static double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
     private static final class FlowPanel extends JPanel {
         FlowPanel(int align, int hgap, int vgap) {
             super(new FlowLayout(align, hgap, vgap));
@@ -1953,6 +2525,10 @@ public final class MainMenuPanel extends JPanel {
     @FunctionalInterface
     public interface SpaceBackgroundPainter {
         void paint(Graphics2D g2, double camX, double camY, int width, int height, long seed);
+    }
+
+    public interface MenuBattleView {
+        void update(double deltaSeconds);
     }
 
     public record ResumeCampaignState(boolean available, String summaryText, GameConfig config) {

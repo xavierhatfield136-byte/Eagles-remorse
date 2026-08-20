@@ -1293,7 +1293,8 @@ class CampaignOvermapEncounterFlowTest {
                 "briefing should expose individual friendly hull rows, not only text summaries");
         assertTrue(ctx.ui.strategicEncounterPrompt.enemyAssets.stream()
                         .anyMatch(asset -> asset.role == ShipRole.INTERDICTION_TITAN
-                                && asset.name.contains("Briefing Titan")),
+                                && asset.name.contains("Briefing Titan")
+                                && asset.formationRole == CampaignSystem.FleetFormationRole.FLAGSHIP),
                 "briefing should expose each identified enemy hull by role and name");
         assertTrue(CampaignSystem.setPendingEncounterInsertionRange(ctx, "FAR"));
         assertEquals("FAR", ctx.ui.strategicEncounterPrompt.insertionRange);
@@ -1315,6 +1316,46 @@ class CampaignOvermapEncounterFlowTest {
         assertFalse(ctx.ui.campaignEncounterLoading.active);
         assertFalse(st.strategicOvermapMode);
         assertTrue(st.galaxyEncounterActive);
+    }
+
+    @Test
+    void farInsertionKeepsHostileSensorBubbleJoinersAtLongStandoff() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.selectedGalaxyLocationId = "";
+        st.playerGalaxyX = 2500.0;
+        st.playerGalaxyY = 2500.0;
+        double sensorRange = CampaignSystem.playerCampaignSensorRange(ctx);
+        double hardJoinRange = sensorRange * 0.5;
+
+        Object primary = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
+                "Regression Red Long Range Primary", "Red base lane", "primary long insertion",
+                st.playerGalaxyX + 600.0, st.playerGalaxyY);
+        Object nearby = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.STRIKE_DETACHMENT, Faction.ENEMY,
+                "Regression Red Long Range Joiner", "Red base lane", "join long insertion",
+                st.playerGalaxyX + Math.min(900.0, hardJoinRange - 160.0), st.playerGalaxyY + 80.0);
+        for (Object force : List.of(primary, nearby)) {
+            setBoolean(force, "simulationActive", true);
+            setDouble(force, "strength", 88.0);
+            setDouble(force, "readiness", 88.0);
+            setDouble(force, "contactConfidence", 0.95);
+            setDouble(force, "lastKnownAgeSec", 0.0);
+            setBoolean(force, "visibleToPlayer", true);
+            setObject(force, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+        }
+        addPoolRecord(st, Faction.ENEMY, ShipRole.BATTLECRUISER, getInt(primary, "id"), "Long Primary Battlecruiser");
+        addPoolRecord(st, Faction.ENEMY, ShipRole.MISSILE_BOAT, getInt(nearby, "id"), "Long Joiner Missile Boat");
+
+        assertTrue(launchCampaignForceEncounter(ctx, st, primary, "FAR"));
+        assertTrue(hasTacticalShipForCampaignForce(st, getInt(nearby, "id")),
+                "nearby hostile force should still join the same sensor-bubble battle");
+        double nearestEnemy = ctx.ships.stream()
+                .filter(ship -> ship != null && ship.faction == Faction.ENEMY && ship.alive && !ship.dying)
+                .mapToDouble(ship -> Math.hypot(ship.x - ctx.player.x, ship.y - ctx.player.y))
+                .min()
+                .orElse(0.0);
+        assertTrue(nearestEnemy >= 7600.0,
+                "far insertion should not allow hostile joiners to spawn at the old 1-2km standoff; nearest=" + nearestEnemy);
     }
 
     @Test
@@ -1678,6 +1719,21 @@ class CampaignOvermapEncounterFlowTest {
         );
         method.setAccessible(true);
         return (boolean) method.invoke(null, ctx, st, force);
+    }
+
+    private static boolean launchCampaignForceEncounter(GameContext ctx,
+                                                        CampaignSystem.CampaignState st,
+                                                        Object force,
+                                                        String insertionRange) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "launchCampaignForceEncounter",
+                GameContext.class,
+                CampaignSystem.CampaignState.class,
+                force.getClass(),
+                String.class
+        );
+        method.setAccessible(true);
+        return (boolean) method.invoke(null, ctx, st, force, insertionRange);
     }
 
     private static boolean hasTacticalShipForCampaignForce(CampaignSystem.CampaignState st, int forceId) {

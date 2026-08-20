@@ -19,6 +19,7 @@ public class Turret {
     public static final double MISSILE_LIFE_MULT = 1.22;
     // Tactical alignment: non-beam ordnance should cross the screen visibly instead of feeling nearly hitscan.
     public static final double GUN_PROJECTILE_SPEED_MULT = 0.84;
+    public static final double BLUE_SHOCK_CANNON_SPEED_MULT = 2.00;
     public static final double GREEN_DIRECT_BEAM_DPS_MULT = 0.82;
     public static final double GREEN_DIRECT_BEAM_WIDTH_MULT = 0.52;
     public static final double GREEN_DIRECT_BEAM_MAX_WIDTH = 22.0;
@@ -179,6 +180,19 @@ public class Turret {
         return t.bulletSpeed * GUN_PROJECTILE_SPEED_MULT;
     }
 
+    public static double effectiveGunProjectileSpeed(Ship host, Turret t) {
+        double speed = effectiveGunProjectileSpeed(t);
+        if (host == null) return speed;
+        DoctrineProfile prof = DoctrineRegistry.forFaction(host.faction);
+        if (prof != null && prof.doctrine == Doctrine.KINETIC_CONSORTIUM) {
+            speed *= 1.03;
+        }
+        if (prof != null && prof.doctrine == Doctrine.ENERGY_NAVY) {
+            speed *= BLUE_SHOCK_CANNON_SPEED_MULT;
+        }
+        return speed;
+    }
+
     public static boolean usesCiwsPelletsAgainst(Ship host, Turret turret, Ship target) {
         if (host == null || turret == null || target == null) return false;
         if (turret.kind != Kind.GUN) return false;
@@ -321,10 +335,7 @@ public class Turret {
             // Doctrine-based main projectile style.
             // ENERGY_NAVY uses a Yamato 2199-style heavy energy bolt (visible, medium speed).
             // KINETIC_CONSORTIUM uses the existing fast conventional rounds.
-            double projectileSpeed = bulletSpeed * GUN_PROJECTILE_SPEED_MULT;
-            if (prof.doctrine == Doctrine.KINETIC_CONSORTIUM) {
-                projectileSpeed *= 1.03;
-            }
+            double projectileSpeed = effectiveGunProjectileSpeed(host, this);
             int gunDamage = host.resolveStrikeCraftWeaponDamage(this, damage * damageMul);
             if (host.faction == Faction.TEAM_C) {
                 // Team C uses a persistent, tracking cutting beam.
@@ -418,7 +429,6 @@ public class Turret {
                     // High-yield torpedo: +35% damage, but -40% turn rate (less responsive guidance)
                     missileDamage_final = (int) Math.round(missileDamage * 1.35);
                     missileTurn_final = missileTurn * 0.60;  // Slower, less agile turn
-                    missileSpd_final = missileSpd * 0.92;  // Slightly slower for better hit chance
                 } else if (missileRole == MissileRole.ANTI_LIGHT) {
                     missileSpd_final = missileSpd * BLUE_FAST_MISSILE_SPEED_MULT;
                     missileSpd_final = Math.min(missileSpd_final, BLUE_FAST_MISSILE_MAX_PRE_FACTION_SPEED);
@@ -507,7 +517,7 @@ public class Turret {
             return true;
         }
         double relative = Math.abs(MathUtil.normalizeAngle(angle - host.angle));
-        if (host.role == ShipRole.ARTILLERY_SHIP || host.role == ShipRole.ARTILLERY_TITAN) {
+        if (host.role == ShipRole.ARTILLERY_SHIP) {
             return relative <= Math.toRadians(18.0);
         }
         if (isBroadsideHull(host.role) && Math.abs(localY) > Math.abs(localX) * 0.72) {

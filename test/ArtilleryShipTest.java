@@ -56,6 +56,21 @@ class ArtilleryShipTest {
         assertTrue(fired.get(0) instanceof Bullet, "red player artillery should still fire kinetic cannon rounds");
     }
 
+    @Test
+    void artilleryTitanCanFireOutsideItsHullNoseArc() {
+        FleetShip titan = new FleetShip(ShipRole.ARTILLERY_TITAN, Faction.ENEMY, 0.0, 0.0);
+        FleetShip target = new FleetShip(ShipRole.BATTLESHIP, Faction.ALLY, 1100.0, 0.0);
+        titan.angle = Math.toRadians(90.0);
+        Turret gun = strongestPrimaryGun(titan);
+        assertNotNull(gun, "artillery titan should mount a primary gun");
+        gun.angle = 0.0;
+        gun.setReady();
+
+        Projectile shot = gun.fire(titan, target, GameContext.DT);
+
+        assertNotNull(shot, "artillery titan turrets should prosecute off-nose targets");
+    }
+
     private static Turret strongestPrimaryGun(Ship ship) {
         Turret best = null;
         for (Turret turret : ship.turrets) {
