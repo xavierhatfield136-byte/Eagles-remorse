@@ -350,11 +350,11 @@ class CampaignStrategicUiReadabilityTest {
     }
 
     @Test
-    void longFleetStatusLabelsRenderWithoutOverlappingAtDefaultZoom() {
+    void clusteredFleetStatusMarkersPreferSymbolsOverNameClutterAtDefaultZoom() {
         GameContext ctx = initializedCampaignContext();
         ctx.campaign.strategicOvermapMode = true;
         ctx.ui.mapOpen = true;
-        ctx.ui.selectedCampaignContactLabel = "clustered fleet contacts";
+        ctx.ui.selectedCampaignContactLabel = "Green Response Corvette Line Escorting Refugee Logistics Convoy";
         ctx.ui.selectedCampaignContactX = 2500.0;
         ctx.ui.selectedCampaignContactY = 2500.0;
         UISystem.resetStrategicMapZoom(ctx);
@@ -391,7 +391,10 @@ class CampaignStrategicUiReadabilityTest {
             g2.dispose();
         }
 
-        assertTrue(layouts.size() == markers.size(), "every selected fleet marker should receive a visible label layout");
+        assertEquals(1, layouts.size(),
+                "clustered fleet contacts should render mostly as symbols; only the selected contact should keep a label");
+        assertEquals("GREEN STRIKE", layouts.get(0).text(),
+                "selected fleet labels should be compact role/faction tags instead of full fleet names");
         for (int i = 0; i < layouts.size(); i++) {
             Rectangle a = layouts.get(i).bounds();
             assertTrue(a.width <= Math.max(88, 1120 / 6) + 8, "long labels should be compacted to map-safe width");

@@ -12528,6 +12528,53 @@ public final class CampaignSystem extends CampaignSystemModels {
         boolean physicalFleet = rosterState == CampaignForceRosterSystem.ForceRosterState.CONCRETE;
         CampaignIntelResolution intel = campaignFleetIntelResolution(ctx, force.id, st.campaignIntelTick);
         boolean exactFleetIntel = intel != null && intel.exactPosition();
+        if (!DevTools.isDebugOverlay() && force.faction == Faction.ENEMY && intel != null) {
+            if (intel.precision == CampaignIntelPrecision.UNKNOWN
+                    || intel.precision == CampaignIntelPrecision.STRATEGIC_ONLY) return null;
+            if (intel.precision == CampaignIntelPrecision.APPROXIMATE) {
+                if (!Double.isFinite(intel.knownX) || !Double.isFinite(intel.knownY)) return null;
+                return new CampaignSupportMarker(
+                        SupportMarkerType.INTEL,
+                        "Approximate Hostile Contact",
+                        "APPROXIMATE INTEL  |  source " + intel.source.name().replace('_', ' ')
+                                + "  |  confidence " + (int) Math.round(intel.confidence * 100.0) + "%"
+                                + "  |  uncertainty " + (int) Math.round(intel.uncertaintyRadius),
+                        Faction.ENEMY,
+                        intel.knownX,
+                        intel.knownY,
+                        Math.max(90.0, intel.uncertaintyRadius),
+                        38,
+                        false,
+                        force.id);
+            }
+            if (intel.exactPosition()) {
+                double markerX = intel.knownX;
+                double markerY = intel.knownY;
+                if (!physicalFleet
+                        && (rosterState == CampaignForceRosterSystem.ForceRosterState.INTEL_ONLY
+                        || rosterState == CampaignForceRosterSystem.ForceRosterState.DEPLETED)
+                        && (force.hadTacticalMembers || campaignForceHasStrategicAnchor(force))
+                        && !"test-origin".equals(force.origin)
+                        && (force.visibleToPlayer || force.contactState == CampaignForceContactState.KNOWN)) {
+                    String label = "Hostile Intel Trace - " + campaignForceMapDisplayName(force);
+                    String subtitle = "EXACT INTEL TRACE  |  no concrete ships  |  source "
+                            + intel.source.name().replace('_', ' ')
+                            + "  |  confidence " + (int) Math.round(intel.confidence * 100.0) + "%";
+                    return new CampaignSupportMarker(SupportMarkerType.INTEL, label, subtitle, force.faction, markerX, markerY,
+                            Math.max(90.0, intel.uncertaintyRadius), 34, false, force.id, 0);
+                }
+                SupportMarkerType type = campaignForceMarkerType(force);
+                int fleetLevel = campaignForceFleetProfile(ctx, st, force).level.level;
+                String label = intel.confidence >= 0.80 ? force.name : "Live Hostile Contact";
+                String subtitle = "EXACT LIVE CONTACT  |  source " + intel.source.name().replace('_', ' ')
+                        + "  |  confidence " + (int) Math.round(intel.confidence * 100.0) + "%"
+                        + "  |  pos X " + (int) Math.round(markerX) + " Y " + (int) Math.round(markerY)
+                        + "  |  " + campaignForceRoleSignature(force)
+                        + "  |  " + campaignForceFleetClassReadout(ctx, st, force);
+                return new CampaignSupportMarker(type, label, subtitle, force.faction, markerX, markerY,
+                        Math.max(86.0, intel.uncertaintyRadius), 62, true, force.id, fleetLevel);
+            }
+        }
         if (!DevTools.isDebugOverlay()
                 && force.kind != CampaignForceKind.PLAYER_FLEET
                 && !physicalFleet
@@ -12635,6 +12682,15 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (force.contactState == CampaignForceContactState.STALE) priority -= 8;
         return new CampaignSupportMarker(type, campaignForceMapDisplayName(force), subtitle, force.faction, markerX, markerY,
                 Math.max(86.0, force.uncertaintyRadius), Math.max(16, priority), true, force.id, fleetLevel);
+    }
+
+    private static boolean campaignForceHasStrategicAnchor(CampaignForce force) {
+        if (force == null) return false;
+        return force.linkedSearchGroupId > 0
+                || force.assignedOperationId != null && !force.assignedOperationId.isBlank()
+                || force.sourceLocationId != null && !force.sourceLocationId.isBlank()
+                || force.homeBaseId != null && !force.homeBaseId.isBlank()
+                || force.destinationLocationId != null && !force.destinationLocationId.isBlank();
     }
 
     private static String campaignForceOriginLabel(CampaignState st, CampaignForce force) {
@@ -20037,8 +20093,9 @@ public final class CampaignSystem extends CampaignSystemModels {
             liveMembers.sort((a, b) -> Integer.compare(
                     shipManifestPriority(b == null ? null : b.role),
                     shipManifestPriority(a == null ? null : a.role)));
+            int liveSlots = liveMembers.size() <= 12 ? Math.max(slots, liveMembers.size()) : slots;
             for (Ship ship : liveMembers) {
-                if (manifest.ships.size() >= slots) break;
+                if (manifest.ships.size() >= liveSlots) break;
                 manifest.ships.add(new EncounterShipManifestEntry(
                         st == null ? 0 : st.tacticalShipPoolRecordIds.getOrDefault(ship.id, 0),
                         ship.role,
@@ -20065,8 +20122,9 @@ public final class CampaignSystem extends CampaignSystemModels {
             poolMembers.sort((a, b) -> Integer.compare(
                     shipManifestPriority(b == null ? null : b.role),
                     shipManifestPriority(a == null ? null : a.role)));
+            int poolSlots = poolMembers.size() <= 12 ? Math.max(slots, poolMembers.size()) : slots;
             for (CampaignShipPoolRecord record : poolMembers) {
-                if (manifest.ships.size() >= slots) break;
+                if (manifest.ships.size() >= poolSlots) break;
                 manifest.ships.add(new EncounterShipManifestEntry(
                         record.id,
                         record.role,

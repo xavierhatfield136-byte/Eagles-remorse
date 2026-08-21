@@ -5,14 +5,14 @@ candidate.
 
 ## Build Under Test
 
-- Version: `1.0.1.12`
-- Package: `build\package\windows\EaglesRemorse-1.0.1.12-windows-x64-full.zip`
+- Version: `1.0.1.17`
+- Package: `build\package\windows\EaglesRemorse-1.0.1.17-windows-x64-full.zip`
 - SHA-256:
-  `02272348875ee0e3a8e5eadc22f8c1091c2637df6f994a78ddf35819c0683636`
+  `0afe243f1b1cfbce3915c79d01e1f73a359d966a03822aa8448cd746cf01f985`
 - Local package verification:
   `build\reports\distribution-verification\release_candidate_gate.json`
 - Outside-repo launch smoke:
-  `build\reports\distribution-verification\isolated_launch_smoke_full_shakedown.json`
+  `build\reports\distribution-verification\isolated_launch_smoke.json`
 
 ## Owner Smoke Pass
 

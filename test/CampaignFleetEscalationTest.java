@@ -315,6 +315,9 @@ class CampaignFleetEscalationTest {
                 marker == null ? "null marker" : marker.subtitle);
         assertFalse(marker.subtitle.contains("Grand Fleet"));
         assertFalse(marker.subtitle.contains("Level 5"));
+        ctx.ui.selectedCampaignContactLabel = marker.label;
+        ctx.ui.selectedCampaignContactX = marker.x;
+        ctx.ui.selectedCampaignContactY = marker.y;
 
         BufferedImage scratch = new BufferedImage(900, 600, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2 = scratch.createGraphics();

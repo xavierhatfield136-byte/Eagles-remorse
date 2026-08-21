@@ -2,11 +2,12 @@
 
 ## Canonical Artifact
 
-The canonical alpha artifacts are the native Windows and Linux portable packages:
+The canonical alpha artifacts are the native Windows, Linux, and macOS portable packages:
 
 ```text
 build/package/windows/EaglesRemorse-1.0.0-alpha.1.zip
 build/package/linux/EaglesRemorse-1.0.0-alpha.1-linux-x64.tar.gz
+build/package/macos/EaglesRemorse-1.0.0-alpha.1-macos.zip
 ```
 
 Use the matching native package for itch.io, GitHub Releases, and private
@@ -34,9 +35,10 @@ butler push build/package/windows/EaglesRemorse xhatf/eagles-remorse:windows-alp
 
 Status: prepared.
 
-The repository has Windows and Linux package workflows, which build the Windows
-app-image, ZIP, and WiX installer plus the Linux app-image tarball on release publication. GitHub
-release docs support release notes and binary release assets:
+The repository has Windows, Linux, and macOS package workflows, which build the
+Windows app-image, ZIP, and WiX installer, the Linux app-image tarball, and the
+macOS app bundle ZIP on release publication. GitHub release docs support release
+notes and binary release assets:
 
 - https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository
 - https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases
@@ -46,8 +48,10 @@ Attach:
 - `EaglesRemorse-1.0.0-alpha.1.zip`
 - `EaglesRemorse-1.0.0.exe` when WiX build succeeds
 - `EaglesRemorse-1.0.0-alpha.1-linux-x64.tar.gz`
+- `EaglesRemorse-1.0.0-alpha.1-macos.zip`
 - `SHA256SUMS-windows.txt`
 - `SHA256SUMS-linux.txt`
+- `SHA256SUMS-macos.txt`
 - release notes
 
 ## Private Distribution

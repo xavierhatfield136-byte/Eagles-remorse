@@ -15803,7 +15803,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     Math.max(80.0, marker.radius))) continue;
             if (!shouldDrawSupportMarkerAtZoom(ctx, marker)) continue;
             boolean selected = isSelectedMapMarker(ctx, marker.label, marker.x, marker.y);
-            if (!shouldShowSupportMarkerLabel(ctx, marker, selected)
+            boolean labelSelected = isExactSelectedStrategicSupportMarker(ctx, marker, selected);
+            if (!shouldShowSupportMarkerLabel(ctx, marker, labelSelected)
                     || (CampaignSystem.isCampaignWarMapSimplified(ctx) && !selected
                     && !isPriorityCampaignFleetMarker(marker))) {
                 continue;
@@ -15877,7 +15878,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static String strategicSupportShortLabel(CampaignSystem.CampaignSupportMarker marker) {
         if (marker == null || marker.label == null) return "";
-        if (isPriorityCampaignFleetMarker(marker)) {
+        if (isFleetSupportMarkerType(marker.type)) {
             return campaignFleetMarkerFactionName(marker.faction) + " " + campaignFleetMarkerRoleName(marker.type);
         }
         String label = marker.label.trim();
@@ -15969,7 +15970,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
         drawStrategicLandmarkGlyph(g2, marker.type, px, py, radius);
 
-        if (marker.label != null && !marker.label.isBlank()) {
+        if (shouldShowStrategicLandmarkLabel(ctx, marker, selected)) {
             g2.setFont(new Font("Consolas", Font.PLAIN, 9));
             FontMetrics fm = g2.getFontMetrics();
             String shortLabel = marker.label.trim().toUpperCase(Locale.US);
@@ -16025,21 +16026,43 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (!CampaignSystem.isStrategicOvermapMode(ctx)) return true;
         if (selected) return true;
         double zoom = UISystem.strategicMapZoom(ctx);
-        if (zoom < 2.15) {
-            return marker.priority >= 82
-                    || marker.type == CampaignSystem.SupportMarkerType.FORCE_STRIKE
-                    || marker.type == CampaignSystem.SupportMarkerType.HAZARD && marker.priority >= 70;
-        }
+        if (isFleetSupportMarkerType(marker.type)) return false;
+        if (zoom < 2.25) return false;
         if (zoom < 3.05) {
-            return isPriorityCampaignFleetMarker(marker)
-                    || marker.priority >= 64
-                    || marker.type == CampaignSystem.SupportMarkerType.FORCE_STRIKE
-                    || marker.type == CampaignSystem.SupportMarkerType.HAZARD;
+            return marker.priority >= 90
+                    && (marker.type == CampaignSystem.SupportMarkerType.HAZARD
+                    || marker.type == CampaignSystem.SupportMarkerType.FACTION_CONTACT
+                    || marker.type == CampaignSystem.SupportMarkerType.INTEL);
         }
-        return isPriorityCampaignFleetMarker(marker)
-                || marker.priority >= 36
-                || marker.type == CampaignSystem.SupportMarkerType.HAZARD
-                || marker.type == CampaignSystem.SupportMarkerType.FACTION_CONTACT;
+        return marker.priority >= 78
+                || marker.type == CampaignSystem.SupportMarkerType.HAZARD && marker.priority >= 70
+                || marker.type == CampaignSystem.SupportMarkerType.FACTION_CONTACT && marker.priority >= 70;
+    }
+
+    private static boolean isExactSelectedStrategicSupportMarker(GameContext ctx,
+                                                                 CampaignSystem.CampaignSupportMarker marker,
+                                                                 boolean fallbackSelected) {
+        if (ctx == null || marker == null) return false;
+        if (!CampaignSystem.isStrategicOvermapMode(ctx)) return fallbackSelected;
+        if (ctx.ui == null) return false;
+        String selectedLabel = ctx.ui.selectedCampaignContactLabel;
+        return selectedLabel != null && !selectedLabel.isBlank()
+                && marker.label != null
+                && selectedLabel.equalsIgnoreCase(marker.label);
+    }
+
+    private static boolean shouldShowStrategicLandmarkLabel(GameContext ctx,
+                                                            CampaignSystem.CampaignLandmark marker,
+                                                            boolean selected) {
+        if (marker == null || marker.label == null || marker.label.isBlank()) return false;
+        if (!CampaignSystem.isStrategicOvermapMode(ctx)) return true;
+        if (selected) return true;
+        double zoom = UISystem.strategicMapZoom(ctx);
+        if (zoom < 2.45) return false;
+        return zoom >= 3.15
+                || marker.type == CampaignSystem.LandmarkType.FORTRESS
+                || marker.type == CampaignSystem.LandmarkType.RELAY
+                || marker.type == CampaignSystem.LandmarkType.FRONT;
     }
 
     private static int markerPriorityBoost(int priority) {

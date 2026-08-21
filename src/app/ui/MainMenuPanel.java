@@ -1232,13 +1232,17 @@ public final class MainMenuPanel extends JPanel {
 
     private boolean confirmDeleteCampaignSave(String label, String summary) {
         String details = (summary == null || summary.isBlank()) ? "" : "\n\n" + stripHtml(summary);
-        int result = JOptionPane.showConfirmDialog(
+        String[] options = {"Delete Save", "Cancel"};
+        int result = JOptionPane.showOptionDialog(
                 this,
-                "Delete " + label + "?" + details,
+                "Delete " + label + "?\n\nThis cannot be undone." + details,
                 "Delete Campaign Save",
                 JOptionPane.YES_NO_OPTION,
-                JOptionPane.WARNING_MESSAGE);
-        return result == JOptionPane.YES_OPTION;
+                JOptionPane.WARNING_MESSAGE,
+                null,
+                options,
+                options[1]);
+        return result == 0;
     }
 
     private void deleteCampaignSave(String slotId) {

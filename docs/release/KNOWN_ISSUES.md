@@ -15,4 +15,4 @@
 - Post-release stretch systems such as editors, multiplayer, replay tooling, and
   workshop-style distribution remain outside the 1.0 alpha target.
 - The source repository remains source-available under the project license;
-  public player artifacts are provided for Windows and x86-64 Linux.
+  public player artifacts are provided for Windows, x86-64 Linux, and macOS.

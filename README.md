@@ -97,11 +97,11 @@ folder, not the install directory. On Windows the default location is:
 
 ## GitHub Packaging
 
-The repo includes native Windows and Linux packaging workflows in
+The repo includes native Windows, Linux, and macOS packaging workflows in
 `.github/workflows/`.
 
 - Run it manually from the Actions tab with `workflow_dispatch`
-- Or publish a GitHub Release to build both platform packages and attach them as release assets
+- Or publish a GitHub Release to build the platform packages and attach them as release assets
 
 ## Notes
 

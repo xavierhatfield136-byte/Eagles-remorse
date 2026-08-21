@@ -232,8 +232,23 @@ public final class PerformanceGuardrailHarness {
         ShipRole[] roles = rolesFor(scenario);
         for (int i = 0; i < shipsPerSide; i++) {
             double y = 1500.0 + (i % 30) * 85.0;
-            ctx.ships.add(new FleetShip(roles[i % roles.length], Faction.ALLY, 6500.0 + (i / 30) * 90.0, y));
-            ctx.ships.add(new FleetShip(roles[(i + 1) % roles.length], Faction.ENEMY, 8500.0 + (i / 30) * 90.0, y));
+            Ship ally = new FleetShip(roles[i % roles.length], Faction.ALLY, 6500.0 + (i / 30) * 90.0, y);
+            Ship enemy = new FleetShip(roles[(i + 1) % roles.length], Faction.ENEMY, 8500.0 + (i / 30) * 90.0, y);
+            hardenPerformanceGuardrailShip(ally);
+            hardenPerformanceGuardrailShip(enemy);
+            ctx.ships.add(ally);
+            ctx.ships.add(enemy);
+        }
+    }
+
+    private static void hardenPerformanceGuardrailShip(Ship ship) {
+        if (ship == null) return;
+        ship.hpMax = Math.max(ship.hpMax, 1_000_000);
+        ship.hp = ship.hpMax;
+        if (ship.shieldActive) {
+            ship.shieldMax = Math.max(ship.shieldMax, 100_000.0);
+            ship.shield = ship.shieldMax;
+            ship.shieldRegen = Math.max(ship.shieldRegen, 5_000.0);
         }
     }
 
