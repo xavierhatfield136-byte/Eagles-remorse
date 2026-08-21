@@ -8,7 +8,7 @@ candidate.
 - Version: `1.0.1.17`
 - Package: `build\package\windows\EaglesRemorse-1.0.1.17-windows-x64-full.zip`
 - SHA-256:
-  `0afe243f1b1cfbce3915c79d01e1f73a359d966a03822aa8448cd746cf01f985`
+  `e641d83532ebc143e2214156f0e94dffbb76df546efc3b56b36549679bd7248b`
 - Local package verification:
   `build\reports\distribution-verification\release_candidate_gate.json`
 - Outside-repo launch smoke:

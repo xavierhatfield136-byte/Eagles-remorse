@@ -497,8 +497,9 @@ public final class MainMenuPanel extends JPanel {
         continueCard.add(continueCampaignLabel);
         continueCard.add(Box.createVerticalStrut(MenuDisplay.scaled(12, uiScale)));
         continueCard.add(continueCampaignButton);
-        continueCard.setPreferredSize(new Dimension(MenuDisplay.scaled(340, uiScale), MenuDisplay.scaled(222, uiScale)));
-        continueCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, MenuDisplay.scaled(222, uiScale)));
+        int continueCardHeight = Math.max(MenuDisplay.scaled(222, uiScale), 222);
+        continueCard.setPreferredSize(new Dimension(MenuDisplay.scaled(340, uiScale), continueCardHeight));
+        continueCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, continueCardHeight));
 
         JLabel commandHint = metaLabel("Select a command vector", uiScale);
         commandHint.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -585,8 +586,9 @@ public final class MainMenuPanel extends JPanel {
             row.add(slotButtons, BorderLayout.WEST);
             row.add(campaignSlotLabels[i], BorderLayout.CENTER);
             row.setAlignmentX(Component.LEFT_ALIGNMENT);
-            row.setPreferredSize(new Dimension(MenuDisplay.scaled(520, uiScale), MenuDisplay.scaled(78, uiScale)));
-            row.setMaximumSize(new Dimension(Integer.MAX_VALUE, MenuDisplay.scaled(78, uiScale)));
+            int slotRowHeight = Math.max(MenuDisplay.scaled(78, uiScale), 78);
+            row.setPreferredSize(new Dimension(MenuDisplay.scaled(520, uiScale), slotRowHeight));
+            row.setMaximumSize(new Dimension(Integer.MAX_VALUE, slotRowHeight));
             slotPanel.add(row);
             if (i < campaignSlotButtons.length - 1) {
                 slotPanel.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
