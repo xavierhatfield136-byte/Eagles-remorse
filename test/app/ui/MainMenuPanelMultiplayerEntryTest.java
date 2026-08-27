@@ -52,6 +52,19 @@ class MainMenuPanelMultiplayerEntryTest {
     }
 
     @Test
+    void multiplayerEntryIsHiddenByDefaultInReleaseConfiguration() {
+        MainMenuPanel panel = menu();
+
+        try {
+            assertNull(findByName(panel, "multiplayerEntryPanel"));
+            assertNull(findByName(panel, "multiplayerHostBattleButton"));
+            assertNull(findByName(panel, "multiplayerJoinBattleButton"));
+        } finally {
+            panel.stopBackgroundTimerForTests();
+        }
+    }
+
+    @Test
     void customBattleHasDirectMainMenuEntry() {
         MainMenuPanel panel = menu();
 

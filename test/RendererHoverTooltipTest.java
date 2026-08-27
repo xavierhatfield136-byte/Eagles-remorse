@@ -11,6 +11,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -32,6 +33,23 @@ class RendererHoverTooltipTest {
         assertNotNull(tooltip);
         assertTrue(tooltip.title.contains("BLUE"));
         assertTrue(tooltip.body.contains("Blue team showcase ships"));
+    }
+
+    @Test
+    void tacticalEntryModalSuppressesUnderlyingHoverTooltip() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.SHOWCASE, 5000, 5000, true, 1234L, false));
+        Rectangle blueButton = Renderer.getCoreMenuButtonRect(1280, 720, 0);
+        int mouseX = blueButton.x + blueButton.width / 2;
+        int mouseY = blueButton.y + blueButton.height / 2;
+
+        assertNotNull(Renderer.hoverTooltipAt(ctx, 1280, 720, mouseX, mouseY));
+
+        ctx.ui.strategicEncounterPrompt.active = true;
+        ctx.ui.strategicEncounterPrompt.kind = UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_FORCE;
+        ctx.ui.strategicEncounterPrompt.title = "HOSTILE FORCE";
+        ctx.ui.strategicEncounterPrompt.body = "Pre-battle deployment preview";
+
+        assertNull(Renderer.hoverTooltipAt(ctx, 1280, 720, mouseX, mouseY));
     }
 
     @Test

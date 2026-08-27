@@ -23,7 +23,8 @@ class ScreenshotRegressionHarnessTest {
         Set<String> targets = result.captures().stream()
                 .map(ScreenshotRegressionHarness.Capture::target)
                 .collect(Collectors.toSet());
-        assertEquals(Set.of("campaign-map", "fleet-board", "strike-tab", "tactical-hud", "accessibility-hud"), targets);
+        assertEquals(Set.of("academy-flight-basics", "campaign-map", "fleet-board", "strike-tab",
+                "tactical-hud", "accessibility-hud"), targets);
         assertTrue(result.captures().stream().allMatch(capture -> capture.opaquePixels() > 300_000));
         assertTrue(result.captures().stream().allMatch(capture -> capture.colorBuckets() >= 18));
     }

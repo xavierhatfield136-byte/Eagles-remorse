@@ -1,13 +1,13 @@
 # Distribution Channels
 
-## Canonical Artifact
+## Canonical Portable Artifacts
 
-The canonical alpha artifacts are the native Windows, Linux, and macOS portable packages:
+The repository can produce native Windows, Linux, and macOS portable packages:
 
 ```text
-build/package/windows/EaglesRemorse-1.0.0-alpha.1.zip
-build/package/linux/EaglesRemorse-1.0.0-alpha.1-linux-x64.tar.gz
-build/package/macos/EaglesRemorse-1.0.0-alpha.1-macos.zip
+build/package/windows/EaglesRemorse-<version>-windows-x64-full.zip
+build/package/linux/EaglesRemorse-<version>-linux-x64.tar.gz
+build/package/macos/EaglesRemorse-<version>-macos.zip
 ```
 
 Use the matching native package for itch.io, GitHub Releases, and private
@@ -63,21 +63,17 @@ from the GitHub/itch artifacts unless the recipient specifically needs an instal
 
 ## Steam
 
-Status: investigated, deferred.
+Status: local Windows staging prepared; upload awaits owner Steamworks IDs and access.
 
-Steam packaging is not enabled yet because it requires owner-side Steamworks app
-setup, depots, branches, store review, build review, and release controls.
-Official Steamworks documentation says SteamPipe uploads require build/depot
-scripts, and the release process requires approved store/build steps before
-release:
+`./gradlew.bat prepareSteamWindows` creates and validates the Windows depot content
+under `build/steam/content/EaglesRemorse`, then writes a complete SHA-256 manifest.
+`scripts/prepare-steam-windows.ps1` can generate final credential-free app/depot
+VDF files after Steamworks assigns the AppID and Windows depot ID. No upload is
+attempted automatically and no credential is stored in the repository.
 
 - https://partner.steamgames.com/doc/sdk/uploading
 - https://partner.steamgames.com/doc/store/releasing
 
-Do not add Steam-specific packaging until:
-
-- Steamworks partner/app access exists;
-- AppID and depot IDs are assigned;
-- default branch/package install folder is chosen;
-- SteamPipe VDF scripts are created and tested;
-- store page and build review requirements are ready.
+Owner steps are in `OWNER_ONLY_STEAM_SUBMISSION_RUNBOOK.md`. The Windows Steam
+depot is the only advertised Steam platform until native external testing proves
+additional depots.

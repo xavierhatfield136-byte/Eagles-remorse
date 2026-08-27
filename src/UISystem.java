@@ -600,7 +600,7 @@ public final class UISystem {
         if (ctx == null || e == null) return false;
         if (!SwingUtilities.isLeftMouseButton(e)) return false;
 
-        int idx = Renderer.coreMenuButtonAt(viewportW, viewportH, e.getX(), e.getY());
+        int idx = Renderer.coreMenuButtonAt(ctx, viewportW, viewportH, e.getX(), e.getY());
         if (idx < 0) return false;
 
         if (ctx.config != null && ctx.config.mode == GameMode.SHOWCASE) {

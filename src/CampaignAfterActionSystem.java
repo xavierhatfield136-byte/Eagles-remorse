@@ -1,5 +1,6 @@
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 
@@ -60,6 +61,8 @@ final class CampaignAfterActionSystem {
         if ((top == null || top.isBlank()) && (bottom == null || bottom.isBlank())) return List.of();
         ArrayList<String> out = new ArrayList<>();
         if (top != null && !top.isBlank()) out.add(top);
+        String fleetDelta = campaignAfterActionShipDeltaSummary(ctx, st);
+        if (!fleetDelta.isBlank()) out.add("FLEET DELTA  |  " + fleetDelta);
         if (bottom != null && !bottom.isBlank()) out.add(bottom);
         if (st.transitionRewardLine != null && !st.transitionRewardLine.isBlank()) {
             out.add("REWARD  |  " + st.transitionRewardLine.toUpperCase(Locale.US));
@@ -100,6 +103,7 @@ final class CampaignAfterActionSystem {
         }
         out.addAll(campaignForceAfterActionLines(ctx, st, 3));
         out.add("Friendly Fleet: " + campaignAfterActionFleetDamageLabel(st));
+        out.addAll(campaignAfterActionShipDeltaLines(ctx, st, 5));
         out.add("Resources: credits " + Math.max(0, ctx.credits)
                 + "  ore " + Math.max(0, ctx.player == null ? CampaignSystem.currentCampaignOre(ctx) : ctx.player.cargo)
                 + "  fuel " + Math.max(0, st.campaignFuel)
@@ -425,5 +429,84 @@ final class CampaignAfterActionSystem {
             if (hull < 0.72 || shield < 0.58) damaged++;
         }
         return "live " + live + "  damaged " + damaged + "  critical " + critical + "  lost " + lost;
+    }
+
+    private static List<String> campaignAfterActionShipDeltaLines(GameContext ctx,
+                                                                  CampaignSystem.CampaignState st,
+                                                                  int maxEntries) {
+        int limit = Math.max(1, maxEntries);
+        ShipDelta delta = collectCampaignAfterActionShipDelta(ctx, st);
+        ArrayList<String> out = new ArrayList<>();
+        out.add("Ships Lost: " + summarizeShipDelta(delta.lost, limit, "none recorded this report"));
+        out.add("Ships Gained: " + summarizeShipDelta(delta.gained, limit, "none recorded this report"));
+        return out;
+    }
+
+    private static String campaignAfterActionShipDeltaSummary(GameContext ctx,
+                                                              CampaignSystem.CampaignState st) {
+        ShipDelta delta = collectCampaignAfterActionShipDelta(ctx, st);
+        if (delta.lost.isEmpty() && delta.gained.isEmpty()) return "no ship losses or gains recorded";
+        return "lost " + delta.lost.size() + " [" + summarizeShipDelta(delta.lost, 2, "none") + "]"
+                + "  |  gained " + delta.gained.size() + " [" + summarizeShipDelta(delta.gained, 2, "none") + "]";
+    }
+
+    private static ShipDelta collectCampaignAfterActionShipDelta(GameContext ctx,
+                                                                 CampaignSystem.CampaignState st) {
+        LinkedHashSet<String> lost = new LinkedHashSet<>();
+        LinkedHashSet<String> gained = new LinkedHashSet<>();
+        BattleResult latest = ctx == null || ctx.battleResultRecorder == null
+                ? null
+                : ctx.battleResultRecorder.latestResult();
+        if (latest != null) {
+            for (BattleResult.ShipSnapshot ship : latest.ships) {
+                if (ship == null || !ship.destroyed || !ship.isFriendlyTo(latest.playerFaction)) continue;
+                lost.add(shipDeltaName(ship.name, ship.roleLabel()));
+            }
+        }
+        if (st != null) {
+            for (CampaignSystem.PersistentFleetEntry entry : st.persistentBlueFleet) {
+                if (entry == null) continue;
+                String history = entry.serviceHistory == null ? "" : entry.serviceHistory.toUpperCase(Locale.US);
+                if (entry.destroyed && (latest == null || history.contains("LOST"))) {
+                    lost.add(CampaignSystem.displayPersistentFleetEntryName(entry));
+                }
+            }
+            ArrayList<CampaignSystem.PersistentFleetEntry> fleet = new ArrayList<>(st.persistentBlueFleet);
+            fleet.sort((a, b) -> Integer.compare(b == null ? 0 : b.slotId, a == null ? 0 : a.slotId));
+            for (CampaignSystem.PersistentFleetEntry entry : fleet) {
+                if (entry == null || entry.destroyed) continue;
+                String history = entry.serviceHistory == null ? "" : entry.serviceHistory.toUpperCase(Locale.US);
+                if (history.contains("HIRED AT")
+                        || history.contains("COMMISSIONED AT")
+                        || history.contains("SUCCESSOR")
+                        || history.contains("RECOVERED")
+                        || history.contains("REJOIN")) {
+                    gained.add(CampaignSystem.displayPersistentFleetEntryName(entry));
+                }
+            }
+        }
+        return new ShipDelta(lost, gained);
+    }
+
+    private record ShipDelta(LinkedHashSet<String> lost, LinkedHashSet<String> gained) {}
+
+    private static String shipDeltaName(String name, String roleLabel) {
+        String resolved = CampaignSystem.trimmedOrFallback(name, "Unnamed ship");
+        String role = CampaignSystem.trimmedOrFallback(roleLabel, "");
+        return role.isBlank() ? resolved : resolved + " (" + role + ")";
+    }
+
+    private static String summarizeShipDelta(LinkedHashSet<String> names, int maxEntries, String empty) {
+        if (names == null || names.isEmpty()) return empty;
+        ArrayList<String> selected = new ArrayList<>();
+        int limit = Math.max(1, maxEntries);
+        for (String name : names) {
+            if (name == null || name.isBlank()) continue;
+            selected.add(name.trim());
+            if (selected.size() >= limit) break;
+        }
+        if (selected.isEmpty()) return empty;
+        int remaining = Math.max(0, names.size() - selected.size());
+        return String.join(", ", selected) + (remaining > 0 ? " +" + remaining + " more" : "");
     }
 }

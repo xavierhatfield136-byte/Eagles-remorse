@@ -1,0 +1,14 @@
+"AppBuild"
+{
+    "AppID" "{{APP_ID}}"
+    "Desc" "{{BUILD_DESCRIPTION}}"
+    "BuildOutput" "{{BUILD_OUTPUT}}"
+    "ContentRoot" "{{CONTENT_ROOT}}"
+{{SET_LIVE_LINE}}
+    "Preview" "0"
+    "Local" ""
+    "Depots"
+    {
+        "{{DEPOT_ID}}" "{{DEPOT_SCRIPT}}"
+    }
+}

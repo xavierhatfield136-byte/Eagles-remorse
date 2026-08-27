@@ -16,7 +16,7 @@ public final class PostAlphaFeatureFlags {
         RIVAL_COMMANDERS(false), FLAGSHIP_OPERATIONS(false), BOARDING_RESCUE(false),
         FOCUSED_FACTION_ATTACKS(false),
         ALTERNATIVE_CAMPAIGNS(false), COOPERATIVE_COMMAND_PROTOTYPE(false),
-        MULTIPLAYER_CUSTOM_BATTLE(false), MULTIPLAYER_CUSTOM_MISSIONS(true);
+        MULTIPLAYER_CUSTOM_BATTLE(false), MULTIPLAYER_CUSTOM_MISSIONS(false);
 
         final boolean safeDefault;
         Feature(boolean safeDefault) { this.safeDefault = safeDefault; }

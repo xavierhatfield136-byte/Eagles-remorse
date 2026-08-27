@@ -6,6 +6,12 @@ Start here. The docs are organized by purpose so the next work is visible withou
 
 - `reports/Eagles_Remorse_Stabilization_and_Release_Proof_Master_Checklist.docx` - active 292-control stabilization, packaged-playtest, performance, polish, architecture, triage, and release-proof checklist. Governing rule: until P0 is complete, no new major features.
 
+## Steam Release Preparation
+
+- `release/IN_GAME_STEAM_RELEASE_CHANGE_CHECKLIST.md` - remaining in-game changes, release-candidate validation, voice provenance, first-hour clarity, and final go/no-go.
+- `release/STEAM_ONBOARDING_AND_LAUNCH_CHECKLIST.md` - owner-facing Steamworks onboarding, app/depot setup, store assets, SteamPipe, review, release, and first-48-hours operations.
+- `release/OWNER_ONLY_STEAM_SUBMISSION_RUNBOOK.md` - the short sequential list of only the decisions, identity/account work, IDs, upload, testing, and approvals the owner must personally complete.
+
 ## Primary Roadmap
 
 1. `1_0_OWNER_DECISIONS_AND_IMPLEMENTATION_ROADMAP.md` - binding 1.0 scope, owner decisions, release blockers, and implementation order.

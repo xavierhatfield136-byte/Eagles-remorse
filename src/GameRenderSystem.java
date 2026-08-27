@@ -7,6 +7,8 @@ public final class GameRenderSystem {
     static final double MATCH_RENDER_CULL_PAD_METERS = 440.0;
     static final double LONG_RANGE_CONTACT_RENDER_METERS = 40_000.0;
 
+    record HudObjective(String title, String detail) {}
+
     static final class SensorNetEntry {
         final String section;
         final String title;
@@ -243,16 +245,9 @@ public final class GameRenderSystem {
         int playerWingCap = (ctx.player != null && ctx.player.isCarrier) ? Math.max(0, ctx.player.maxFighters) : 0;
         int lockedWingActive = CarrierSystem.countActiveWingByCarrier(ctx, ctx.lockedTarget);
         int lockedWingCap = (ctx.lockedTarget != null && ctx.lockedTarget.isCarrier) ? Math.max(0, ctx.lockedTarget.maxFighters) : 0;
-        String objectiveTitle = CampaignSystem.hudObjectiveTitle(ctx);
-        String objectiveDetail = CampaignSystem.hudObjectiveDetail(ctx);
-        if ((objectiveTitle == null || objectiveTitle.isBlank()) && TutorialSystem.isActive(ctx)) {
-            objectiveTitle = TutorialSystem.hudTitle(ctx);
-            objectiveDetail = TutorialSystem.hudDetail(ctx);
-        }
-        if ((objectiveTitle == null || objectiveTitle.isBlank()) && LastStandSystem.isActive(ctx)) {
-            objectiveTitle = LastStandSystem.hudTitle(ctx);
-            objectiveDetail = LastStandSystem.hudDetail(ctx);
-        }
+        HudObjective hudObjective = resolveHudObjective(ctx);
+        String objectiveTitle = hudObjective.title();
+        String objectiveDetail = hudObjective.detail();
         String stationStatus = "Crew: Captain " + automationLabel(ctx.command.captainAutomation)
                 + " | Helm " + automationLabel(ctx.command.helmAutomation)
                 + " | Tactical " + automationLabel(ctx.command.tacticalAutomation)
@@ -480,8 +475,27 @@ if (DevTools.isDebugOverlay()) {
         return panels;
     }
 
-    private static GameContext.HudDetail effectiveHudDetailForRenderPressure(GameContext ctx, GameContext.HudDetail requested) {
-        return GameContext.HudDetail.FULL;
+    static HudObjective resolveHudObjective(GameContext ctx) {
+        if (TutorialSystem.isActive(ctx)) {
+            String title = TutorialSystem.hudTitle(ctx);
+            if (title != null && !title.isBlank()) {
+                return new HudObjective(title, TutorialSystem.hudDetail(ctx));
+            }
+        }
+        if (LastStandSystem.isActive(ctx)) {
+            String title = LastStandSystem.hudTitle(ctx);
+            if (title != null && !title.isBlank()) {
+                return new HudObjective(title, LastStandSystem.hudDetail(ctx));
+            }
+        }
+        return new HudObjective(CampaignSystem.hudObjectiveTitle(ctx), CampaignSystem.hudObjectiveDetail(ctx));
+    }
+
+    static GameContext.HudDetail effectiveHudDetailForRenderPressure(GameContext ctx, GameContext.HudDetail requested) {
+        if (TutorialSystem.isActive(ctx)) {
+            return TutorialSystem.recommendedHudDetail(ctx);
+        }
+        return requested == null ? GameContext.HudDetail.FULL : requested;
     }
 
     private static String activeOverlayLabel(GameContext ctx) {

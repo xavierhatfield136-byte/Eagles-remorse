@@ -55,6 +55,27 @@ class CommandSchoolOverworldExpansionTest {
     }
 
     @Test
+    void academyObjectiveOwnsTheHudInsteadOfLeakingCampaignGoals() {
+        GameContext ctx = tutorialContext();
+        SpawnSystem.initWorld(ctx);
+
+        GameRenderSystem.HudObjective objective = GameRenderSystem.resolveHudObjective(ctx);
+
+        assertTrue(objective.title().contains("TUTORIAL"));
+        assertTrue(objective.detail().contains("movement"));
+        assertFalse(objective.title().contains("TRADE HUB COLLAPSE"));
+        assertFalse(objective.detail().contains("Reach Earth"));
+        assertEquals(GameContext.HudDetail.MINIMAL,
+                GameRenderSystem.effectiveHudDetailForRenderPressure(ctx, GameContext.HudDetail.FULL));
+        assertTrue(TutorialSystem.coreMenuActionVisible(ctx, 2),
+                "the first lesson should keep the map shortcut available");
+        assertFalse(TutorialSystem.coreMenuActionVisible(ctx, 0),
+                "fleet management should stay hidden until its lesson");
+        assertFalse(TutorialSystem.coreMenuActionVisible(ctx, 3),
+                "power management should stay hidden until its lesson");
+    }
+
+    @Test
     void tutorialBaseDoesNotCreateShieldBubbleOrLeashPlayer() throws Exception {
         GameContext ctx = tutorialContext();
         SpawnSystem.initWorld(ctx);

@@ -460,14 +460,27 @@ class CampaignStrategicCommandHudTest {
         setDoubleField(entry, "hullConditionFrac", 0.40);
         setDoubleField(entry, "shieldConditionFrac", 0.30);
         setIntField(entry, "rescues", 3);
+        CampaignSystem.PersistentFleetEntry lost = CampaignSystem.addPersistentFleetEntry(
+                st, ShipRole.FRIGATE, "Blue Lost Test", 0, Faction.ALLY);
+        lost.destroyed = true;
+        lost.serviceHistory = "LOST IN ACTION";
+        CampaignSystem.PersistentFleetEntry gained = CampaignSystem.addPersistentFleetEntry(
+                st, ShipRole.CRUISER, "Blue Rescue Prize", 0, Faction.ALLY);
+        gained.serviceHistory = "HIRED AT " + hub.name;
 
         String report = String.join("\n", CampaignSystem.campaignAfterActionReportLines(ctx));
+        String plate = String.join("\n", CampaignSystem.campaignAfterActionPlateLines(ctx));
         String buttons = String.join("\n", CampaignSystem.campaignAfterActionFollowUpActionLines(ctx));
 
         assertTrue(report.contains("Battle Report: " + hub.name));
         assertTrue(report.contains("Objective: Escort the damaged convoy to the exit lane"));
         assertTrue(report.contains("Friendly Fleet: live"));
         assertTrue(report.contains("critical 1"));
+        assertTrue(report.contains("Ships Lost: BLUE LOST TEST"));
+        assertTrue(report.contains("Ships Gained: BLUE RESCUE PRIZE"));
+        assertTrue(plate.contains("FLEET DELTA"));
+        assertTrue(plate.contains("lost 1"));
+        assertTrue(plate.contains("gained 1"));
         assertTrue(report.contains("Resources: credits 1234  ore 88  fuel 37  supplies 29  ammo 41  salvage 7"));
         assertTrue(report.contains("Reputation: "));
         assertTrue(report.contains("Intel: "));

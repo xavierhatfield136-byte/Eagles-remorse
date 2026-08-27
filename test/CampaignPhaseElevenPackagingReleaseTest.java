@@ -24,7 +24,7 @@ class CampaignPhaseElevenPackagingReleaseTest {
                 .findFirst()
                 .orElseThrow()
                 .status()
-                .equals("investigated"));
+                .equals("prepared-locally"));
     }
 
     @Test

@@ -18,7 +18,7 @@ class PostAlphaGovernanceTest {
         assertFalse(PostAlphaFeatureFlags.enabled(PostAlphaFeatureFlags.Feature.ALTERNATIVE_CAMPAIGNS));
         assertFalse(PostAlphaFeatureFlags.enabled(PostAlphaFeatureFlags.Feature.COOPERATIVE_COMMAND_PROTOTYPE));
         assertFalse(PostAlphaFeatureFlags.enabled(PostAlphaFeatureFlags.Feature.MULTIPLAYER_CUSTOM_BATTLE));
-        assertTrue(PostAlphaFeatureFlags.enabled(PostAlphaFeatureFlags.Feature.MULTIPLAYER_CUSTOM_MISSIONS));
+        assertFalse(PostAlphaFeatureFlags.enabled(PostAlphaFeatureFlags.Feature.MULTIPLAYER_CUSTOM_MISSIONS));
     }
 
     @Test

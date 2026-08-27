@@ -8,9 +8,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class MultiplayerRulesV1Test {
 
     @Test
-    void multiplayerCustomMissionEntryPointDefaultsOn() {
-        assertTrue(MultiplayerRulesV1.entryPointEnabled(),
-                "multiplayer custom mission entry points should be available from the main menu");
+    void multiplayerCustomMissionEntryPointDefaultsOffForPublicRelease() {
+        assertFalse(MultiplayerRulesV1.entryPointEnabled(),
+                "experimental multiplayer must remain hidden unless a feature flag explicitly enables it");
     }
 
     @Test

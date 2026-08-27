@@ -1,8 +1,7 @@
 # Eagles Remorse 1.0.1.17
 
-This release focuses on final first-hour polish: safer save deletion, a cleaner
-symbol-first strategic map, and release packaging verification across Windows,
-Linux, and macOS.
+This release candidate focuses on final first-hour polish, Academy clarity, a
+cleaner symbol-first strategic map, and verified Windows/Steam-ready packaging.
 
 ## Downloads
 
@@ -25,8 +24,14 @@ version.
   rather than always-on long fleet names.
 - Updated screenshot baselines after visually reviewing the cleaner campaign
   map, fleet board, and strike tab.
-- Updated release-channel documentation so Windows, Linux, and macOS artifacts
-  are all treated as first-class release outputs.
+- Made the Academy objective authoritative, removed duplicate tutorial/campaign
+  banners, and reduced Flight Basics to its required HUD and Map action.
+- Hid experimental multiplayer from the public configuration while preserving
+  its explicit development feature flags.
+- Added credential-free Windows Steam staging, content validation, VDF templates,
+  and a complete SHA-256 depot manifest.
+- Scoped the initial Steam candidate to Windows; Linux and macOS package tasks
+  remain available but are not advertised as initial Steam support.
 
 ## Asset Packaging
 
@@ -43,3 +48,5 @@ source-tree and IDE files from the player ZIPs.
 - `CommandSchoolOverworldExpansionTest`
 - `app.ui.MainMenuPanelMultiplayerEntryTest`
 - `screenshotRegression`
+- `prepareSteamWindows`
+- Full gate: 1,637 tests, zero failures, errors, or skips

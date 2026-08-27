@@ -103,6 +103,23 @@ The repo includes native Windows, Linux, and macOS packaging workflows in
 - Run it manually from the Actions tab with `workflow_dispatch`
 - Or publish a GitHub Release to build the platform packages and attach them as release assets
 
+## Prepare The Windows Steam Depot
+
+Build, stage, validate, and hash the credential-free Windows Steam content:
+
+```powershell
+./gradlew prepareSteamWindows
+```
+
+After Steamworks assigns the AppID and Windows depot ID, generate reviewable VDF
+files without uploading or storing credentials:
+
+```powershell
+./scripts/prepare-steam-windows.ps1 -SkipBuild -AppId <APP_ID> -DepotId <DEPOT_ID>
+```
+
+See `steam/README.md` and `docs/release/OWNER_ONLY_STEAM_SUBMISSION_RUNBOOK.md`.
+
 ## Notes
 
 - Local saves and machine-specific IDE files are intentionally ignored and are not required to build the project.

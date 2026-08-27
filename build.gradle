@@ -797,6 +797,34 @@ tasks.register("packageWindows") {
     }
 }
 
+def steamWindowsContentDir = layout.buildDirectory.dir("steam/content/${appBundleName}")
+
+tasks.register("stageSteamWindows", Sync) {
+    group = "distribution"
+    description = "Stage the Windows app-image as a credential-free Steam depot content root."
+    dependsOn("packageWindowsAppImage")
+    from(layout.buildDirectory.dir("package/windows/${appBundleName}"))
+    into(steamWindowsContentDir)
+}
+
+tasks.register("verifySteamWindowsStage", JavaExec) {
+    group = "verification"
+    description = "Validate staged Steam depot content and generate a complete SHA-256 manifest."
+    dependsOn("stageSteamWindows", tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "SteamWindowsStageValidation"
+    args("--strict",
+            "--stage=${steamWindowsContentDir.get().asFile.absolutePath}",
+            "--manifest=${layout.buildDirectory.file('steam/SHA256SUMS-steam-windows.txt').get().asFile.absolutePath}",
+            "--report=${layout.buildDirectory.file('reports/steam_windows_stage.json').get().asFile.absolutePath}")
+}
+
+tasks.register("prepareSteamWindows") {
+    group = "distribution"
+    description = "Build, stage, and verify the Windows Steam depot without uploading it."
+    dependsOn("verifySteamWindowsStage")
+}
+
 tasks.register("phase11Packaging", JavaExec) {
     group = "verification"
     description = "Build and validate the Phase 11 Windows app-image, portable ZIP, release docs, and checksums."

@@ -280,6 +280,31 @@ public final class TutorialSystem {
         return summary + " Next: " + next.label;
     }
 
+    public static GameContext.HudDetail recommendedHudDetail(GameContext ctx) {
+        TutorialState st = state(ctx);
+        if (st == null) return GameContext.HudDetail.FULL;
+        return currentLesson(st) == LessonId.FLIGHT_BASICS
+                ? GameContext.HudDetail.MINIMAL
+                : GameContext.HudDetail.COMPACT;
+    }
+
+    public static boolean coreMenuActionVisible(GameContext ctx, int actionIndex) {
+        TutorialState st = state(ctx);
+        if (st == null) return true;
+        LessonId lesson = currentLesson(st);
+        return switch (lesson) {
+            case FLIGHT_BASICS -> actionIndex == 2;
+            case TARGETING_AND_SENSORS -> false;
+            case LOGISTICS_AND_REFIT -> actionIndex == 0 || actionIndex == 1;
+            case BRIDGE_SYSTEMS -> actionIndex == 3 || actionIndex == 4;
+            case CARRIER_AND_WARP -> actionIndex == 0 || actionIndex == 5;
+            case OVERWORLD_MAP_READING, SITE_SELECTION, PLOT_MOVEMENT, SCAN_AND_INTEL,
+                    RESOURCE_SITE, STATION_SERVICES, OVERWORLD_TO_MISSION -> actionIndex == 2;
+            case FLEET_ORGANIZATION -> actionIndex == 0 || actionIndex == 2;
+            case COMPLETE -> true;
+        };
+    }
+
     public static String contextHint(GameContext ctx) {
         TutorialState st = state(ctx);
         if (st == null) return "";
@@ -888,19 +913,16 @@ public final class TutorialSystem {
                 prepareTacticalCommandSchoolSandbox(ctx, st);
                 ctx.ui.waypointX = st.alphaX;
                 ctx.ui.waypointY = st.alphaY;
-                if (announce) EventSystem.showBanner(ctx, "TACTICAL SCHOOL 1: FLIGHT BASICS", 2.4);
             }
             case TARGETING_AND_SENSORS -> {
                 prepareTacticalCommandSchoolSandbox(ctx, st);
                 ctx.ui.waypointX = st.weaponsX;
                 ctx.ui.waypointY = st.weaponsY;
-                if (announce) EventSystem.showBanner(ctx, "TACTICAL SCHOOL 2: TARGETING + XRAY", 2.4);
             }
             case LOGISTICS_AND_REFIT -> {
                 prepareTacticalCommandSchoolSandbox(ctx, st);
                 ctx.ui.waypointX = st.miningX;
                 ctx.ui.waypointY = st.miningY;
-                if (announce) EventSystem.showBanner(ctx, "TACTICAL SCHOOL 3: LOGISTICS LOOP", 2.4);
             }
             case BRIDGE_SYSTEMS -> {
                 prepareTacticalCommandSchoolSandbox(ctx, st);
@@ -912,7 +934,6 @@ public final class TutorialSystem {
                 st.seededDamageControlFire = false;
                 st.fireSuppressed = false;
                 focusHomeBase(ctx, st);
-                if (announce) EventSystem.showBanner(ctx, "TACTICAL SCHOOL 4: BRIDGE SYSTEMS", 2.4);
             }
             case CARRIER_AND_WARP -> {
                 prepareTacticalCommandSchoolSandbox(ctx, st);
@@ -927,7 +948,6 @@ public final class TutorialSystem {
                 if (ctx.player != null && ctx.player.isCarrier) {
                     captureCarrierBaseline(ctx, st);
                 }
-                if (announce) EventSystem.showBanner(ctx, "TACTICAL SCHOOL 5: CARRIER + WITHDRAW", 2.4);
             }
             case COMPLETE -> {
                 ctx.ui.waypointX = Double.NaN;

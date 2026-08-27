@@ -35,8 +35,8 @@ public final class Phase11PackagingReleaseValidation {
                         "GitHub Actions builds native Windows, Linux, and macOS artifacts and attaches them to releases."),
                 new DistributionChannel("private", APP_BUNDLE_NAME + "-<version> platform archive", "prepared",
                         "Private distribution uses the appropriate platform archive plus its SHA256SUMS file."),
-                new DistributionChannel("steam", "deferred", "investigated",
-                        "Steam requires Steamworks onboarding, store/build review, app/depot setup, and SteamPipe upload scripts.")
+                new DistributionChannel("steam", APP_BUNDLE_NAME + " Windows depot", "prepared-locally",
+                        "Credential-free staging and VDF generation are ready; upload awaits owner AppID/depot IDs and Steamworks access.")
         );
     }
 
@@ -69,6 +69,10 @@ public final class Phase11PackagingReleaseValidation {
         requireFile(base.resolve("docs/release/KNOWN_ISSUES.md"), errors, "known issues");
         requireFile(base.resolve("docs/release/SAVE_COMPATIBILITY_POLICY.md"), errors, "save compatibility policy");
         requireFile(base.resolve("docs/release/DISTRIBUTION_CHANNELS.md"), errors, "distribution channel plan");
+        requireFile(base.resolve("docs/release/OWNER_ONLY_STEAM_SUBMISSION_RUNBOOK.md"), errors, "owner Steam submission runbook");
+        requireFile(base.resolve("scripts/prepare-steam-windows.ps1"), errors, "Steam staging script");
+        requireFile(base.resolve("steam/templates/app_build.vdf.template"), errors, "Steam app-build template");
+        requireFile(base.resolve("steam/templates/depot_build_windows.vdf.template"), errors, "Steam depot-build template");
         requireFile(base.resolve(".github/workflows/windows-package.yml"), errors, "GitHub Windows package workflow");
         requireFile(base.resolve(".github/workflows/linux-package.yml"), errors, "GitHub Linux package workflow");
         requireFile(base.resolve(".github/workflows/macos-package.yml"), errors, "GitHub macOS package workflow");
@@ -78,6 +82,8 @@ public final class Phase11PackagingReleaseValidation {
         contains(build, "packageWindowsAppImage", errors, "app-image task missing");
         contains(build, "packageWindowsZip", errors, "portable ZIP task missing");
         contains(build, "packageWindowsExe", errors, "EXE installer task missing");
+        contains(build, "prepareSteamWindows", errors, "Steam staging task missing");
+        contains(build, "verifySteamWindowsStage", errors, "Steam stage verification task missing");
         contains(build, "packageLinuxAppImage", errors, "Linux app-image task missing");
         contains(build, "packageLinuxTar", errors, "Linux portable tarball task missing");
         contains(build, "packageMacAppImage", errors, "macOS app-image task missing");

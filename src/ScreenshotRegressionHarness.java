@@ -139,6 +139,7 @@ public final class ScreenshotRegressionHarness {
     private static GameContext contextForTarget(String target) {
         String normalized = (target == null ? "" : target).trim().toLowerCase(Locale.US);
         return switch (normalized) {
+            case "academy-flight-basics" -> academyFlightBasicsContext();
             case "campaign-map" -> campaignMapContext(UiState.CampaignCommandTab.NAV, false);
             case "fleet-board" -> campaignMapContext(UiState.CampaignCommandTab.FLEET, false);
             case "strike-tab" -> campaignMapContext(UiState.CampaignCommandTab.STRIKES, false);
@@ -146,6 +147,19 @@ public final class ScreenshotRegressionHarness {
             case "tactical-hud" -> tacticalHudContext(false);
             default -> campaignMapContext(UiState.CampaignCommandTab.NAV, false);
         };
+    }
+
+    private static GameContext academyFlightBasicsContext() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.TUTORIAL, 5000, 5000,
+                true, 20260827L, false));
+        SpawnSystem.initWorld(ctx);
+        ctx.ui.hudDetail = GameContext.HudDetail.FULL;
+        if (ctx.player != null) {
+            CameraSystem.update(ctx, VIEW_W, VIEW_H);
+            ctx.cursorWorldX = ctx.player.x + 180.0;
+            ctx.cursorWorldY = ctx.player.y;
+        }
+        return ctx;
     }
 
     private static GameContext campaignMapContext(UiState.CampaignCommandTab tab, boolean accessibility) {

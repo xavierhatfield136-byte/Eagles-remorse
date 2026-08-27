@@ -117,7 +117,8 @@ public final class ProductionReadinessLongevitySystem {
 
     public static State bootstrap(long seed) {
         State state = new State();
-        state.art.regressionScreenshots.addAll(List.of("campaign-map", "fleet-board", "strike-tab", "tactical-hud", "accessibility-hud"));
+        state.art.regressionScreenshots.addAll(List.of("academy-flight-basics", "campaign-map", "fleet-board",
+                "strike-tab", "tactical-hud", "accessibility-hud"));
         state.longevity.slots.add(new SaveSlot("slot-1", "Primary campaign", "Southern Shelter checkpoint", 8, seed));
         state.longevity.slots.add(new SaveSlot("slot-2", "Iron command", "Challenge reserve", 8, seed + 1));
         state.longevity.slots.add(new SaveSlot("slot-3", "Sandbox", "Custom scenario", 8, seed + 2));
