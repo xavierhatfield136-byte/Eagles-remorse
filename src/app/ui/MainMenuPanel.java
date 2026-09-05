@@ -2019,13 +2019,13 @@ public final class MainMenuPanel extends JPanel {
             FontMetrics titleFm = g2.getFontMetrics();
             int titleY = pad + titleFm.getAscent();
             g2.setColor(new Color(125, 214, 231, 210));
-            g2.drawString("TACTICAL ATTRACT MODE", pad, titleY);
+            g2.drawString("FLEET BATTLE", pad, titleY);
             g2.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 12, uiScale));
             FontMetrics subtitleFm = g2.getFontMetrics();
             int subtitleY = titleY + Math.max(MenuDisplay.scaled(14, uiScale),
                     titleFm.getDescent() + subtitleFm.getAscent() + MenuDisplay.scaled(4, uiScale));
             g2.setColor(new Color(198, 211, 226, 166));
-            g2.drawString("Disposable combat sandbox - no campaign state attached",
+            g2.drawString("Live fleet skirmish preview",
                     pad, subtitleY);
             g2.dispose();
         }

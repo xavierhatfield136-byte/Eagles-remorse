@@ -48,6 +48,7 @@ sourceSets {
             exclude "station_module_generation_clean/**"
             exclude "station_module_generation_tighttest/**"
             exclude "turret_skin_generation/**"
+            exclude "voice/**"
             exclude "**/backup*/**"
             exclude "**/*.bak"
             exclude "**/*.old"

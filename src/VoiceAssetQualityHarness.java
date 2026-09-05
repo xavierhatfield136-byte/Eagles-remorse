@@ -55,6 +55,10 @@ public final class VoiceAssetQualityHarness {
             if (spec == null) continue;
             matrix.put(spec.role() + "/" + spec.eventId(), spec);
         }
+        if (matrix.isEmpty()) {
+            System.out.println("[voice-quality] voice acting removed from this build; no WAV assets required.");
+            return;
+        }
 
         for (String role : ROLES) {
             File dir = new File(ROOT, role);

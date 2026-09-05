@@ -6776,13 +6776,9 @@ public final class CampaignSystem extends CampaignSystemModels {
         boolean hasSelection = hasTacticalMapSelection(ctx);
         boolean hasHostileContact = hasTacticalHostileStrikeSelection(ctx)
                 || (hasSelectedCampaignContactTarget(ctx) && selectedCampaignContactHostile(ctx));
-        boolean hasWaypoint = Double.isFinite(ctx.ui.waypointX) && Double.isFinite(ctx.ui.waypointY);
         boolean canSplit = canCreateDetachedStrategicDivision(ctx);
         boolean canMerge = canMergeSelectedStrategicDivision(ctx);
         boolean canEscort = st.greenContractFavor > 0 || st.yellowLiberationFavor > 0;
-        FleetPosture posture = resolveFleetPosture(st.selectedFleetPostureId);
-        int reconSupplyCost = sweepSupplyCost(posture);
-        boolean canRecon = st.campaignSupplies >= reconSupplyCost;
         StrikePreflight torpedoPreflight = buildTacticalStrikePreflight(ctx, "TORPEDO_STRIKE");
         StrikePreflight sortiePreflight = buildTacticalStrikePreflight(ctx, "CARRIER_SORTIE");
         StrikePreflight atomicPreflight = buildTacticalStrikePreflight(ctx, "ATOMIC_STRIKE");
@@ -6827,18 +6823,6 @@ public final class CampaignSystem extends CampaignSystemModels {
         }
 
         if (tab == UiState.TacticalMapTab.MISSION || tab == UiState.TacticalMapTab.CONTACTS || tab == UiState.TacticalMapTab.STRIKES) {
-            out.add(action("TACTICAL_SEND_RECON",
-                    "SEND RECON",
-                    hasHostileContact ? "Sharpen the selected contact and refresh the local picture." : "Refresh local reconnaissance around the mission space.",
-                    hasHostileContact ? "Hold the selected hostile on a firmer track." : "Refresh the mission sensor picture and spike active markers.",
-                    CampaignActionCategory.SENSORS,
-                    true,
-                    canRecon,
-                    canRecon ? "" : "insufficient supplies",
-                    canRecon ? (hasHostileContact ? CampaignActionState.RECOMMENDED : CampaignActionState.AVAILABLE) : CampaignActionState.DISABLED,
-                    false,
-                    "",
-                    CampaignSystem::requestTacticalRecon));
             out.add(action("TACTICAL_CALL_ESCORT",
                     "CALL ESCORT",
                     canEscort ? "Spend faction favor for immediate stores and command relief." : "No allied favor available.",
@@ -6851,18 +6835,6 @@ public final class CampaignSystem extends CampaignSystemModels {
                     false,
                     "",
                     CampaignSystem::requestPreferredMissionEscortSupport));
-            out.add(action("TACTICAL_MARK_LATER",
-                    "MARK FOR LATER",
-                    hasSelection || hasWaypoint ? "Drop a persistent ping on the selected area." : "No selection available to mark.",
-                    hasSelection || hasWaypoint ? "Mark the current target so the fleet can come back to it later." : "Select a marker or establish a waypoint first.",
-                    CampaignActionCategory.NAVIGATION,
-                    true,
-                    hasSelection || hasWaypoint,
-                    hasSelection || hasWaypoint ? "" : "no selection to mark",
-                    hasSelection || hasWaypoint ? CampaignActionState.AVAILABLE : CampaignActionState.DISABLED,
-                    false,
-                    "",
-                    CampaignSystem::markTacticalSelectionForLater));
         }
 
         if (tab == UiState.TacticalMapTab.MISSION) {
@@ -7075,30 +7047,12 @@ public final class CampaignSystem extends CampaignSystemModels {
         return true;
     }
 
-    private static boolean requestTacticalRecon(GameContext ctx) {
-        if (hasSelectedCampaignContactTarget(ctx) && selectedCampaignContactHostile(ctx)) {
-            return requestCampaignFocusedTrack(ctx);
-        }
-        return requestCampaignSensorSweep(ctx);
-    }
-
     private static boolean requestPreferredMissionEscortSupport(GameContext ctx) {
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return false;
         if (st.greenContractFavor > 0) return requestCampaignAllySupport(ctx, false);
         if (st.yellowLiberationFavor > 0) return requestCampaignAllySupport(ctx, true);
         EventSystem.showBanner(ctx, "NO ALLIED REPUTATION AVAILABLE FOR ESCORT SUPPORT", 1.2);
-        return true;
-    }
-
-    private static boolean markTacticalSelectionForLater(GameContext ctx) {
-        if (ctx == null || ctx.ui == null) return false;
-        double x = hasTacticalMapSelection(ctx) ? ctx.ui.tacticalMapSelectionX : ctx.ui.waypointX;
-        double y = hasTacticalMapSelection(ctx) ? ctx.ui.tacticalMapSelectionY : ctx.ui.waypointY;
-        if (!Double.isFinite(x) || !Double.isFinite(y)) return false;
-        UISystem.addPing(ctx, x, y, 2.6);
-        String label = hasTacticalMapSelection(ctx) ? ctx.ui.tacticalMapSelectionLabel : "CURRENT WAYPOINT";
-        EventSystem.showBanner(ctx, "MARKED FOR LATER: " + label.toUpperCase(Locale.US), 1.2);
         return true;
     }
 

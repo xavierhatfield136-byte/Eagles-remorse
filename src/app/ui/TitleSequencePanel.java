@@ -11,9 +11,9 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
 public final class TitleSequencePanel extends JPanel implements ActionListener {
-    private static final double FADE_IN_SEC = 0.9;
-    private static final double HOLD_SEC = 1.4;
-    private static final double FADE_OUT_SEC = 0.9;
+    private static final double FADE_IN_SEC = 0.8;
+    private static final double HOLD_SEC = 2.2;
+    private static final double FADE_OUT_SEC = 0.8;
     private static final double TOTAL_SEC = FADE_IN_SEC + HOLD_SEC + FADE_OUT_SEC;
 
     private final Runnable onComplete;
@@ -84,13 +84,45 @@ public final class TitleSequencePanel extends JPanel implements ActionListener {
 
         g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
 
-        g2.setColor(new Color(215, 215, 215));
-        g2.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 28, scale));
-        drawCentered(g2, "Xavier H. presents:", w / 2, h / 2 - MenuDisplay.scaled(40, scale));
+        Paint oldPaint = g2.getPaint();
+        g2.setPaint(new GradientPaint(0, 0, new Color(5, 14, 28), 0, h, new Color(1, 3, 8)));
+        g2.fillRect(0, 0, w, h);
+        g2.setPaint(oldPaint);
+
+        int starCount = Math.max(34, w / 22);
+        for (int i = 0; i < starCount; i++) {
+            int sx = Math.floorMod(i * 97 + 31, Math.max(1, w));
+            int sy = Math.floorMod(i * 53 + 17, Math.max(1, h));
+            int a = 70 + Math.floorMod(i * 23, 112);
+            g2.setColor(new Color(168, 204, 232, a));
+            g2.fillRect(sx, sy, 1 + i % 2, 1 + (i + 1) % 2);
+        }
+
+        int centerY = h / 2;
+        int horizonW = MenuDisplay.scaled(520, scale);
+        int horizonY = centerY + MenuDisplay.scaled(82, scale);
+        g2.setColor(new Color(255, 204, 112, 92));
+        g2.drawLine((w - horizonW) / 2, horizonY, (w + horizonW) / 2, horizonY);
+        g2.setColor(new Color(118, 204, 255, 80));
+        g2.drawLine((w - horizonW) / 2 + MenuDisplay.scaled(42, scale), horizonY + MenuDisplay.scaled(12, scale),
+                (w + horizonW) / 2 - MenuDisplay.scaled(42, scale), horizonY + MenuDisplay.scaled(12, scale));
+
+        g2.setColor(new Color(142, 216, 255, 220));
+        g2.setFont(MenuDisplay.font("Consolas", Font.BOLD, 18, scale));
+        drawCentered(g2, "FLEET COMMAND INITIALIZING", w / 2, centerY - MenuDisplay.scaled(72, scale));
 
         g2.setColor(Color.WHITE);
-        g2.setFont(MenuDisplay.font("Consolas", Font.BOLD, 66, scale));
-        drawCentered(g2, AppInfo.APP_NAME.toUpperCase(), w / 2, h / 2 + MenuDisplay.scaled(24, scale));
+        g2.setFont(MenuDisplay.font("Consolas", Font.BOLD, 64, scale));
+        drawCentered(g2, AppInfo.APP_NAME.toUpperCase(), w / 2, centerY - MenuDisplay.scaled(8, scale));
+
+        g2.setColor(new Color(216, 226, 236, 206));
+        g2.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 18, scale));
+        drawCentered(g2, "Campaign grid online. Tactical systems ready.", w / 2, centerY + MenuDisplay.scaled(44, scale));
+
+        g2.setFont(MenuDisplay.font("Consolas", Font.BOLD, 12, scale));
+        drawStatusChip(g2, "TACTICAL", w / 2 - MenuDisplay.scaled(156, scale), horizonY + MenuDisplay.scaled(26, scale), scale);
+        drawStatusChip(g2, "CAMPAIGN", w / 2 - MenuDisplay.scaled(42, scale), horizonY + MenuDisplay.scaled(26, scale), scale);
+        drawStatusChip(g2, "FLEET", w / 2 + MenuDisplay.scaled(78, scale), horizonY + MenuDisplay.scaled(26, scale), scale);
 
         float hintAlpha = Math.min(0.80f, alpha + 0.15f);
         g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, hintAlpha));
@@ -133,5 +165,18 @@ public final class TitleSequencePanel extends JPanel implements ActionListener {
         int x = cx - fm.stringWidth(text) / 2;
         int y = cy + fm.getAscent() / 2;
         g2.drawString(text, x, y);
+    }
+
+    private static void drawStatusChip(Graphics2D g2, String text, int x, int y, double scale) {
+        FontMetrics fm = g2.getFontMetrics();
+        int padX = MenuDisplay.scaled(10, scale);
+        int chipW = fm.stringWidth(text) + padX * 2;
+        int chipH = MenuDisplay.scaled(22, scale);
+        g2.setColor(new Color(5, 10, 18, 178));
+        g2.fillRoundRect(x, y, chipW, chipH, 8, 8);
+        g2.setColor(new Color(134, 204, 238, 170));
+        g2.drawRoundRect(x, y, chipW, chipH, 8, 8);
+        g2.setColor(new Color(226, 238, 248, 218));
+        g2.drawString(text, x + padX, y + (chipH + fm.getAscent()) / 2 - 2);
     }
 }

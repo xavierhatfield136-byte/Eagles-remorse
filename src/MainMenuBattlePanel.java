@@ -26,7 +26,7 @@ public final class MainMenuBattlePanel extends JPanel implements MainMenuPanel.M
     private static final long MENU_BATTLE_SEED = 0x5A17C0DEL ^ 0x4D454E55424177L;
     private static final int WORLD_W = 7000;
     private static final int WORLD_H = 4200;
-    private static final int MAX_MENU_SHIPS = 18;
+    private static final int MAX_MENU_SHIPS = 22;
     private static final double FIXED_DT = 1.0 / 60.0;
     private static final Faction[] MENU_FACTIONS = Faction.fourTeamFactions();
     private static final ShipRole[] MENU_ROLES = Arrays.stream(ShipRole.values())
@@ -132,8 +132,11 @@ public final class MainMenuBattlePanel extends JPanel implements MainMenuPanel.M
         ctx.suppressAudio = true;
         Faction.clearCampaignAlliances();
 
-        int total = 11 + random.nextInt(4);
-        for (int i = 0; i < total; i++) {
+        for (Faction faction : MENU_FACTIONS) {
+            spawnRandomShip(faction);
+        }
+        int total = 13 + random.nextInt(5);
+        for (int i = MENU_FACTIONS.length; i < total; i++) {
             spawnRandomShip();
         }
         replacementTimer = 2.2 + random.nextDouble() * 2.5;
@@ -144,10 +147,15 @@ public final class MainMenuBattlePanel extends JPanel implements MainMenuPanel.M
     private void spawnRandomShip() {
         if (ctx == null) return;
         Faction faction = MENU_FACTIONS[random.nextInt(MENU_FACTIONS.length)];
+        spawnRandomShip(faction);
+    }
+
+    private void spawnRandomShip(Faction faction) {
+        if (ctx == null || faction == null) return;
         ShipRole role = randomRole();
         double[] anchor = factionAnchor(faction);
-        double x = clamp(anchor[0] + (random.nextDouble() - 0.5) * 620.0, 160.0, WORLD_W - 160.0);
-        double y = clamp(anchor[1] + (random.nextDouble() - 0.5) * 500.0, 160.0, WORLD_H - 160.0);
+        double x = clamp(anchor[0] + (random.nextDouble() - 0.5) * 520.0, 160.0, WORLD_W - 160.0);
+        double y = clamp(anchor[1] + (random.nextDouble() - 0.5) * 420.0, 160.0, WORLD_H - 160.0);
         Ship ship = SpawnSystem.spawnCatalogShip(ctx, role, faction, x, y);
         if (ship == null) return;
         ship.primaryWeaponFamily = Ship.PrimaryWeaponFamily.ENERGY_BOLT;
@@ -166,10 +174,10 @@ public final class MainMenuBattlePanel extends JPanel implements MainMenuPanel.M
     private double[] factionAnchor(Faction faction) {
         int lane = Math.floorMod(faction == null ? 0 : faction.ordinal(), 4);
         return switch (lane) {
-            case 0 -> new double[]{WORLD_W * 0.34, WORLD_H * 0.38};
-            case 1 -> new double[]{WORLD_W * 0.66, WORLD_H * 0.62};
-            case 2 -> new double[]{WORLD_W * 0.62, WORLD_H * 0.34};
-            default -> new double[]{WORLD_W * 0.38, WORLD_H * 0.66};
+            case 0 -> new double[]{WORLD_W * 0.28, WORLD_H * 0.33};
+            case 1 -> new double[]{WORLD_W * 0.72, WORLD_H * 0.67};
+            case 2 -> new double[]{WORLD_W * 0.70, WORLD_H * 0.32};
+            default -> new double[]{WORLD_W * 0.30, WORLD_H * 0.68};
         };
     }
 
@@ -209,9 +217,9 @@ public final class MainMenuBattlePanel extends JPanel implements MainMenuPanel.M
             count++;
         }
         if (count <= 0) return;
-        double targetX = clamp(sx / count, WORLD_W * 0.30, WORLD_W * 0.70);
-        double targetY = clamp(sy / count, WORLD_H * 0.28, WORLD_H * 0.72);
-        double blend = Math.min(1.0, dt * 0.8);
+        double targetX = clamp(sx / count, WORLD_W * 0.42, WORLD_W * 0.58);
+        double targetY = clamp(sy / count, WORLD_H * 0.40, WORLD_H * 0.60);
+        double blend = Math.min(1.0, dt * 0.55);
         cameraX += (targetX - cameraX) * blend;
         cameraY += (targetY - cameraY) * blend;
     }
@@ -271,9 +279,9 @@ public final class MainMenuBattlePanel extends JPanel implements MainMenuPanel.M
     }
 
     private double battleZoom(int w, int h) {
-        double fitW = w / 2200.0;
-        double fitH = h / 1400.0;
-        return clamp(Math.min(fitW, fitH), 0.30, 0.62);
+        double fitW = w / 4400.0;
+        double fitH = h / 2850.0;
+        return clamp(Math.min(fitW, fitH), 0.22, 0.48);
     }
 
     private void paintOverlay(Graphics2D g2, int w, int h) {
@@ -282,13 +290,13 @@ public final class MainMenuBattlePanel extends JPanel implements MainMenuPanel.M
         FontMetrics titleFm = g2.getFontMetrics();
         int titleY = pad + titleFm.getAscent();
         g2.setColor(new Color(125, 214, 231, 210));
-        g2.drawString("TACTICAL ATTRACT MODE", pad, titleY);
+        g2.drawString("FLEET BATTLE", pad, titleY);
         g2.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 12, uiScale));
         FontMetrics subtitleFm = g2.getFontMetrics();
         int subtitleY = titleY + Math.max(MenuDisplay.scaled(14, uiScale),
                 titleFm.getDescent() + subtitleFm.getAscent() + MenuDisplay.scaled(4, uiScale));
         g2.setColor(new Color(198, 211, 226, 166));
-        g2.drawString("Real fleet sandbox - all factions, disposable state",
+        g2.drawString("Live fleet skirmish preview",
                 pad, subtitleY);
 
         String status = factionStatus();

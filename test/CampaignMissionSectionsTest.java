@@ -239,8 +239,10 @@ class CampaignMissionSectionsTest {
 
         assertTrue(ctx.campaign.discoveriesFound >= 1);
         assertTrue(getBooleanField(first, "discovered"));
-        assertTrue(ctx.ui.voiceCaption != null && !ctx.ui.voiceCaption.isBlank(),
-                "discovering a scanner contact should now trigger contextual crew banter");
+        assertTrue(ctx.eventBanner != null && ctx.eventBanner.startsWith("DISCOVERY:"),
+                "discovering a scanner contact should use non-voice HUD feedback");
+        assertTrue(ctx.ui.voiceCaption == null || ctx.ui.voiceCaption.isBlank(),
+                "scanner discovery should not dispatch voice acting in release builds");
     }
 
     @Test

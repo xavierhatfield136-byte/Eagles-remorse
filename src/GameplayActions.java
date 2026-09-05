@@ -642,26 +642,6 @@ public final class GameplayActions {
                 UISystem.toggleActiveStationAutomation(ctx);
                 handled = true;
             }
-            case java.awt.event.KeyEvent.VK_C -> {
-                UISystem.toggleVoiceCaptions(ctx);
-                handled = true;
-            }
-            case java.awt.event.KeyEvent.VK_Z -> {
-                UISystem.cycleVoiceMixFocus(ctx, -1);
-                handled = true;
-            }
-            case java.awt.event.KeyEvent.VK_X -> {
-                UISystem.cycleVoiceMixFocus(ctx, +1);
-                handled = true;
-            }
-            case java.awt.event.KeyEvent.VK_COMMA -> {
-                UISystem.stepVoiceMixVolume(ctx, -1);
-                handled = true;
-            }
-            case java.awt.event.KeyEvent.VK_PERIOD -> {
-                UISystem.stepVoiceMixVolume(ctx, +1);
-                handled = true;
-            }
             default -> {
                 // handled below by station-specific bindings
             }

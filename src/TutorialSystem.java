@@ -7,8 +7,11 @@ import java.awt.FontMetrics;
 import java.awt.GradientPaint;
 import java.awt.Graphics2D;
 import java.awt.Point;
+import java.awt.Polygon;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
+import java.awt.Shape;
+import java.awt.Stroke;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -372,6 +375,8 @@ public final class TutorialSystem {
         int x = panelRect.x;
         int y = panelRect.y;
 
+        drawActiveMarkerScreenCue(ctx, st, gx, viewportW, viewportH, panelRect);
+
         gx.translate(x, y);
         gx.setColor(new Color(0, 0, 0, 108));
         gx.fillRoundRect(5, 6, panelW, panelH, 24, 24);
@@ -443,6 +448,139 @@ public final class TutorialSystem {
                 "Ctrl+F1 skip  Ctrl+F2 archive  F10 menu.",
                 contentW), 14, panelH - 10);
         gx.dispose();
+    }
+
+    static Rectangle activeMarkerCueRectForTest(GameContext ctx, int viewportW, int viewportH) {
+        TutorialState st = state(ctx);
+        if (st == null) return null;
+        int panelW = Math.min(560, Math.max(280, viewportW - 36));
+        Rectangle panel = tutorialOverlayPanelRect(viewportW, viewportH, panelW, 210);
+        return activeMarkerCueRect(ctx, st, viewportW, viewportH, panel);
+    }
+
+    private static void drawActiveMarkerScreenCue(GameContext ctx, TutorialState st, Graphics2D g2,
+                                                  int viewportW, int viewportH, Rectangle tutorialPanel) {
+        Marker marker = activeMarker(ctx, st);
+        if (ctx == null || ctx.player == null || marker == null || g2 == null) return;
+        Rectangle cue = activeMarkerCueRect(ctx, st, viewportW, viewportH, tutorialPanel);
+        if (cue == null) return;
+
+        double zoom = CameraSystem.normalizedZoom(ctx);
+        double sx = (marker.x - ctx.camX) * zoom;
+        double sy = (marker.y - ctx.camY) * zoom;
+        boolean onscreen = sx >= 0.0 && sx <= viewportW && sy >= 0.0 && sy <= viewportH;
+        int distance = (int) Math.round(Math.hypot(marker.x - ctx.player.x, marker.y - ctx.player.y));
+
+        Font oldFont = g2.getFont();
+        Shape oldClip = g2.getClip();
+        Stroke oldStroke = g2.getStroke();
+        g2.setClip(null);
+        g2.setFont(new Font("Consolas", Font.BOLD, 12));
+        String label = marker.label + "  " + distance + "m";
+        FontMetrics fm = g2.getFontMetrics();
+        if (onscreen) {
+            int cx = cue.x + cue.width / 2;
+            int cy = cue.y + cue.height / 2;
+            int r = Math.max(16, Math.min(34, cue.width / 2));
+            g2.setColor(new Color(5, 8, 12, 172));
+            g2.fillOval(cx - r - 3, cy - r - 3, (r + 3) * 2, (r + 3) * 2);
+            g2.setStroke(new BasicStroke(2.4f));
+            g2.setColor(new Color(255, 226, 120, 236));
+            g2.drawOval(cx - r, cy - r, r * 2, r * 2);
+            g2.drawLine(cx - r - 6, cy, cx + r + 6, cy);
+            g2.drawLine(cx, cy - r - 6, cx, cy + r + 6);
+            drawCueLabel(g2, label, MathUtil.clamp(cx - fm.stringWidth(label) / 2,
+                    12, viewportW - fm.stringWidth(label) - 12), cy - r - 14, fm);
+        } else {
+            int cx = cue.x + cue.width / 2;
+            int cy = cue.y + cue.height / 2;
+            double centerX = viewportW * 0.5;
+            double centerY = viewportH * 0.5;
+            double angle = Math.atan2(sy - centerY, sx - centerX);
+            Polygon arrow = new Polygon();
+            arrow.addPoint(15, 0);
+            arrow.addPoint(-9, -8);
+            arrow.addPoint(-5, 0);
+            arrow.addPoint(-9, 8);
+
+            Graphics2D ax = (Graphics2D) g2.create();
+            ax.translate(cx, cy);
+            ax.rotate(angle);
+            ax.setColor(new Color(4, 8, 14, 194));
+            ax.fillOval(-22, -22, 44, 44);
+            ax.setColor(new Color(255, 226, 120, 238));
+            ax.fillPolygon(arrow);
+            ax.setColor(new Color(255, 250, 220, 170));
+            ax.drawOval(-22, -22, 44, 44);
+            ax.dispose();
+
+            int labelX = MathUtil.clamp(cx - fm.stringWidth(label) / 2,
+                    12, viewportW - fm.stringWidth(label) - 12);
+            int labelY = MathUtil.clamp(cy + 28, 28, viewportH - 14);
+            drawCueLabel(g2, label, labelX, labelY, fm);
+        }
+
+        g2.setStroke(oldStroke);
+        g2.setClip(oldClip);
+        g2.setFont(oldFont);
+    }
+
+    private static Rectangle activeMarkerCueRect(GameContext ctx, TutorialState st,
+                                                 int viewportW, int viewportH, Rectangle tutorialPanel) {
+        Marker marker = activeMarker(ctx, st);
+        if (ctx == null || ctx.player == null || marker == null || viewportW <= 0 || viewportH <= 0) return null;
+        double zoom = CameraSystem.normalizedZoom(ctx);
+        double sx = (marker.x - ctx.camX) * zoom;
+        double sy = (marker.y - ctx.camY) * zoom;
+        boolean onscreen = sx >= 0.0 && sx <= viewportW && sy >= 0.0 && sy <= viewportH;
+
+        Rectangle usable = new Rectangle(18, 18, Math.max(1, viewportW - 36), Math.max(1, viewportH - 36));
+        Rectangle coreMenu = Renderer.getCoreMenuBarRect(viewportW, viewportH);
+        int bottomLimit = Math.max(usable.y + 80, coreMenu.y - 18);
+        usable.height = Math.max(1, Math.min(usable.height, bottomLimit - usable.y));
+        if (tutorialPanel != null && tutorialPanel.intersects(usable)) {
+            if (tutorialPanel.y <= usable.y + usable.height / 2) {
+                usable.y = Math.min(bottomLimit - 80, tutorialPanel.y + tutorialPanel.height + 12);
+                usable.height = Math.max(1, bottomLimit - usable.y);
+            } else {
+                usable.height = Math.max(1, tutorialPanel.y - usable.y - 12);
+            }
+        }
+
+        int size = onscreen ? 56 : 44;
+        int cx;
+        int cy;
+        if (onscreen) {
+            cx = MathUtil.clamp((int) Math.round(sx), usable.x + size / 2, usable.x + usable.width - size / 2);
+            cy = MathUtil.clamp((int) Math.round(sy), usable.y + size / 2, usable.y + usable.height - size / 2);
+        } else {
+            double centerX = viewportW * 0.5;
+            double centerY = viewportH * 0.5;
+            double dx = sx - centerX;
+            double dy = sy - centerY;
+            double scaleX = dx == 0.0 ? Double.POSITIVE_INFINITY
+                    : ((dx > 0.0 ? usable.x + usable.width - size / 2.0 : usable.x + size / 2.0) - centerX) / dx;
+            double scaleY = dy == 0.0 ? Double.POSITIVE_INFINITY
+                    : ((dy > 0.0 ? usable.y + usable.height - size / 2.0 : usable.y + size / 2.0) - centerY) / dy;
+            double t = Math.max(0.0, Math.min(Math.abs(scaleX), Math.abs(scaleY)));
+            if (!Double.isFinite(t) || t <= 0.0) t = 1.0;
+            cx = MathUtil.clamp((int) Math.round(centerX + dx * t),
+                    usable.x + size / 2, usable.x + usable.width - size / 2);
+            cy = MathUtil.clamp((int) Math.round(centerY + dy * t),
+                    usable.y + size / 2, usable.y + usable.height - size / 2);
+        }
+        return new Rectangle(cx - size / 2, cy - size / 2, size, size);
+    }
+
+    private static void drawCueLabel(Graphics2D g2, String label, int x, int baseline, FontMetrics fm) {
+        if (g2 == null || label == null || label.isBlank() || fm == null) return;
+        int w = fm.stringWidth(label) + 12;
+        g2.setColor(new Color(4, 8, 14, 186));
+        g2.fillRoundRect(x - 6, baseline - fm.getAscent() - 3, w, fm.getHeight() + 6, 8, 8);
+        g2.setColor(new Color(255, 226, 120, 214));
+        g2.drawRoundRect(x - 6, baseline - fm.getAscent() - 3, w, fm.getHeight() + 6, 8, 8);
+        g2.setColor(new Color(255, 246, 214, 238));
+        g2.drawString(label, x, baseline);
     }
 
     private static void drawArchive(GameContext ctx, TutorialState st, Graphics2D g2, int viewportW, int viewportH) {

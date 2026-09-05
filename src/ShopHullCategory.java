@@ -32,13 +32,13 @@ public enum ShopHullCategory {
                     MINER -> ESCORT;
             case LIGHT_CRUISER,
                     MEDIUM_CRUISER,
-                    CRUISER,
-                    BATTLECRUISER,
-                    BATTLESHIP,
                     STEALTH_SHIP,
                     TRANSPORT,
                     HAULER -> LINE;
-            case DREADNOUGHT,
+            case CRUISER,
+                    BATTLECRUISER,
+                    BATTLESHIP,
+                    DREADNOUGHT,
                     CARRIER,
                     DRONE_CARRIER,
                     SUPERSHIP -> CAPITAL;

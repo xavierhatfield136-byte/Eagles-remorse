@@ -1899,7 +1899,8 @@ class CampaignStrategicCommandHudTest {
         );
         actionRect.setAccessible(true);
 
-        for (String actionId : List.of("TACTICAL_PLOT_COURSE", "TACTICAL_HOLD_POSITION", "TACTICAL_SEND_RECON")) {
+        for (String actionId : List.of("TACTICAL_SET_WAYPOINT", "TACTICAL_PLOT_COURSE",
+                "TACTICAL_HOLD_POSITION", "TACTICAL_REOPEN_BRIEFING")) {
             Rectangle rect = (Rectangle) actionRect.invoke(null, ctx, panel, actionId);
             assertNotNull(rect, "expected a rendered rect for " + actionId);
             Renderer.CampaignHubClickTarget target = Renderer.tacticalMapClickTargetAt(
@@ -1916,11 +1917,10 @@ class CampaignStrategicCommandHudTest {
     }
 
     @Test
-    void tacticalReconActionRequiresTheSameSuppliesItReports() throws Exception {
+    void tacticalMapActionsOmitRetiredPlaceholderButtons() throws Exception {
         GameContext ctx = initializedCampaignContext();
         ctx.campaign.strategicOvermapMode = false;
         ctx.campaign.campaignSupplies = 1;
-        ctx.ui.tacticalMapTab = UiState.TacticalMapTab.CONTACTS;
         CampaignSystem.selectCampaignContactTarget(ctx,
                 "Enemy Patrol",
                 "Local contact",
@@ -1937,13 +1937,14 @@ class CampaignStrategicCommandHudTest {
         ctx.ui.tacticalMapSelectionY = 1800.0;
         ctx.ui.tacticalMapSelectionHostile = true;
 
-        CampaignSystem.CampaignAction recon = CampaignSystem.tacticalMapVisibleActions(ctx).stream()
-                .filter(action -> "TACTICAL_SEND_RECON".equals(action.id))
-                .findFirst()
-                .orElseThrow();
-
-        assertEquals(false, recon.enabled);
-        assertEquals("insufficient supplies", recon.disabledReason);
+        for (UiState.TacticalMapTab tab : UiState.TacticalMapTab.values()) {
+            ctx.ui.tacticalMapTab = tab;
+            List<CampaignSystem.CampaignAction> actions = CampaignSystem.tacticalMapVisibleActions(ctx);
+            assertTrue(actions.stream().noneMatch(action -> "TACTICAL_SEND_RECON".equals(action.id)
+                    || "TACTICAL_MARK_LATER".equals(action.id)));
+            assertTrue(actions.stream().noneMatch(action -> "SEND RECON".equals(action.label)
+                    || "MARK FOR LATER".equals(action.label)));
+        }
     }
 
     @Test

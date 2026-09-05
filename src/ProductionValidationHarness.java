@@ -117,6 +117,10 @@ public final class ProductionValidationHarness {
 
     private static void validateVoiceManifest(List<String> errors, List<String> report) {
         List<AudioSystem.VoiceEventSpec> rows = AudioSystem.voiceEventMatrix();
+        if (rows.isEmpty()) {
+            report.add("voice acting=removed");
+            return;
+        }
         int assetsOk = 0;
         int captionsOk = 0;
         for (AudioSystem.VoiceEventSpec row : rows) {

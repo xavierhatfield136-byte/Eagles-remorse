@@ -14,6 +14,8 @@ Start here. The docs are organized by purpose so the next work is visible withou
 
 ## Primary Roadmap
 
+- `GAME_EXPERIENCE_REVIEW_CHECKLIST_2026-09-05.md` - authorized and partially executed: first HUD/map/onboarding/menu stabilization slice from the September 5 review; remaining viewport, command, report, fleet-history, and full visual validation work is still open.
+
 1. `1_0_OWNER_DECISIONS_AND_IMPLEMENTATION_ROADMAP.md` - binding 1.0 scope, owner decisions, release blockers, and implementation order.
 2. `1_0_MASTER_IMPLEMENTATION_CHECKLIST.md` - the large day-to-day implementation, testing, acceptance, and release tracker for 1.0.
 3. `1_0_OWNER_INPUT_WORKSHEET.md` - the completed owner questionnaire that supplies the 1.0 direction.

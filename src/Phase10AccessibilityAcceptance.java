@@ -94,15 +94,15 @@ public final class Phase10AccessibilityAcceptance {
 
     public static List<AccessibilityCheck> audioChecks() {
         return List.of(
-                check("spoken-captions", "Caption spoken callouts", "AudioSystem voice cues always resolve a caption variant or event fallback."),
-                check("critical-radio-captions", "Caption critical radio information", "Scripted/strategic voice calls write captions into UiState."),
-                check("combat-readable-captions", "Keep captions readable over combat",
-                        "Subtitle background/speaker-label settings and combat HUD placement keep captions separated from warnings."),
-                check("quiet-mode", "Verify quiet mode", "Voice captions can remain authoritative while chatter is deprioritized when captions are off."),
-                check("reduced-noise", "Verify reduced-noise mode", "Per-role voice volume can be lowered to 0% and persists."),
+                check("voice-removed", "Verify no voice acting dependency", "AudioSystem voice matrix is empty and release packaging rejects bundled voice assets."),
+                check("critical-radio-text", "Show critical radio information as text", "Strategic, objective, warning, and comms information renders in visible UI panels."),
+                check("combat-readable-text", "Keep combat text readable",
+                        "HUD panels and warning banners keep mission, status, and ship-readiness text separated from combat action."),
+                check("quiet-mode", "Verify quiet mode", "All required information remains visible when audio is muted."),
+                check("reduced-noise", "Verify reduced-noise mode", "SFX volume controls can be lowered without hiding objectives, warnings, or comms."),
                 check("not-audio-only", "Ensure no required information is audio-only",
                         "Campaign objectives, warnings, comms, and strategic choices are rendered as text."),
-                check("volume-controls", "Verify volume controls", "Crew-station overlay exposes C captions, Z/X focus, and comma/period volume.")
+                check("volume-controls", "Verify volume controls", "Settings expose general audio controls without requiring voice-specific controls.")
         );
     }
 

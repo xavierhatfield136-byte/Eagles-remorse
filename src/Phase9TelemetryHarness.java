@@ -81,7 +81,7 @@ public final class Phase9TelemetryHarness {
 
         boolean pass = result.roomHitEvents > 0
                 && !result.roomHitDistribution.isEmpty()
-                && result.voiceDispatchCount > 0
+                && (AudioSystem.voiceEventMatrix().isEmpty() || result.voiceDispatchCount > 0)
                 && result.hazardIgnitions > 0;
         if (!pass && strict) {
             System.out.println("[phase9-telemetry] checks: FAIL");

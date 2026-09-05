@@ -196,7 +196,7 @@ public final class Phase11PackagingReleaseValidation {
             requirePrefix(jf, "environment_overhaul_dropzone/", errors);
             requirePrefix(jf, "ui_theme/", errors);
             requirePrefix(jf, "audio/", errors);
-            requirePrefix(jf, "voice/", errors);
+            rejectPrefix(jf, "voice/", errors);
             rejectPrefix(jf, "ai_pipeline/", errors);
             rejectPrefix(jf, "newshipskins/", errors);
             rejectSuffix(jf, ".psd", errors);

@@ -135,7 +135,7 @@ class RendererHoverTooltipTest {
                 objectiveCard.y + objectiveCard.height / 2);
 
         assertNotNull(tooltip);
-        assertTrue(tooltip.title.contains("OBJECTIVE"));
+        assertTrue(tooltip.title.contains("MISSION"));
         assertTrue(tooltip.body.contains(objectiveTitle));
         assertTrue(tooltip.body.contains("warp corridor stabilizes"));
     }
@@ -527,7 +527,7 @@ class RendererHoverTooltipTest {
     }
 
     @Test
-    void missionMapUsesTacticalOutlineEntityLayerInsteadOfDotOnlyLayer() {
+    void missionMapUsesFilledTacticalSilhouetteEntityLayerInsteadOfOutlineOnlyLayer() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.SHOWCASE, 5000, 5000, true, 1234L, false));
         ctx.ui.mapOpen = true;
         ctx.ui.strategicMapZoom = 2.2;
@@ -553,6 +553,7 @@ class RendererHoverTooltipTest {
         int cx = inner.x + inner.width / 2;
         int cy = inner.y + inner.height / 2;
         int changed = 0;
+        int filledCore = 0;
         for (int y = cy - 38; y <= cy + 38; y++) {
             for (int x = cx - 38; x <= cx + 38; x++) {
                 int argb = canvas.getRGB(x, y);
@@ -563,9 +564,23 @@ class RendererHoverTooltipTest {
                 if (alpha > 90 && (r > 90 || g > 120 || b > 150)) changed++;
             }
         }
+        for (int y = cy - 6; y <= cy + 6; y++) {
+            for (int x = cx - 10; x <= cx + 10; x++) {
+                int argb = canvas.getRGB(x, y);
+                int r = (argb >>> 16) & 0xff;
+                int g = (argb >>> 8) & 0xff;
+                int b = argb & 0xff;
+                boolean strongFactionColor = (r > 120 && r >= g && r >= b)
+                        || (g > 120 && g >= r && g >= b)
+                        || (b > 140 && b >= r && b >= g);
+                if (strongFactionColor) filledCore++;
+            }
+        }
 
         assertTrue(ctx.perf.renderMapMs > 0.0, "mission map overlay should render");
         assertTrue(changed > 140,
                 "mission map should draw a visible tactical ship silhouette, not only a tiny dot");
+        assertTrue(filledCore > 90,
+                "mission map tactical ship icons should use a filled faction-colored silhouette, not only an outline");
     }
 }

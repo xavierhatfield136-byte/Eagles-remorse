@@ -257,59 +257,9 @@ public final class GameRenderSystem {
         String contextHint = buildContextHint(ctx, docked);
         GameContext.HudDetail effectiveHudDetail = effectiveHudDetailForRenderPressure(ctx, ctx.ui.hudDetail);
 
-        long hudRenderStart = System.nanoTime();
-        Renderer.drawHUD(
-                g2,
-                ctx.player,
-                ctx.credits,
-                hangarTier,
-                (docked != null),
-                ctx.ui.shopOpen,
-                ctx.autoLockTurrets,
-                ctx.lockedTarget,
-                playerWingActive,
-                playerWingCap,
-                lockedWingActive,
-                lockedWingCap,
-                resRush,
-                allyOre,
-                enemyOre,
-                ctx.resourceGoal,
-                ctx.gameOverText,
-                objectiveTitle,
-                objectiveDetail,
-                ctx.eventBanner,
-                ctx.eventBannerT,
-                ctx.orePriceMul,
-                ctx.orePriceT,
-                ctx.miningMul,
-                ctx.miningT,
-                ctx.camX,
-                ctx.camY,
-                viewportW,
-                viewportH,
-                zoom,
-                stationStatus,
-                ctx,
-                effectiveHudDetail,
-                contextHint,
-                overlayStatus
-
-        );
-        TutorialSystem.drawOverlay(ctx, g2, viewportW, viewportH);
-        drawVoiceCaption(ctx, g2, viewportW, viewportH);
-        drawModifierChips(ctx, g2, viewportW);
-        Renderer.drawCommsPanel(g2, ctx, viewportW, viewportH);
-        Renderer.drawCommsContextMenu(g2, ctx, viewportW, viewportH);
-        Renderer.drawCommTradeMenu(g2, ctx, viewportW, viewportH);
-
-        ctx.perf.renderHudMs = (System.nanoTime() - hudRenderStart) / 1_000_000.0;
-        if (tacticalFpsView) {
-            drawTacticalStatusOverlay(ctx, g2, viewportW, viewportH, zoom, stationStatus, overlayStatus);
-        }
-
         if (ctx.ui.mapOpen) {
             long mapRenderStart = System.nanoTime();
+            paintMapOwningBackdrop(g2, viewportW, viewportH);
             Renderer.drawStrategicMap(g2, ctx, viewportW, viewportH, ctx.WORLD_W, ctx.WORLD_H, ctx.camX, ctx.camY,
                     CameraSystem.worldViewWidth(ctx, viewportW), CameraSystem.worldViewHeight(ctx, viewportH), ctx.player,
                     mapShips, ctx.asteroids, ctx.salvage, ctx.ui.waypointX, ctx.ui.waypointY, ctx.ui.mapPings,
@@ -319,6 +269,58 @@ public final class GameRenderSystem {
         } else {
             ctx.perf.renderMapMs = 0.0;
         }
+
+        long hudRenderStart = System.nanoTime();
+        if (!ctx.ui.mapOpen) {
+            Renderer.drawHUD(
+                    g2,
+                    ctx.player,
+                    ctx.credits,
+                    hangarTier,
+                    (docked != null),
+                    ctx.ui.shopOpen,
+                    ctx.autoLockTurrets,
+                    ctx.lockedTarget,
+                    playerWingActive,
+                    playerWingCap,
+                    lockedWingActive,
+                    lockedWingCap,
+                    resRush,
+                    allyOre,
+                    enemyOre,
+                    ctx.resourceGoal,
+                    ctx.gameOverText,
+                    objectiveTitle,
+                    objectiveDetail,
+                    ctx.eventBanner,
+                    ctx.eventBannerT,
+                    ctx.orePriceMul,
+                    ctx.orePriceT,
+                    ctx.miningMul,
+                    ctx.miningT,
+                    ctx.camX,
+                    ctx.camY,
+                    viewportW,
+                    viewportH,
+                    zoom,
+                    stationStatus,
+                    ctx,
+                    effectiveHudDetail,
+                    contextHint,
+                    overlayStatus
+
+            );
+            TutorialSystem.drawOverlay(ctx, g2, viewportW, viewportH);
+            drawModifierChips(ctx, g2, viewportW);
+            if (tacticalFpsView) {
+                drawTacticalStatusOverlay(ctx, g2, viewportW, viewportH, zoom, stationStatus, overlayStatus);
+            }
+        }
+        Renderer.drawCommsPanel(g2, ctx, viewportW, viewportH);
+        Renderer.drawCommsContextMenu(g2, ctx, viewportW, viewportH);
+        Renderer.drawCommTradeMenu(g2, ctx, viewportW, viewportH);
+
+        ctx.perf.renderHudMs = (System.nanoTime() - hudRenderStart) / 1_000_000.0;
 
         if (ctx.ui.baseMenuOpen) {
             Ship base = CampaignSystem.currentBaseUpgradeAnchor(ctx);
@@ -409,6 +411,16 @@ if (DevTools.isDebugOverlay()) {
 
     }
 
+    private static void paintMapOwningBackdrop(Graphics2D g2, int viewportW, int viewportH) {
+        if (g2 == null || viewportW <= 0 || viewportH <= 0) return;
+        Paint oldPaint = g2.getPaint();
+        g2.setPaint(new GradientPaint(
+                0, 0, new Color(2, 6, 13, 238),
+                0, Math.max(1, viewportH), new Color(4, 9, 18, 232)));
+        g2.fillRect(0, 0, viewportW, viewportH);
+        g2.setPaint(oldPaint);
+    }
+
     private static void renderCampaignMapScreen(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {
         long seed = (ctx != null && ctx.config != null) ? ctx.config.seed : 12345L;
         g2.setColor(Color.BLACK);
@@ -461,8 +473,9 @@ if (DevTools.isDebugOverlay()) {
 
     private static int visibleUiPanelCount(GameContext ctx) {
         if (ctx == null || ctx.ui == null) return 0;
-        int panels = 2; // HUD and persistent quick-access bar.
-        if (ctx.ui.mapOpen || CampaignSystem.isCampaignMapScreenActive(ctx)) panels++;
+        int panels = (ctx.ui.mapOpen || CampaignSystem.isCampaignMapScreenActive(ctx))
+                ? 1
+                : 2; // HUD and persistent quick-access bar.
         if (ctx.ui.shopOpen) panels++;
         if (ctx.ui.baseMenuOpen) panels++;
         if (ctx.ui.powerManagementOpen) panels++;
@@ -593,9 +606,9 @@ if (DevTools.isDebugOverlay()) {
         try {
             int x = 16;
             int y = 16;
-            int w = Math.min(390, Math.max(280, viewportW / 3));
-            int h = 118;
-            int lineH = 18;
+            int w = Math.min(440, Math.max(310, viewportW / 3));
+            int h = 146;
+            int lineH = 17;
 
             hud.setColor(new Color(0, 0, 0, 180));
             hud.fillRoundRect(x, y, w, h, 16, 16);
@@ -604,7 +617,7 @@ if (DevTools.isDebugOverlay()) {
 
             hud.setFont(new Font("Consolas", Font.BOLD, 16));
             hud.setColor(new Color(224, 236, 255, 230));
-            hud.drawString("TACTICAL FPS VIEW", x + 14, y + 24);
+            hud.drawString("TACTICAL VIEW", x + 14, y + 24);
 
             hud.setFont(new Font("Consolas", Font.PLAIN, 13));
             hud.setColor(new Color(196, 214, 234, 214));
@@ -618,14 +631,24 @@ if (DevTools.isDebugOverlay()) {
                     : "Shields: " + statusPercent(ctx.player.shield, shieldMax);
             hud.drawString(hull, x + 14, textY);
             hud.drawString(shield, x + 14, textY + lineH);
-            hud.drawString("Visible ships: " + ctx.perf.drawnShips + "    Zoom: " + String.format(java.util.Locale.US, "%.2fx", zoom),
+            hud.drawString("Contacts: " + ctx.perf.drawnShips + "    Zoom: " + String.format(java.util.Locale.US, "%.2fx", zoom),
                     x + 14, textY + lineH * 2);
-            hud.drawString("Effects limited for smoother tactical view.", x + 14, textY + lineH * 3);
+            if (ctx.player != null) {
+                hud.drawString("Crew: " + ctx.player.crewOrder + "    Power: " + ctx.player.powerPreset,
+                        x + 14, textY + lineH * 3);
+            }
+            if (ctx.lockedTarget != null && ctx.lockedTarget.alive) {
+                int dist = ctx.player == null ? 0 : (int) Math.round(Math.hypot(ctx.lockedTarget.x - ctx.player.x, ctx.lockedTarget.y - ctx.player.y));
+                hud.drawString("Lock: " + ctx.lockedTarget.name + " (" + Math.max(0, dist) + "m)",
+                        x + 14, textY + lineH * 4);
+            } else {
+                hud.drawString("Lock: no target selected", x + 14, textY + lineH * 4);
+            }
 
             String footer = (overlayStatus != null && !overlayStatus.isBlank()) ? overlayStatus : stationStatus;
             if (footer != null && !footer.isBlank()) {
                 hud.setColor(new Color(153, 192, 230, 186));
-                hud.drawString(footer, x + 14, textY + lineH * 4);
+                hud.drawString(footer, x + 14, textY + lineH * 5);
             }
         } finally {
             hud.dispose();
@@ -649,36 +672,6 @@ if (DevTools.isDebugOverlay()) {
             if (GameMath.dist2(s.x, s.y, ctx.player.x, ctx.player.y) <= r2) return true;
         }
         return false;
-    }
-
-    private static void drawVoiceCaption(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {
-        if (ctx == null || g2 == null) return;
-        if (!ctx.ui.voiceCaptionsEnabled) return;
-        if (ctx.ui.voiceCaptionT <= 0.0 || ctx.ui.voiceCaption == null || ctx.ui.voiceCaption.isBlank()) return;
-
-        String text = ctx.experience.subtitleSpeakerLabels
-                ? ctx.ui.voiceCaption
-                : ctx.ui.voiceCaption.replaceFirst("^[A-Z ]{2,18}:\\s*", "");
-        int subtitlePx = Math.max(11, (int) Math.round(14 * ctx.experience.subtitleScale * ctx.experience.uiTextScale));
-        g2.setFont(new Font("Consolas", Font.BOLD, subtitlePx));
-        FontMetrics fm = g2.getFontMetrics();
-
-        int w = Math.min(viewportW - 28, fm.stringWidth(text) + 24);
-        int h = 30;
-        int x = (viewportW - w) / 2;
-        int y = viewportH - 90;
-
-        if (ctx.experience.subtitleBackground) {
-            g2.setColor(new Color(0, 0, 0, 195));
-            g2.fillRoundRect(x, y, w, h, 12, 12);
-        }
-        g2.setColor(new Color(205, 225, 255, 190));
-        g2.drawRoundRect(x, y, w, h, 12, 12);
-
-        g2.setColor(new Color(245, 250, 255, 230));
-        int tx = x + (w - fm.stringWidth(text)) / 2;
-        int ty = y + (h + fm.getAscent() - fm.getDescent()) / 2;
-        g2.drawString(text, tx, ty);
     }
 
     private static void drawFleetSelectionMarker(Graphics2D g2, Ship ship) {

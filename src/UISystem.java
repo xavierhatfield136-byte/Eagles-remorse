@@ -1129,38 +1129,6 @@ public final class UISystem {
         setStationAutomation(ctx, s, !stationAutomation(ctx, s));
     }
 
-    public static void cycleVoiceMixFocus(GameContext ctx, int dir) {
-        if (ctx == null) return;
-        GameContext.CrewStation[] values = GameContext.CrewStation.values();
-        int step = (dir < 0) ? -1 : 1;
-        int idx = ctx.ui.voiceMixFocus.ordinal() + step;
-        if (idx < 0) idx = values.length - 1;
-        if (idx >= values.length) idx = 0;
-        ctx.ui.voiceMixFocus = values[idx];
-        EventSystem.showBanner(ctx, "VOICE MIX FOCUS: " + ctx.ui.voiceMixFocus.name(), 0.9);
-    }
-
-    public static void stepVoiceMixVolume(GameContext ctx, int dir) {
-        if (ctx == null) return;
-        double current = ctx.voiceRoleVolume(ctx.ui.voiceMixFocus);
-        double next = current + ((dir < 0) ? -0.05 : 0.05);
-        next = MathUtil.clamp(next, 0.0, 2.0);
-        ctx.setVoiceRoleVolume(ctx.ui.voiceMixFocus, next);
-        persistVoicePreferences(ctx);
-        int pct = (int) Math.round(next * 100.0);
-        EventSystem.showBanner(ctx, "VOICE " + ctx.ui.voiceMixFocus.name() + ": " + pct + "%", 0.8);
-    }
-
-    public static void toggleVoiceCaptions(GameContext ctx) {
-        if (ctx == null) return;
-        ctx.ui.voiceCaptionsEnabled = !ctx.ui.voiceCaptionsEnabled;
-        if (!ctx.ui.voiceCaptionsEnabled) {
-            ctx.ui.clearVoiceCaption();
-        }
-        persistVoicePreferences(ctx);
-        EventSystem.showBanner(ctx, "VOICE CAPTIONS: " + (ctx.ui.voiceCaptionsEnabled ? "ON" : "OFF"), 1.0);
-    }
-
     public static void cycleXrayFilterMode(GameContext ctx, int dir) {
         if (ctx == null) return;
         GameContext.XrayFilterMode[] modes = GameContext.XrayFilterMode.values();

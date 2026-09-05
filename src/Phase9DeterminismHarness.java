@@ -286,7 +286,8 @@ public final class Phase9DeterminismHarness {
         int sfxCooldownViol = countSfxCooldownViolations(sfx);
         AudioSystem.VoiceTelemetrySnapshot voiceTelemetry = AudioSystem.voiceTelemetry(ctx);
 
-        boolean pass = !voice.isEmpty()
+        boolean voiceExpected = !AudioSystem.voiceEventMatrix().isEmpty();
+        boolean pass = (!voiceExpected || voice.isEmpty())
                 && !sfx.isEmpty()
                 && voiceCooldownViol == 0
                 && sfxCooldownViol == 0

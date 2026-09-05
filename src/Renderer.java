@@ -517,25 +517,25 @@ public class Renderer {
             new ShopHullOffer(ShipRole.MEDIUM_CRUISER, 950, 1, ShopHullCategory.LINE,
                     "Versatile strike cruiser",
                     "Flexible midline ship with stronger staying power."),
-            new ShopHullOffer(ShipRole.CRUISER, 1100, 1, ShopHullCategory.LINE,
-                    "Missile cruiser",
-                    "Long-range salvo ship with sustained rack pressure."),
             new ShopHullOffer(ShipRole.HAULER, 300, 1, ShopHullCategory.LINE,
                     "Bulk logistics hauler",
                     "Moves ore off miners fast and keeps the command ship topped up."),
             new ShopHullOffer(ShipRole.TRANSPORT, 460, 1, ShopHullCategory.LINE,
                     "Support transport and repair tender",
                     "Logistics hull that stabilizes nearby allies and carries fleet stores."),
-            new ShopHullOffer(ShipRole.BATTLECRUISER, 1700, 2, ShopHullCategory.LINE,
-                    "Fast capital hunter",
-                    "Aggressive heavy hull for breakthrough pushes."),
-            new ShopHullOffer(ShipRole.BATTLESHIP, 2300, 2, ShopHullCategory.LINE,
-                    "Line-breaking heavy capital",
-                    "Dense broadside hull built to win frontal exchanges."),
             new ShopHullOffer(ShipRole.STEALTH_SHIP, 1300, 2, ShopHullCategory.LINE,
                     "Raid and ambush specialist",
                     "High-risk strike hull for flanks and precision kills."),
 
+            new ShopHullOffer(ShipRole.CRUISER, 1100, 1, ShopHullCategory.CAPITAL,
+                    "Missile cruiser",
+                    "Long-range salvo ship with sustained rack pressure."),
+            new ShopHullOffer(ShipRole.BATTLECRUISER, 1700, 2, ShopHullCategory.CAPITAL,
+                    "Fast capital hunter",
+                    "Aggressive heavy hull for breakthrough pushes."),
+            new ShopHullOffer(ShipRole.BATTLESHIP, 2300, 2, ShopHullCategory.CAPITAL,
+                    "Line-breaking heavy capital",
+                    "Dense broadside hull built to win frontal exchanges."),
             new ShopHullOffer(ShipRole.DREADNOUGHT, 3000, 3, ShopHullCategory.CAPITAL,
                     "Siege capital",
                     "Slow, hard-killing warship for attrition fights."),
@@ -711,6 +711,7 @@ public class Renderer {
         int page = (ui == null) ? 0 : clampShopHullPage(category, ui.shopHullPage);
 
         for (int i = 0; i < 7; i++) {
+            if (i + 1 == SHOP_UPGRADE_BEAM_BOLT) continue;
             Rectangle button = getShopCardButtonRect(getShopUpgradeCardRect(panel, i));
             if (button.contains(mouseX, mouseY)) {
                 return new ShopClickTarget(ShopClickTarget.Kind.UPGRADE, i + 1, null, null, 0);
@@ -1684,8 +1685,8 @@ public class Renderer {
             return switch (i + 1) {
                 case 1 -> new HoverTooltip("shop:upgrade:1", "Beam Bolt Primary (Stagger)",
                         "Standard beam-bolt battery with barrels cycling in sequence. Keeps the blue-team beam look while spreading shots across the gun mounts.");
-                case 2 -> new HoverTooltip("shop:upgrade:2", "Beam Bolt Primary (Volley)",
-                        "Synchronized beam-bolt package. All barrels fire together for heavier alpha strikes and longer-range pressure.");
+                case 2 -> new HoverTooltip("shop:upgrade:2", "Beam Mode Control",
+                        "The flagship already includes rapid stagger fire and focused beam fire. Use the in-combat beam panel to swap modes.");
                 case 3 -> new HoverTooltip("shop:upgrade:3", "Hull Plating",
                         "Permanent plating upgrade for the current hull. Raises flagship hull integrity by 10 per level until that chassis reaches its plating cap.");
                 case 4 -> new HoverTooltip("shop:upgrade:4", "Shield Array",
@@ -5457,9 +5458,12 @@ public class Renderer {
         Rectangle coreMenu = getCoreMenuBarRect(viewW, viewH);
         int leftX = 14;
         int leftW = (xrayLayout != null)
-                ? Math.max(250, Math.min(340, xrayLayout.playerX - leftX - 26))
-                : Math.max(270, Math.min(340, viewW / 4));
-        leftW = Math.max(250, Math.min(leftW, viewW - 28));
+                ? Math.max(220, Math.min(280, xrayLayout.playerX - leftX - 26))
+                : Math.max(300, Math.min(390, viewW / 3 - 30));
+        leftW = Math.max(280, Math.min(leftW, viewW - 28));
+        if (xrayLayout != null) {
+            leftW = Math.max(220, Math.min(leftW, xrayLayout.playerX - leftX - 26));
+        }
         if (ctx != null && ctx.ui != null) {
             ctx.ui.clearObjectiveHover();
         }
@@ -5483,7 +5487,7 @@ public class Renderer {
             if (ctx != null && ctx.ui != null) {
                 ctx.ui.setObjectiveHover(
                         new Rectangle(leftX, cardY, leftW, objectiveH),
-                        "OBJECTIVE",
+                        "MISSION",
                         buildObjectiveHoverBody(ctx, objectiveTitle, objectiveDetail));
             }
             cardY += drawObjectiveCard(g2, objectiveTitle, objectiveDetail, leftX, cardY, leftW, detail);
@@ -5590,6 +5594,68 @@ public class Renderer {
             out.add(new Rectangle(layout.cloakRect));
         }
         return List.copyOf(out);
+    }
+
+    public static List<Rectangle> primaryHudStackRectsForTests(GameContext ctx, int viewW, int viewH,
+                                                               String objectiveTitle, String objectiveDetail,
+                                                               String contextHint, String overlayStatus) {
+        if (ctx == null || ctx.player == null) return List.of();
+        GameContext.HudDetail detail = (ctx.ui == null || ctx.ui.hudDetail == null)
+                ? GameContext.HudDetail.FULL
+                : ctx.ui.hudDetail;
+        if (detail == GameContext.HudDetail.MINIMAL) return List.of();
+
+        XrayStackLayout xrayLayout = computeXrayStackLayout(
+                ctx.player,
+                ctx.lockedTarget,
+                ctx.ui != null && ctx.ui.shopOpen,
+                viewW,
+                viewH);
+        Rectangle coreMenu = getCoreMenuBarRect(viewW, viewH);
+        int leftX = 14;
+        int leftW = (xrayLayout != null)
+                ? Math.max(220, Math.min(280, xrayLayout.playerX - leftX - 26))
+                : Math.max(300, Math.min(390, viewW / 3 - 30));
+        leftW = Math.max(220, Math.min(leftW, viewW - 28));
+        if (xrayLayout != null) {
+            leftW = Math.max(220, Math.min(leftW, xrayLayout.playerX - leftX - 26));
+        }
+
+        int objectiveH = TutorialSystem.isActive(ctx)
+                ? 0
+                : computeObjectiveCardHeight(objectiveTitle, objectiveDetail, leftW, detail);
+        int commandH = computeCommandOverviewCardHeight(ctx.player, 0, false, false,
+                0, 0, ctx.resourceGoal, ctx.orePriceMul, ctx.orePriceT, ctx.miningMul, ctx.miningT,
+                ctx.gameOverText, leftW, detail, ctx);
+        int shipH = computeShipSystemsCardHeight(ctx.player, ctx.lockedTarget, ctx.autoLockTurrets,
+                0, 0, "", overlayStatus, contextHint, leftW, detail, ctx);
+        int totalH = commandH + 10 + shipH + (objectiveH > 0 ? objectiveH + 10 : 0);
+        int cardY = Math.max(16, coreMenu.y - 12 - totalH);
+
+        ArrayList<Rectangle> rects = new ArrayList<>();
+        if (objectiveH > 0) {
+            rects.add(new Rectangle(leftX, cardY, leftW, objectiveH));
+            cardY += objectiveH + 10;
+        }
+        if (commandH > 0) {
+            rects.add(new Rectangle(leftX, cardY, leftW, commandH));
+            cardY += commandH + 10;
+        }
+        if (shipH > 0) {
+            rects.add(new Rectangle(leftX, cardY, leftW, shipH));
+        }
+        return List.copyOf(rects);
+    }
+
+    public static List<Rectangle> combatVitalsRectsForTests(GameContext ctx, int viewW, int viewH) {
+        if (ctx == null || ctx.player == null) return List.of();
+        XrayStackLayout layout = computeXrayStackLayout(
+                ctx.player,
+                ctx.lockedTarget,
+                ctx.ui != null && ctx.ui.shopOpen,
+                viewW,
+                viewH);
+        return combatVitalsRects(ctx.player, ctx.lockedTarget, layout, viewW, viewH);
     }
 
     public static HudPanelClickTarget hudPanelClickTargetAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
@@ -5862,7 +5928,7 @@ public class Renderer {
         if (titleLines.isEmpty() && detailLines.isEmpty()) return 0;
 
         int h = computeObjectiveCardHeight(objectiveTitle, objectiveDetail, w, detail);
-        drawHudPanelFrame(g2, x, y, w, h, "OBJECTIVE", new Color(255, 214, 132, 220));
+        drawHudPanelFrame(g2, x, y, w, h, "MISSION", new Color(255, 214, 132, 220));
 
         Rectangle inner = framedSafeContentRect(ThemeArt.HUD_STANDARD_PANEL, x, y, w, h);
         Shape oldClip = g2.getClip();
@@ -5944,7 +6010,7 @@ public class Renderer {
                 allyOre, enemyOre, goal, orePriceMul, orePriceT, miningMul, miningT,
                 gameOverText, w, detail, ctx);
 
-        drawHudPanelFrame(g2, x, y, w, h, "STATUS", factionHudColor(player.faction, 210));
+        drawHudPanelFrame(g2, x, y, w, h, "COMMAND", factionHudColor(player.faction, 210));
 
         Rectangle inner = framedSafeContentRect(ThemeArt.HUD_STANDARD_PANEL, x, y, w, h);
         int titleY = inner.y;
@@ -6089,6 +6155,18 @@ public class Renderer {
         return safe + " " + noun;
     }
 
+    private static int countVisibleShipsForHud(GameContext ctx, Ship player, boolean hostile) {
+        if (ctx == null || ctx.ships == null || player == null || player.faction == null) return 0;
+        int count = 0;
+        for (Ship ship : ctx.ships) {
+            if (ship == null || ship == player || !ship.alive || ship.dying || ship.hp <= 0) continue;
+            if (ship.faction == null) continue;
+            boolean isHostile = !ship.faction.isFriendlyTo(player.faction);
+            if (isHostile == hostile) count++;
+        }
+        return count;
+    }
+
     private static String titleCaseWords(String raw) {
         if (raw == null || raw.isBlank()) return "";
         String[] words = raw.replace('_', ' ').trim().toLowerCase(Locale.US).split("\\s+");
@@ -6127,6 +6205,12 @@ public class Renderer {
                 statusLines.add("Route " + routeIndex + ": " + route.title + " to Sector " + route.targetSector);
             }
         }
+        int hostiles = countVisibleShipsForHud(ctx, player, true);
+        int friendlies = countVisibleShipsForHud(ctx, player, false);
+        if (hostiles + friendlies > 0) {
+            statusLines.add("Contact picture: " + countLabel(hostiles, "hostile")
+                    + " | " + countLabel(friendlies, "ally"));
+        }
         if (player != null && player.cargoMax > 0) {
             String label = CampaignSystem.isCampaignActive(ctx) ? "Ore" : "Cargo";
             String suffix = dockedAtBase ? " | Docked" : "";
@@ -6147,7 +6231,7 @@ public class Renderer {
             statusLines.add("Status: " + gameOverText);
         }
 
-        return limitHudLines(statusLines, 4);
+        return limitHudLines(statusLines, detail == GameContext.HudDetail.FULL ? 7 : 5);
     }
 
     private static int drawActionStripCard(Graphics2D g2, Player player, GameContext.HudDetail detail, int x, int y, int w) {
@@ -6249,7 +6333,7 @@ public class Renderer {
         int h = computeShipSystemsCardHeight(player, lockedTarget, autoLock, playerWingActive, playerWingCap,
                 stationStatus, overlayStatus, contextHint, w, detail, ctx);
 
-        drawHudPanelFrame(g2, x, y, w, h, "SHIP STATUS", factionHudColor(player.faction, 210));
+        drawHudPanelFrame(g2, x, y, w, h, "SHIP READINESS", factionHudColor(player.faction, 210));
         Rectangle inner = framedSafeContentRect(ThemeArt.HUD_STANDARD_PANEL, x, y, w, h);
 
         int chipY = inner.y + 12;
@@ -6314,6 +6398,8 @@ public class Renderer {
         noteLines.add(shipConditionLine(player));
         noteLines.add("Order: " + displayCrewOrder(player.crewOrder)
                 + " | Power: " + displayPowerPreset(player.powerPreset));
+        noteLines.add("Weapons: " + displayPrimaryWeaponFamily(player.primaryWeaponFamily)
+                + " | Missiles: " + currentPlayerMissileRole(player).name().replace('_', ' '));
 
         if (lockedTarget != null && lockedTarget.alive && !lockedTarget.dying && lockedTarget.hp > 0) {
             int dist = (int) Math.round(Math.hypot(lockedTarget.x - player.x, lockedTarget.y - player.y));
@@ -6322,6 +6408,8 @@ public class Renderer {
             if (mode == GameContext.HudDetail.FULL && counter != null && !counter.isBlank()) {
                 noteLines.addAll(limitHudLines(wrapHudText(bodyFm, "Tactical note: " + counter, contentW), 1));
             }
+        } else {
+            noteLines.add("Target: none selected");
         }
 
         noteLines.addAll(activeShipAlerts(player, bodyFm, contentW));
@@ -6348,7 +6436,7 @@ public class Renderer {
             noteLines.addAll(limitHudLines(wrapHudText(bodyFm, "Tip: " + contextHint, contentW), 1));
         }
 
-        return limitHudLines(noteLines, 7);
+        return limitHudLines(noteLines, mode == GameContext.HudDetail.FULL ? 9 : 7);
     }
 
     private static String shipConditionLine(Player player) {
@@ -6379,6 +6467,11 @@ public class Renderer {
             case CUSTOM -> "Custom";
             case BALANCED -> "Balanced";
         };
+    }
+
+    private static String displayPrimaryWeaponFamily(Ship.PrimaryWeaponFamily family) {
+        if (family == Ship.PrimaryWeaponFamily.BEAM_BOLT) return "Focused beam";
+        return "Rapid beam";
     }
 
     private static String displayCarrierMode(Ship.CarrierCommandMode mode) {
@@ -6890,6 +6983,35 @@ public class Renderer {
                                                XrayStackLayout layout, int viewW, int viewH) {
         if (g2 == null || player == null) return;
 
+        List<Rectangle> rects = combatVitalsRects(player, lockedTarget, layout, viewW, viewH);
+        if (rects.isEmpty()) return;
+        Rectangle playerRect = rects.get(0);
+        int cardW = 194;
+
+        drawShipVitalsCard(
+                g2, player, "PLAYER VITALS", playerRect.x, playerRect.y, playerRect.width, playerRect.height,
+                factionHudColor(player.faction, 220),
+                true
+        );
+
+        boolean validTarget = lockedTarget != null && lockedTarget.alive && !lockedTarget.dying && lockedTarget.hp > 0
+                && (lockedTarget.faction == null || player.faction == null || !lockedTarget.faction.isFriendlyTo(player.faction));
+        if (validTarget && rects.size() > 1) {
+            Rectangle targetRect = rects.get(1);
+            String title = "TARGET VITALS";
+            if (lockedTarget.name != null && !lockedTarget.name.isBlank()) title = lockedTarget.name;
+            drawShipVitalsCard(
+                    g2, lockedTarget, title, targetRect.x, targetRect.y, targetRect.width, targetRect.height,
+                    factionHudColor(lockedTarget.faction, 220),
+                    false
+            );
+            drawCommResultCard(g2, ctx, lockedTarget, targetRect.x, targetRect.y + targetRect.height + 8, cardW);
+        }
+    }
+
+    private static List<Rectangle> combatVitalsRects(Player player, Ship lockedTarget,
+                                                     XrayStackLayout layout, int viewW, int viewH) {
+        if (player == null) return List.of();
         int cardW = 194;
         int cardH = player.isStealth ? 110 : 96;
         int margin = 12;
@@ -6916,24 +7038,14 @@ public class Renderer {
             targetY = playerY;
         }
 
-        drawShipVitalsCard(
-                g2, player, "PLAYER VITALS", playerX, playerY, cardW, cardH,
-                factionHudColor(player.faction, 220),
-                true
-        );
-
+        ArrayList<Rectangle> rects = new ArrayList<>();
+        rects.add(new Rectangle(playerX, playerY, cardW, cardH));
         boolean validTarget = lockedTarget != null && lockedTarget.alive && !lockedTarget.dying && lockedTarget.hp > 0
                 && (lockedTarget.faction == null || player.faction == null || !lockedTarget.faction.isFriendlyTo(player.faction));
         if (validTarget) {
-            String title = "TARGET VITALS";
-            if (lockedTarget.name != null && !lockedTarget.name.isBlank()) title = lockedTarget.name;
-            drawShipVitalsCard(
-                    g2, lockedTarget, title, targetX, targetY, cardW, cardH,
-                    factionHudColor(lockedTarget.faction, 220),
-                    false
-            );
-            drawCommResultCard(g2, ctx, lockedTarget, targetX, targetY + cardH + 8, cardW);
+            rects.add(new Rectangle(targetX, targetY, cardW, cardH));
         }
+        return List.copyOf(rects);
     }
 
     private static void drawCommResultCard(Graphics2D g2, GameContext ctx, Ship lockedTarget, int x, int y, int w) {
@@ -7905,13 +8017,95 @@ public class Renderer {
         int mx = MathUtil.clamp((int) Math.round(sx), 18, Math.max(18, viewW - 18));
         int my = MathUtil.clamp((int) Math.round(sy), 18, Math.max(18, viewH - 18));
 
-        int horizontalGap = 16;
-        int verticalGap = 24;
-        drawHudHintChip(g2, "LMB fire all", mx - horizontalGap, my, -1);
-        drawHudHintChip(g2, HotkeyRegistry.label("secondaryDown") + " missile focus", mx + horizontalGap, my, +1);
-        if (player.role == ShipRole.SUPERSHIP || player.hasSuperweapon) {
-            drawHudHintChip(g2, "X superweapon", mx, my - verticalGap, 0);
+        List<String> labels = cursorWeaponHintLabels(player);
+        Rectangle cluster = cursorWeaponHintClusterRect(ctx, labels, viewW, viewH, mx, my);
+        if (cluster == null || labels.isEmpty()) return;
+
+        Font oldFont = g2.getFont();
+        Color oldColor = g2.getColor();
+        g2.setFont(new Font("Consolas", Font.BOLD, 11));
+        FontMetrics fm = g2.getFontMetrics();
+        g2.setColor(new Color(4, 8, 14, 188));
+        g2.fillRoundRect(cluster.x, cluster.y, cluster.width, cluster.height, 8, 8);
+        g2.setColor(new Color(140, 194, 238, 92));
+        g2.drawRoundRect(cluster.x, cluster.y, cluster.width, cluster.height, 8, 8);
+        int baseline = cluster.y + 5 + fm.getAscent();
+        for (String label : labels) {
+            g2.setColor(new Color(4, 8, 14, 210));
+            g2.drawString(label, cluster.x + 8 + 1, baseline + 1);
+            g2.setColor(new Color(236, 244, 255, 228));
+            g2.drawString(label, cluster.x + 8, baseline);
+            baseline += fm.getHeight();
         }
+        g2.setFont(oldFont);
+        g2.setColor(oldColor);
+    }
+
+    static Rectangle cursorWeaponHintClusterRectForTests(GameContext ctx, int viewW, int viewH, int cursorX, int cursorY) {
+        return ctx == null || ctx.player == null
+                ? null
+                : cursorWeaponHintClusterRect(ctx, cursorWeaponHintLabels(ctx.player), viewW, viewH, cursorX, cursorY);
+    }
+
+    private static List<String> cursorWeaponHintLabels(Player player) {
+        ArrayList<String> labels = new ArrayList<>();
+        labels.add("LMB fire all");
+        labels.add(HotkeyRegistry.label("secondaryDown") + " missile focus");
+        if (player != null && (player.role == ShipRole.SUPERSHIP || player.hasSuperweapon)) {
+            labels.add("X superweapon");
+        }
+        return List.copyOf(labels);
+    }
+
+    private static Rectangle cursorWeaponHintClusterRect(GameContext ctx, List<String> labels,
+                                                        int viewW, int viewH, int cursorX, int cursorY) {
+        if (labels == null || labels.isEmpty() || viewW <= 0 || viewH <= 0) return null;
+        Canvas metricsCanvas = new Canvas();
+        FontMetrics fm = metricsCanvas.getFontMetrics(new Font("Consolas", Font.BOLD, 11));
+        int textW = 0;
+        for (String label : labels) {
+            if (label != null) textW = Math.max(textW, fm.stringWidth(label));
+        }
+        int w = Math.max(136, textW + 16);
+        int h = Math.max(28, labels.size() * fm.getHeight() + 10);
+        Rectangle coreMenu = getCoreMenuBarRect(viewW, viewH);
+        ArrayList<Rectangle> blocked = new ArrayList<>();
+        blocked.add(new Rectangle(coreMenu));
+        if (ctx != null && ctx.player != null) {
+            blocked.addAll(combatHudPanelRects(viewW, viewH, ctx.player.isStealth, false));
+        }
+
+        int margin = 14;
+        Rectangle[] candidates = new Rectangle[]{
+                new Rectangle(cursorX + 18, cursorY - h - 12, w, h),
+                new Rectangle(cursorX - w - 18, cursorY - h - 12, w, h),
+                new Rectangle(cursorX + 18, cursorY + 12, w, h),
+                new Rectangle(cursorX - w - 18, cursorY + 12, w, h),
+                new Rectangle(Math.max(margin, viewW - w - 318), Math.max(margin, coreMenu.y - h - 14), w, h),
+                new Rectangle(Math.max(margin, viewW - w - margin), Math.max(margin, coreMenu.y - h - 14), w, h)
+        };
+        for (Rectangle candidate : candidates) {
+            Rectangle clamped = clampRectToViewport(candidate, viewW, viewH, margin);
+            if (!intersectsAny(clamped, blocked)) return clamped;
+        }
+        Rectangle fallback = new Rectangle(margin, Math.max(margin, coreMenu.y - h - 14), w, h);
+        return clampRectToViewport(fallback, viewW, viewH, margin);
+    }
+
+    private static Rectangle clampRectToViewport(Rectangle rect, int viewW, int viewH, int margin) {
+        int x = MathUtil.clamp(rect.x, margin, Math.max(margin, viewW - rect.width - margin));
+        int y = MathUtil.clamp(rect.y, margin, Math.max(margin, viewH - rect.height - margin));
+        return new Rectangle(x, y, rect.width, rect.height);
+    }
+
+    private static boolean intersectsAny(Rectangle rect, List<Rectangle> blocked) {
+        if (rect == null || blocked == null) return false;
+        Rectangle padded = new Rectangle(rect);
+        padded.grow(4, 4);
+        for (Rectangle block : blocked) {
+            if (block != null && padded.intersects(block)) return true;
+        }
+        return false;
     }
 
     private static boolean hudBlockingMenuOpen(GameContext ctx) {
@@ -8701,12 +8895,12 @@ public class Renderer {
             }
             case SHOP_UPGRADE_BEAM_BOLT -> {
                 boolean active = player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT;
-                title = "Beam Bolt Primary (Volley)";
-                line1 = active ? "Current mount: synchronized beam volley" : "Fire every beam-bolt barrel together";
-                line2 = active ? "Already installed" : "Install package for $220";
-                buttonLabel = active ? "ACTIVE" : (credits >= 220 ? "BUY $220" : "NEED $220");
-                enabled = !active && credits >= 220;
-                accentStrong = active;
+                title = "Beam Mode Control";
+                line1 = active ? "Focused beam mode is currently selected" : "Rapid stagger and focused beam are built in";
+                line2 = "Swap modes from the combat beam panel";
+                buttonLabel = "INCLUDED";
+                enabled = false;
+                accentStrong = true;
                 accent = new Color(144, 230, 255);
             }
             case SHOP_UPGRADE_HULL -> {
@@ -9505,11 +9699,6 @@ public class Renderer {
         g2.setClip(new Rectangle(readoutX - 4, portraitPaneY, Math.max(20, textRight - readoutX),
                 Math.max(40, footerTop - portraitPaneY - UI_ROW_GAP)));
 
-        g2.setColor(new Color(255, 255, 255, 210));
-        g2.setFont(new Font("Consolas", Font.BOLD, 14));
-        g2.drawString("Ship State", readoutX, ly);
-        ly += 20;
-
         int lockDist = -1;
         if (ctx.lockedTarget != null && ctx.lockedTarget.alive) {
             lockDist = (int) Math.round(Math.hypot(ctx.lockedTarget.x - ctx.player.x, ctx.lockedTarget.y - ctx.player.y));
@@ -9527,90 +9716,102 @@ public class Renderer {
         }
         ShipRoomLayout.RoomId focusRoom = ctx.player.integrityFocusRoom();
 
+        String fieldLabel = (focusRoom == null)
+                ? "No room focus"
+                : xrayRoomDisplayLabel(focusRoom) + " for " + (int) Math.ceil(ctx.player.integrityFocusRemaining()) + "s";
+        String lockLabel = (ctx.lockedTarget == null)
+                ? "No target lock"
+                : ctx.lockedTarget.name + " (" + Math.max(0, lockDist) + "m)";
+
+        g2.setColor(new Color(255, 255, 255, 222));
+        g2.setFont(new Font("Consolas", Font.BOLD, 15));
+        g2.drawString("Situation", readoutX, ly);
+        ly += 21;
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.setColor(new Color(210, 235, 255, 220));
-        g2.drawString("Captain: " + ctx.command.captainDirective
-                + "   Fleet: " + ctx.command.alliedFleetCommand
-                + " / " + ctx.command.alliedFleetFormation, readoutX, ly);
+        g2.drawString(fitShopText(g2.getFontMetrics(), "Ship: " + shipConditionLine(ctx.player)
+                + "   Lock: " + lockLabel, Math.max(40, textRight - readoutX)), readoutX, ly);
         ly += 16;
-        g2.drawString("Helm: " + ctx.command.helmMode
-                + "   Tactical: " + ctx.command.tacticalMode
-                + "   Lock: " + ((ctx.lockedTarget == null) ? "NONE" : (ctx.lockedTarget.name + " (" + Math.max(0, lockDist) + "m)")), readoutX, ly);
-        ly += 16;
-        g2.drawString("Engineering: " + ctx.command.engineeringMode
-                + "   Priority: " + ctx.player.engineeringPriority()
-                + "   Overload: " + (ctx.player.isOverloadActive() ? ("ACTIVE " + ctx.player.overloadBus().name()) : "STANDBY"), readoutX, ly);
-        ly += 16;
-        g2.drawString("Crew: " + ctx.player.crewOrder
+        g2.drawString(fitShopText(g2.getFontMetrics(), "Crew: " + displayCrewOrder(ctx.player.crewOrder)
                 + "   Readiness " + (int) Math.round(ctx.player.crewReadiness() * 100.0) + "%"
-                + "   Fire " + fireRooms + " / " + String.format("%.1f", fireLoad), readoutX, ly);
+                + "   Power " + displayPowerPreset(ctx.player.powerPreset), Math.max(40, textRight - readoutX)), readoutX, ly);
         ly += 16;
-        g2.drawString("Science: " + (sensorsOnline ? "ONLINE" : "DISABLED")
-                + "   Hotspot: " + hotspotLabel, readoutX, ly);
+        g2.drawString(fitShopText(g2.getFontMetrics(), "Hazards: fire rooms " + fireRooms
+                + " / load " + String.format("%.1f", fireLoad)
+                + "   Hotspot " + hotspotLabel, Math.max(40, textRight - readoutX)), readoutX, ly);
         ly += 16;
-        String fieldLabel = (focusRoom == null)
-                ? "NONE"
-                : xrayRoomDisplayLabel(focusRoom) + " " + (int) Math.ceil(ctx.player.integrityFocusRemaining()) + "s";
-        String voice = (ctx.ui.voiceCaptionT > 0.0 && ctx.ui.voiceCaption != null && !ctx.ui.voiceCaption.isBlank())
-                ? ctx.ui.voiceCaption
-                : "IDLE";
-        g2.drawString("Field: " + fieldLabel
-                + "   Voice: " + voice
-                + "   Captions: " + (ctx.ui.voiceCaptionsEnabled ? "ON" : "OFF"), readoutX, ly);
+        g2.drawString(fitShopText(g2.getFontMetrics(), "Engineering focus: " + fieldLabel
+                + "   Sensors " + (sensorsOnline ? "online" : "disabled"), Math.max(40, textRight - readoutX)), readoutX, ly);
 
-        ly += 28;
-        g2.setColor(new Color(255, 255, 255, 220));
-        g2.setFont(new Font("Consolas", Font.BOLD, 14));
-        g2.drawString("Active Station Orders", readoutX, ly);
+        ly += 30;
+        g2.setColor(new Color(255, 255, 255, 222));
+        g2.setFont(new Font("Consolas", Font.BOLD, 15));
+        g2.drawString(ctx.command.activeCrewStation.name() + " Station", readoutX, ly);
         ly += 20;
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
 
+        String stationPurpose;
+        String stationNow;
+        String stationKeys;
+        Color stationColor;
         switch (ctx.command.activeCrewStation) {
             case CAPTAIN -> {
-                g2.setColor(new Color(255, 230, 175, 220));
-                g2.drawString("1 BALANCED  2 ATTACK  3 DEFENSE  4 EMERGENCY  5 MINE", readoutX, ly);
-                ly += 16;
-                g2.drawString("6 ESCORT  7 DEFEND  8 REPAIR  9 RTB  0 FORMATION", readoutX, ly);
-                ly += 16;
-                g2.drawString("Sets ship behavior and allied fleet orders.", readoutX, ly);
+                stationColor = new Color(255, 230, 175, 220);
+                stationPurpose = "Sets the ship posture and tells allied fleets where to commit.";
+                stationNow = "Directive " + ctx.command.captainDirective
+                        + "   Fleet " + ctx.command.alliedFleetCommand
+                        + " / " + ctx.command.alliedFleetFormation;
+                stationKeys = "1 balanced  2 attack  3 defense  4 emergency  5 mine  6 escort  7 defend  8 repair  9 return  0 formation";
             }
             case HELM -> {
-                g2.setColor(new Color(200, 240, 255, 220));
-                g2.drawString("1 INTERCEPT  2 ORBIT  3 RANGE  4 EVASIVE  5 THRUST", readoutX, ly);
-                ly += 16;
-                g2.drawString("Controls spacing, approach, and thrust bias.", readoutX, ly);
+                stationColor = new Color(200, 240, 255, 220);
+                stationPurpose = "Controls spacing, approach angle, evasive movement, and thrust bursts.";
+                stationNow = "Helm mode " + ctx.command.helmMode
+                        + "   Manual flight overrides helm automation.";
+                stationKeys = "1 intercept  2 orbit  3 hold range  4 evasive  5 emergency thrust";
             }
             case TACTICAL -> {
-                g2.setColor(new Color(255, 210, 180, 220));
-                g2.drawString("1 HOLD FIRE  2 DEFENSIVE  3 AGGRESSIVE", readoutX, ly);
-                ly += 16;
-                g2.drawString("Controls target locks and weapon fire behavior.", readoutX, ly);
+                stationColor = new Color(255, 210, 180, 220);
+                stationPurpose = "Controls fire discipline, lock behavior, and weapon aggression.";
+                stationNow = "Tactical mode " + ctx.command.tacticalMode + "   " + lockLabel;
+                stationKeys = "1 hold fire  2 defensive fire  3 aggressive fire";
             }
             case ENGINEERING -> {
-                g2.setColor(new Color(200, 255, 200, 220));
-                g2.drawString("1 BALANCED  2 ATTACK  3 DEFENSE  4 DAMAGE CONTROL", readoutX, ly);
-                ly += 16;
-                g2.drawString("5 OVERLOAD  6 BUS  7 PRIORITY  8 SUPPRESS FIRE", readoutX, ly);
-                ly += 16;
-                g2.drawString("Manual power edits override engineering AI instantly.", readoutX, ly);
+                stationColor = new Color(200, 255, 200, 220);
+                stationPurpose = "Routes power, repairs rooms, suppresses fires, and manages overload risk.";
+                stationNow = "Mode " + ctx.command.engineeringMode
+                        + "   Priority " + ctx.player.engineeringPriority()
+                        + "   Overload " + (ctx.player.isOverloadActive() ? ctx.player.overloadBus().name() : "standby");
+                stationKeys = "1 balanced  2 attack  3 defense  4 damage control  5 overload  6 bus  7 priority  8 suppress fire";
             }
             case SCIENCE -> {
-                g2.setColor(new Color(220, 210, 255, 220));
-                g2.drawString("1 LOCK NEAREST  2 CLEAR LOCK", readoutX, ly);
-                ly += 16;
-                g2.drawString("Controls target selection and sensor behavior.", readoutX, ly);
+                stationColor = new Color(220, 210, 255, 220);
+                stationPurpose = "Finds targets, keeps sensor awareness readable, and clears bad locks.";
+                stationNow = "Sensors " + (sensorsOnline ? "online" : "disabled") + "   " + lockLabel;
+                stationKeys = "1 lock nearest  2 clear lock";
+            }
+            default -> {
+                stationColor = new Color(220, 230, 242, 220);
+                stationPurpose = "Station role unavailable.";
+                stationNow = "";
+                stationKeys = "";
             }
         }
+        g2.setColor(stationColor);
+        g2.drawString(fitShopText(g2.getFontMetrics(), stationPurpose, Math.max(40, textRight - readoutX)), readoutX, ly);
+        ly += 17;
+        g2.setColor(new Color(210, 235, 255, 212));
+        g2.drawString(fitShopText(g2.getFontMetrics(), stationNow, Math.max(40, textRight - readoutX)), readoutX, ly);
+        ly += 17;
+        g2.setColor(new Color(196, 228, 214, 216));
+        g2.drawString(fitShopText(g2.getFontMetrics(), "Controls: " + stationKeys, Math.max(40, textRight - readoutX)), readoutX, ly);
 
         ly += 24;
-        g2.setColor(new Color(255, 255, 255, 220));
-        g2.setFont(new Font("Consolas", Font.BOLD, 14));
+        g2.setColor(new Color(255, 255, 255, 222));
+        g2.setFont(new Font("Consolas", Font.BOLD, 15));
         g2.drawString("Quick Reference", readoutX, ly);
         ly += 20;
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
-        g2.setColor(new Color(190, 245, 220, 220));
-        g2.drawString("Voice: C captions   Z/X focus   ,/. volume", readoutX, ly);
-        ly += 16;
         g2.setColor(new Color(206, 224, 244, 190));
         g2.drawString("Combat: " + HotkeyRegistry.label("primaryDown") + "/LMB fire all   "
                 + HotkeyRegistry.label("secondaryDown") + " missile focus   RMB comms   "
@@ -10419,11 +10620,14 @@ public class Renderer {
 
         if (targetVisible) {
             int reservedVitalsW = 194;
+            int reservedLeftStackW = viewW >= 1180 ? 280 : 220;
             int outerMargin = 12;
             int sideGap = 12;
             int centerGap = 14;
-            int usableX = outerMargin + reservedVitalsW + sideGap;
-            int usableW = viewW - (outerMargin + reservedVitalsW + sideGap) * 2;
+            int leftReserveW = outerMargin + reservedLeftStackW + sideGap + reservedVitalsW + sideGap;
+            int rightReserveW = outerMargin + reservedVitalsW + sideGap;
+            int usableX = leftReserveW;
+            int usableW = viewW - leftReserveW - rightReserveW;
             if (usableW < 500) return null;
 
             int panelW = Math.max(240, Math.min(320, (usableW - centerGap) / 2));
@@ -10443,6 +10647,13 @@ public class Renderer {
 
         int panelW = Math.max(240, Math.min(320, menu.width - 170));
         int playerX = menu.x + (menu.width - panelW) / 2;
+        int reservedLeftStackW = viewW >= 1180 ? 280 : 220;
+        int reservedVitalsW = 194;
+        int outerMargin = 12;
+        int sideGap = 12;
+        playerX = Math.max(playerX,
+                outerMargin + reservedLeftStackW + sideGap + reservedVitalsW + sideGap);
+        playerX = Math.min(playerX, Math.max(outerMargin, viewW - panelW - outerMargin));
         playerH = Math.max(144, Math.min(186, (int) Math.round(availableH * 0.50)));
         playerY = menuTop - playerH - 8;
         if (playerY < 48) return null;
@@ -11474,10 +11685,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                                                double worldW,
                                                double worldH) {
         if (mapRect == null || !Double.isFinite(worldRadius) || worldRadius <= 0.0) return 0;
-        double pixelsPerWorldUnit = Math.min(
-                mapRect.width / Math.max(1.0, worldW),
-                mapRect.height / Math.max(1.0, worldH));
-        return Math.max(8, (int) Math.round(worldRadius * pixelsPerWorldUnit));
+        int longestMapEdge = Math.max(mapRect.width, mapRect.height);
+        double rangeWeight = Math.sqrt(worldRadius / 900.0);
+        int base = (int) Math.round(54.0 * rangeWeight);
+        int max = Math.max(48, Math.min(116, longestMapEdge / 7));
+        return MathUtil.clamp(base, 38, max);
     }
 
     private static int campaignControlHaloRadius(CampaignSystem.CampaignLocation location,
@@ -11807,13 +12019,49 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (g2 == null || faction == null || color == null) return;
         g2.setColor(color);
         g2.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        if (faction == Faction.BRIGHT_YELLOW) {
-            g2.drawOval(x - 3, y - 3, 6, 6);
-            g2.drawLine(x, y - 7, x, y - 5); g2.drawLine(x, y + 5, x, y + 7);
-            g2.drawLine(x - 7, y, x - 5, y); g2.drawLine(x + 5, y, x + 7, y);
-        } else if (faction == Faction.DARK_YELLOW) {
-            g2.drawPolyline(new int[]{x - 6, x, x + 6}, new int[]{y - 4, y + 1, y - 4}, 3);
-            g2.drawPolyline(new int[]{x - 6, x, x + 6}, new int[]{y, y + 5, y}, 3);
+        switch (faction) {
+            case PLAYER, ALLY -> {
+                Polygon diamond = new Polygon(
+                        new int[]{x, x + 6, x, x - 6},
+                        new int[]{y - 7, y, y + 7, y},
+                        4);
+                g2.drawPolygon(diamond);
+                g2.drawLine(x - 4, y, x + 4, y);
+                g2.drawLine(x, y - 4, x, y + 4);
+            }
+            case ENEMY -> {
+                Polygon chevron = new Polygon(
+                        new int[]{x - 7, x, x + 7, x + 4, x, x - 4},
+                        new int[]{y - 5, y - 8, y - 5, y + 6, y + 3, y + 6},
+                        6);
+                g2.drawPolygon(chevron);
+                g2.drawLine(x - 4, y - 2, x + 4, y - 2);
+            }
+            case TEAM_C -> {
+                g2.drawRect(x - 6, y - 6, 12, 12);
+                g2.drawLine(x - 6, y, x + 6, y);
+                g2.drawLine(x, y - 6, x, y + 6);
+            }
+            case TEAM_D, BRIGHT_YELLOW -> {
+                g2.drawOval(x - 4, y - 4, 8, 8);
+                g2.drawLine(x, y - 8, x, y - 5);
+                g2.drawLine(x, y + 5, x, y + 8);
+                g2.drawLine(x - 8, y, x - 5, y);
+                g2.drawLine(x + 5, y, x + 8, y);
+                g2.drawLine(x - 6, y - 6, x - 4, y - 4);
+                g2.drawLine(x + 6, y - 6, x + 4, y - 4);
+                g2.drawLine(x - 6, y + 6, x - 4, y + 4);
+                g2.drawLine(x + 6, y + 6, x + 4, y + 4);
+            }
+            case DARK_YELLOW -> {
+                g2.drawPolyline(new int[]{x - 7, x, x + 7}, new int[]{y - 5, y + 1, y - 5}, 3);
+                g2.drawPolyline(new int[]{x - 7, x, x + 7}, new int[]{y, y + 6, y}, 3);
+            }
+            case TEAM_E -> {
+                g2.drawOval(x - 6, y - 6, 12, 12);
+                g2.drawLine(x - 4, y - 4, x + 4, y + 4);
+                g2.drawLine(x - 4, y + 4, x + 4, y - 4);
+            }
         }
     }
 
@@ -15721,6 +15969,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         int outerRadius = strategicMarkerOuterRadius(marker.type) + sizeBoost;
         int innerRadius = strategicMarkerInnerRadius(marker.type) + Math.max(0, sizeBoost - 1);
         int crossRadius = strategicMarkerCrossRadius(marker.type) + sizeBoost;
+        boolean labelFocus = selected || isHoveredMapPoint(ctx, px, py, outerRadius + 16);
 
         g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.92f));
         g2.setColor(fill);
@@ -15745,8 +15994,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         drawStrategicMarkerCenterGlyph(g2, marker.type, markerLocation, px, py);
 
         if (label != null && !label.isBlank()
-                && shouldShowObjectiveMarkerLabel(ctx, marker, markerLocation, selected)) {
-            drawStrategicObjectiveLabel(g2, ctx, mapRect, marker, markerLocation, px, py, accent, selected,
+                && shouldShowObjectiveMarkerLabel(ctx, marker, markerLocation, labelFocus)) {
+            drawStrategicObjectiveLabel(g2, ctx, mapRect, marker, markerLocation, px, py, accent, labelFocus,
                     controlView == null ? null : controlView.control);
         }
 
@@ -16056,17 +16305,18 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             if (!strategicMapWorldPointVisible(marker.x, marker.y, worldMinX, worldMinY, worldW, worldH,
                     Math.max(80.0, marker.radius))) continue;
             if (!shouldDrawSupportMarkerAtZoom(ctx, marker)) continue;
-            boolean selected = isSelectedMapMarker(ctx, marker.label, marker.x, marker.y);
-            boolean labelSelected = isExactSelectedStrategicSupportMarker(ctx, marker, selected);
-            if (!shouldShowSupportMarkerLabel(ctx, marker, labelSelected)
-                    || (CampaignSystem.isCampaignWarMapSimplified(ctx) && !selected
-                    && !isPriorityCampaignFleetMarker(marker))) {
-                continue;
-            }
             int px = mapRect.x + (int) Math.round(((marker.x - worldMinX) / Math.max(1.0, worldW)) * mapRect.width);
             int py = mapRect.y + (int) Math.round(((marker.y - worldMinY) / Math.max(1.0, worldH)) * mapRect.height);
             px = MathUtil.clamp(px, mapRect.x + 8, mapRect.x + mapRect.width - 8);
             py = MathUtil.clamp(py, mapRect.y + 8, mapRect.y + mapRect.height - 8);
+            boolean selected = isSelectedMapMarker(ctx, marker.label, marker.x, marker.y);
+            boolean hovered = isHoveredMapPoint(ctx, px, py, strategicSupportMarkerRadius(marker.type) + 16);
+            boolean labelSelected = hovered || isExactSelectedStrategicSupportMarker(ctx, marker, selected);
+            if (!shouldShowSupportMarkerLabel(ctx, marker, labelSelected)
+                    || (CampaignSystem.isCampaignWarMapSimplified(ctx) && !labelSelected
+                    && !isPriorityCampaignFleetMarker(marker))) {
+                continue;
+            }
             String shortLabel = strategicSupportShortLabel(marker).trim().toUpperCase(Locale.US);
             int maxWidth = Math.max(88, mapRect.width / 6);
             while (fm.stringWidth(shortLabel) > maxWidth && shortLabel.length() > 14) {
@@ -16279,18 +16529,16 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (marker == null) return false;
         if (!CampaignSystem.isStrategicOvermapMode(ctx)) return true;
         if (selected) return true;
-        double zoom = UISystem.strategicMapZoom(ctx);
-        if (isFleetSupportMarkerType(marker.type)) return false;
-        if (zoom < 2.25) return false;
-        if (zoom < 3.05) {
-            return marker.priority >= 90
-                    && (marker.type == CampaignSystem.SupportMarkerType.HAZARD
-                    || marker.type == CampaignSystem.SupportMarkerType.FACTION_CONTACT
-                    || marker.type == CampaignSystem.SupportMarkerType.INTEL);
-        }
-        return marker.priority >= 78
-                || marker.type == CampaignSystem.SupportMarkerType.HAZARD && marker.priority >= 70
-                || marker.type == CampaignSystem.SupportMarkerType.FACTION_CONTACT && marker.priority >= 70;
+        return false;
+    }
+
+    private static boolean isHoveredMapPoint(GameContext ctx, int px, int py, int radius) {
+        if (ctx == null) return false;
+        double mx = ctx.cursorScreenX;
+        double my = ctx.cursorScreenY;
+        if (mx < 0 || my < 0) return false;
+        double r = Math.max(8, radius);
+        return Math.hypot(mx - px, my - py) <= r;
     }
 
     private static boolean isExactSelectedStrategicSupportMarker(GameContext ctx,
@@ -17425,6 +17673,34 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
 
         ShipVisual visual = ShipRenderer.getVisual(ship);
+        Paint oldPaint = g.getPaint();
+        Rectangle2D bounds = (visual.hullBounds == null)
+                ? new Rectangle2D.Double(-ship.radius, -ship.radius, ship.radius * 2.0, ship.radius * 2.0)
+                : visual.hullBounds;
+        Color mapHull = withAlpha(mixColor(hull, factionMapColor(ship.faction, ship.faction == Faction.PLAYER, 220), 0.32), 192);
+        Color mapNose = withAlpha(mixColor(trim, Color.WHITE, 0.12), 210);
+        g.setPaint(new GradientPaint(
+                (float) bounds.getMinX(), 0.0f,
+                withAlpha(mixColor(mapHull, Color.BLACK, 0.18), mapHull.getAlpha()),
+                (float) bounds.getMaxX(), 0.0f,
+                mapNose));
+        if (visual.hullArea != null) {
+            g.fill(visual.hullArea);
+        } else {
+            for (Polygon poly : visual.hullPolys) {
+                g.fillPolygon(poly);
+            }
+        }
+        g.setPaint(oldPaint);
+        g.setColor(withAlpha(mixColor(hull, Color.BLACK, 0.30), 165));
+        for (Polygon poly : visual.fins) {
+            g.fillPolygon(poly);
+        }
+        g.setColor(withAlpha(mixColor(trim, hull, 0.55), 134));
+        for (Polygon poly : visual.superPolys) {
+            g.fillPolygon(poly);
+        }
+
         Stroke old = g.getStroke();
         g.setStroke(new BasicStroke((float) Math.max(1.0, Math.min(2.5, ship.radius * 0.04)),
                 BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));

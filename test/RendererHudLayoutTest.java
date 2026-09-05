@@ -1,5 +1,7 @@
 import org.junit.jupiter.api.Test;
 
+import app.config.GameConfig;
+import app.config.GameMode;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
@@ -38,6 +40,119 @@ class RendererHudLayoutTest {
         List<Rectangle> panels = Renderer.combatHudPanelRects(1280, 720, true, true);
 
         assertEquals(3, panels.size(), "combat HUD panel list should contain beam, missile, and cloak only");
+    }
+
+    @Test
+    void primaryHudStackDoesNotOverlapVitalsWhenTargetXrayIsVisibleAt720p() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 77L, false));
+        ctx.player = new Player(ShipRole.MOTHERSHIP, 1200.0, 1200.0);
+        ctx.player.faction = Faction.ALLY;
+        ctx.player.alive = true;
+        ctx.player.dying = false;
+        ctx.player.hpMax = Math.max(1000, ctx.player.hpMax);
+        ctx.player.hp = ctx.player.hpMax;
+        FleetShip target = new FleetShip(ShipRole.CRUISER, Faction.ENEMY, 1600.0, 1200.0);
+        target.name = "Red Training Cruiser";
+        target.alive = true;
+        target.dying = false;
+        target.hpMax = Math.max(600, target.hpMax);
+        target.hp = target.hpMax;
+        ctx.lockedTarget = target;
+        ctx.ships.add(ctx.player);
+        ctx.ships.add(target);
+        ctx.ui.hudDetail = GameContext.HudDetail.FULL;
+
+        List<Rectangle> stack = Renderer.primaryHudStackRectsForTests(
+                ctx,
+                1280,
+                720,
+                "Current objective",
+                "Hold the line and inspect the target.",
+                "Use the command strip for orders.",
+                "");
+        List<Rectangle> vitals = Renderer.combatVitalsRectsForTests(ctx, 1280, 720);
+
+        assertFalse(stack.isEmpty(), "left HUD stack should be present");
+        assertFalse(vitals.isEmpty(), "player vitals should be present");
+        for (Rectangle stackRect : stack) {
+            for (Rectangle vitalRect : vitals) {
+                Rectangle padded = new Rectangle(vitalRect);
+                padded.grow(6, 4);
+                assertFalse(stackRect.intersects(padded),
+                        "readiness/objective stack should reserve room beside vitals and X-ray; stack="
+                                + stackRect + " vital=" + vitalRect);
+            }
+        }
+    }
+
+    @Test
+    void primaryHudStackDoesNotOverlapVitalsWhenOnlyPlayerXrayIsVisibleAt720p() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.SHOWCASE, 5000, 5000, true, 78L, false));
+        ctx.player = new Player(ShipRole.FRIGATE, 1200.0, 1200.0);
+        ctx.player.faction = Faction.ALLY;
+        ctx.player.alive = true;
+        ctx.player.dying = false;
+        ctx.player.hpMax = Math.max(1000, ctx.player.hpMax);
+        ctx.player.hp = ctx.player.hpMax;
+        ctx.ui.hudDetail = GameContext.HudDetail.FULL;
+
+        List<Rectangle> stack = Renderer.primaryHudStackRectsForTests(
+                ctx,
+                1280,
+                720,
+                "Trade hub collapse / anchorage firestorm",
+                "Keep the flagship alive. Reach Earth.",
+                "Use thrust and steering to stay mobile.",
+                "");
+        List<Rectangle> vitals = Renderer.combatVitalsRectsForTests(ctx, 1280, 720);
+
+        assertFalse(stack.isEmpty(), "left HUD stack should be present");
+        assertFalse(vitals.isEmpty(), "player vitals should be present");
+        for (Rectangle stackRect : stack) {
+            for (Rectangle vitalRect : vitals) {
+                Rectangle padded = new Rectangle(vitalRect);
+                padded.grow(6, 4);
+                assertFalse(stackRect.intersects(padded),
+                        "readiness/objective stack should reserve room beside solo player X-ray; stack="
+                                + stackRect + " vital=" + vitalRect);
+            }
+        }
+    }
+
+    @Test
+    void academyActiveMarkerCueAvoidsTutorialPanelAndCoreMenu() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.TUTORIAL, 5000, 5000, true, 88L, false));
+        TutorialSystem.init(ctx, Faction.ALLY);
+        CameraSystem.update(ctx, 1280, 720);
+        ctx.camX -= 1600.0;
+        ctx.camY -= 1200.0;
+
+        Rectangle cue = TutorialSystem.activeMarkerCueRectForTest(ctx, 1280, 720);
+        Rectangle panel = TutorialSystem.tutorialOverlayPanelRect(1280, 720, 560, 210);
+        Rectangle coreMenu = Renderer.getCoreMenuBarRect(1280, 720);
+
+        assertNotNull(cue, "fresh Academy should expose an active NAV marker cue");
+        assertTrue(cue.x >= 0 && cue.y >= 0, "cue should stay on-screen");
+        assertTrue(cue.x + cue.width <= 1280 && cue.y + cue.height <= 720, "cue should fit viewport");
+        assertFalse(cue.intersects(panel), "cue should not hide under the tutorial panel");
+        assertFalse(cue.intersects(coreMenu), "cue should not hide under the command strip");
+    }
+
+    @Test
+    void cursorWeaponHintsAvoidCombatPanelsAndCoreMenu() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.SHOWCASE, 5000, 5000, true, 99L, false));
+        ctx.player = new Player(ShipRole.FRIGATE, 640.0, 360.0);
+        ctx.player.faction = Faction.ALLY;
+
+        Rectangle hint = Renderer.cursorWeaponHintClusterRectForTests(ctx, 1280, 720, 1110, 640);
+        Rectangle coreMenu = Renderer.getCoreMenuBarRect(1280, 720);
+        List<Rectangle> panels = Renderer.combatHudPanelRects(1280, 720, false, false);
+
+        assertNotNull(hint, "cursor help should have a measured cluster");
+        assertFalse(hint.intersects(coreMenu), "cursor help should not cover the command strip");
+        for (Rectangle panel : panels) {
+            assertFalse(hint.intersects(panel), "cursor help should not cover weapon controls");
+        }
     }
 
     @Test

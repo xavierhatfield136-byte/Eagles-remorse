@@ -56,6 +56,7 @@ public final class AudioSystem {
     private static final double GREEN_WEAPON_LOOP_HOLD_SEC = 0.45;
     private static final double GREEN_SUPERWEAPON_FIRE_LOOP_HOLD_SEC = 5.2;
     private static final double WARP_LOOP_KEEPALIVE_SEC = 0.35;
+    private static final boolean VOICE_ACTING_ENABLED = false;
     private static final boolean ALPHA_TEMPORARY_CREW_CHATTER_ENABLED = false;
 
     private AudioSystem() {}
@@ -64,9 +65,7 @@ public final class AudioSystem {
         CAPTAIN_COMBAT_START("captain", "combat_start", 6.0, 3, 2,
                 "All stations, prepare for combat.",
                 "All hands, combat stations."),
-        // NOTE: Using a new event id here intentionally avoids playing the legacy `combat_end` voice asset
-        // (which included the removed wording). If/when new VO is recorded, drop it in as:
-        // `assets/voice/captain/combat_end_clear_01.wav` (and variants).
+        // Retained as an inactive metadata entry while voice acting is disabled for release.
         CAPTAIN_COMBAT_END("captain", "combat_end_clear", 6.0, 2, 1,
                 "Area secure.",
                 "Area secure. Maintain readiness."),
@@ -396,6 +395,7 @@ public final class AudioSystem {
         private AssetLibrary() {}
 
         static VoicePick pickVoice(String role, String eventId, int preferredVariantIndex) {
+            if (!VOICE_ACTING_ENABLED) return null;
             if (role == null || eventId == null) return null;
             List<File> files = filesFor("voice", role, eventId, new File(ROOT_VOICE, role));
             if (!files.isEmpty()) {
@@ -409,6 +409,7 @@ public final class AudioSystem {
         }
 
         static int voiceVariantCount(String role, String eventId) {
+            if (!VOICE_ACTING_ENABLED) return 0;
             if (role == null || eventId == null) return 0;
             List<File> files = filesFor("voice", role, eventId, new File(ROOT_VOICE, role));
             if (!files.isEmpty()) return files.size();
@@ -896,6 +897,7 @@ public final class AudioSystem {
             Map<String, Integer> dropsByReason) {}
 
     public static List<VoiceEventSpec> voiceEventMatrix() {
+        if (!VOICE_ACTING_ENABLED) return List.of();
         List<VoiceEventSpec> out = new ArrayList<>();
         for (VoiceCue cue : VoiceCue.values()) {
             int assets = AssetLibrary.voiceVariantCount(cue.role, cue.eventId);
@@ -931,6 +933,7 @@ public final class AudioSystem {
 
     public static void playScriptedVoice(GameContext ctx, String role, String eventId,
                                          String speakerLabel, String caption, double captionSeconds) {
+        if (!VOICE_ACTING_ENABLED) return;
         if (ctx == null || role == null || role.isBlank() || eventId == null || eventId.isBlank()) return;
         RuntimeState st = stateFor(ctx);
         int variantCount = Math.max(1, AssetLibrary.voiceVariantCount(role, eventId));
@@ -961,6 +964,7 @@ public final class AudioSystem {
     public static boolean playContextBanter(GameContext ctx, String role, String eventId,
                                             String speakerLabel, String caption, double captionSeconds,
                                             double cooldownSec, int priority) {
+        if (!VOICE_ACTING_ENABLED) return false;
         if (ctx == null || role == null || role.isBlank() || eventId == null || eventId.isBlank()) return false;
         RuntimeState st = stateFor(ctx);
         double now = nowSec();
@@ -988,6 +992,7 @@ public final class AudioSystem {
     }
 
     private static void processVoiceSignals(GameContext ctx, RuntimeState st, double now) {
+        if (!VOICE_ACTING_ENABLED) return;
         List<Ship> visibleHostiles = visibleHostilesCached(ctx, st, now);
         int hostiles = visibleHostiles.size();
         if (!st.hadCombatContact && hostiles > 0) {
@@ -1402,6 +1407,7 @@ public final class AudioSystem {
 
     private static void emitVoice(GameContext ctx, RuntimeState st, VoiceCue cue, double now,
                                   String speakerLabelOverride, String captionOverride) {
+        if (!VOICE_ACTING_ENABLED) return;
         if (ctx == null || st == null || cue == null) return;
 
         Double cd = st.voiceCooldownUntil.get(cue);

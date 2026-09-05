@@ -21,6 +21,14 @@ class AlphaPresentationAssetTest {
     }
 
     @Test
+    void voiceActingIsRemovedFromReleaseBuild() {
+        assertTrue(AudioSystem.voiceEventMatrix().isEmpty(),
+                "release builds should not require or dispatch licensed voice-acting assets");
+        assertFalse(new File("assets/voice").exists(),
+                "bundled voice acting assets should be removed from the game workspace");
+    }
+
+    @Test
     void shipDeathMajorSoundIsNoLongerTheShortTonePlaceholder() throws Exception {
         SfxManifest.EventSpec spec = SfxManifest.byId("impact.ship_death_major");
         assertTrue(spec != null);
